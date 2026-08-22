@@ -38,7 +38,8 @@ CREATE TABLE schools (
   name            TEXT NOT NULL,
   level           TEXT NOT NULL CHECK (level IN ('MS','HS')),
   city            TEXT,
-  drive_folder_id TEXT,               -- visible only to scope '*'
+  drive_folder_id TEXT,               -- packet scans; URL string only, visible only to scope '*'
+  billing_exempt  INTEGER NOT NULL DEFAULT 0,   -- SCL, At Large: invoice computes to zero
   status          TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','withdrawn')),
   notes           TEXT,               -- fellowship room, volunteer liaison, chair notes
   created_at      TEXT NOT NULL,
@@ -68,7 +69,7 @@ CREATE TABLE people (
   cell_phone       TEXT,
 
   email            TEXT,                  -- adults only; never collected for delegates
-  knows_latin      INTEGER,               -- adults only, 0/1
+  latin_knowledge  TEXT CHECK (latin_knowledge IN ('none','novice','intermediate','advanced')),
   availability_note TEXT,                 -- adults only
 
   guardian_name    TEXT,                  -- delegates only
@@ -88,7 +89,8 @@ CREATE TABLE people (
 
   CHECK (person_type = 'adult'    OR adult_type IS NULL),
   CHECK (person_type = 'delegate' OR (grade IS NULL AND latin_level IS NULL)),
-  CHECK (person_type = 'delegate' OR email IS NULL OR email <> '')
+  CHECK (person_type = 'adult'    OR (email IS NULL AND latin_knowledge IS NULL AND availability_note IS NULL)),
+  CHECK (person_type = 'delegate' OR (guardian_name IS NULL AND guardian_phone IS NULL))
 );
 
 CREATE UNIQUE INDEX idx_people_code_hmac  ON people (code_hmac);
@@ -98,7 +100,7 @@ CREATE INDEX        idx_people_sort       ON people (school_id, last_name, first
 
 `idx_people_school` is the index the sponsor roster and every chair count depend on. `idx_people_code_hmac` is what makes login O(1).
 
-Delegates never have an email. This is enforced in application code and asserted in tests; the `CHECK` above is deliberately loose because SQLite cannot express it cleanly.
+The last two `CHECK` constraints enforce the person-type split at the database level rather than trusting application code: delegates cannot acquire an email, and adults cannot acquire guardian fields. Assert both in tests as well, since a future migration could quietly drop them.
 
 ---
 
@@ -156,16 +158,22 @@ System roles seeded: `admin` (`*`), `registration_chair` (`registration`), `acad
 
 ```sql
 CREATE TABLE login_attempts (
-  id           INTEGER PRIMARY KEY,
-  code_prefix  TEXT,
-  ip_hash      TEXT NOT NULL,
-  succeeded    INTEGER NOT NULL,
-  attempted_at TEXT NOT NULL
+  id                  INTEGER PRIMARY KEY,
+  attempted_code_hmac TEXT NOT NULL,   -- HMAC of whatever was typed, valid or not
+  code_prefix         TEXT,
+  ip_hash             TEXT NOT NULL,
+  succeeded           INTEGER NOT NULL,
+  attempted_at        TEXT NOT NULL
 );
-CREATE INDEX idx_login_attempts_ip ON login_attempts (ip_hash, attempted_at);
+CREATE INDEX idx_login_attempts_ip   ON login_attempts (ip_hash, attempted_at);
+CREATE INDEX idx_login_attempts_code ON login_attempts (attempted_code_hmac, attempted_at);
 ```
 
-Rate limit: 10 failures per IP per 15 minutes, 5 failures per known code per hour. Prune rows older than 7 days on a daily cron.
+Rate limit: 10 failures per IP per 15 minutes, **5 failures per code per hour**.
+
+The per-code limit requires `attempted_code_hmac`, which is the HMAC of the string the person actually typed — computed with the same pepper, whether or not that code exists. Without it there is nothing to count against, since a failed attempt by definition matches no row in `people`. Storing it is safe: it is a keyed hash of a guess, it reveals nothing an attacker with database access does not already hold, and it lets you distinguish one person fumbling their own code from someone walking the keyspace. Never store the raw attempted code.
+
+Prune rows older than 7 days on a daily cron.
 
 ---
 
@@ -181,10 +189,9 @@ CREATE TABLE form_submissions (
   updated_at   TEXT NOT NULL,
   UNIQUE (person_id, form_type)
 );
-CREATE INDEX idx_form_submissions_person ON form_submissions (person_id, status);
 ```
 
-The `UNIQUE (person_id, form_type)` constraint creates the index that kills the N+1. The roster view is one query:
+The `UNIQUE (person_id, form_type)` constraint creates the index that kills the N+1. Do not add a second index on `person_id` alone — the unique index already covers that prefix, and a duplicate would cost storage and slow every write for nothing. The roster view is one query:
 
 ```sql
 SELECT p.id, p.first_name, p.last_name, p.person_type, p.status,
@@ -245,7 +252,7 @@ CREATE TABLE catalog_items (
   registration_scope     TEXT NOT NULL DEFAULT 'individual'
                            CHECK (registration_scope IN ('individual','chapter')),
   max_sub_selections     INTEGER,
-  requires_latin         INTEGER NOT NULL DEFAULT 0,  -- adult roles
+  min_latin_knowledge    TEXT CHECK (min_latin_knowledge IN ('none','novice','intermediate','advanced')),
   sort_order             INTEGER NOT NULL DEFAULT 0,
   active                 INTEGER NOT NULL DEFAULT 1
 );
@@ -281,7 +288,9 @@ Chess *(individual)*; Track *(individual; options 100m, 200m, 400m)*; Fugepilam 
 Edible Mosaics; Open Certamen; Pandora's Breakout Box; Percy Jackson Kahoot; Project Runway; Roman Rap Battle; Roman Speed Dating; Scavenger Hunt (Goose Chase); Spelling Bee; STEM Challenge; That's Entertainment.
 
 **`adult_roles`** — applies to adult, min 2, enforcement `warn`:
-Wherever needed!; Certamen Reader *(requires_latin)*; Certamen Scorer/Timer; Graphic Arts Judge; Olympika Volunteer; Ludi Volunteer; Latin Oratory Judge *(requires_latin)*; Sight Latin Reading Judge *(requires_latin)*; Essay Reading Judge; Costume Judge; English Oratory Judge; Dramatic Interpretation Judge *(requires_latin)*.
+Wherever needed!; Certamen Reader *(advanced)*; Certamen Scorer/Timer; Graphic Arts Judge; Olympika Volunteer; Ludi Volunteer; Latin Oratory Judge *(advanced)*; Sight Latin Reading Judge *(advanced)*; Essay Reading Judge; Costume Judge; English Oratory Judge; Dramatic Interpretation Judge *(advanced)*.
+
+Every current role needs either nothing or advanced Latin, but `min_latin_knowledge` carries all four levels so a future chair can mark a role as needing intermediate Latin from the dashboard without a migration. An adult below a role's minimum sees the role disabled with the requirement stated, not hidden — the same treatment as an ineligible test.
 
 **`preconvention`** — delegate, deferred, seeded inactive:
 Modern Myth; Poetry; Slogan (English); Slogan (Latin).
@@ -381,7 +390,16 @@ CREATE TABLE public_stats_cache (
 
 Both are recomputed **inside the same transaction** as any mutation that could change them. Never `COUNT(*)` over `people` to serve a page. A single recompute costs ~1,150 reads; serving from cache costs 1.
 
-Invoice: `fee.delegate_cents × delegates_active + max(0, fee.extra_adult_cents × (adults_active − ceil(delegates_active ÷ fee.adult_ratio)))`.
+Invoice, when `schools.billing_exempt = 0`:
+
+```
+fee.delegate_cents × delegates_active
+  + max(0, fee.extra_adult_cents × (adults_active − ceil(delegates_active ÷ fee.adult_ratio)))
+```
+
+When `billing_exempt = 1` the total is zero and the invoice page says so in words. Exempt schools are excluded from the chair dashboard's outstanding-balance total. Never key exemption off a school's name.
+
+**Deadline storage is a trap.** `deadline.forms_lock` and `deadline.payment` are stored as UTC but mean "end of day in California." February 13, 2027 is during PST (UTC−8), so the correct stored value is `2027-02-14T07:59:59Z`. If a future commissioner moves a deadline into a DST month the offset changes to −7. Store a UTC instant, compute it from a wall-clock date entered in the dashboard plus `America/Los_Angeles`, and never let anyone hand-type the UTC string.
 
 > **TODO (undecided):** whether cancelled delegates still count toward the invoice, and what happens when a fee changes mid-cycle. Mark both explicitly in code.
 
@@ -417,7 +435,7 @@ CREATE TRIGGER audit_log_no_delete BEFORE DELETE ON audit_log
 BEGIN SELECT RAISE(ABORT, 'audit_log is append-only'); END;
 ```
 
-Actions: `auth.login`, `auth.login_failed`, `auth.magic_link`, `auth.logout`, `impersonation.start`, `impersonation.end`, `school.create`, `school.update`, `roster.preview`, `roster.import`, `person.create`, `person.update`, `person.cancel`, `person.restore`, `person.code_regenerate`, `form.submit`, `form.update`, `form.unlock`, `paper_form.mark`, `chapter_entry.create`, `chapter_entry.delete`, `payment.record`, `catalog.update`, `settings.update`, `announcement.update`, `role.create`, `role.grant`, `role.revoke`, `export.run`, `warm.set`.
+Actions: `auth.login`, `auth.login_failed`, `auth.magic_link`, `auth.logout`, `impersonation.start`, `impersonation.end`, `school.create`, `school.update`, `roster.preview`, `roster.import`, `person.create`, `person.update`, `person.cancel`, `person.restore`, `person.code_regenerate`, `form.submit`, `form.update`, `form.unlock`, `paper_form.mark`, `chapter_entry.create`, `chapter_entry.delete`, `payment.record`, `catalog.update`, `settings.update`, `announcement.update`, `role.create`, `role.grant`, `role.revoke`, `export.run`, `warm.set`, `contest.submit`, `session.revoke`.
 
 `changed_fields` records field **names only**, never values — this keeps PII out of the log and matches the requirement that the log show "Bob updated their forms" rather than what Bob wrote. `value_detail` carries before/after values for `payment.record` only, because money disputes are exactly when you need them.
 
@@ -475,6 +493,30 @@ CREATE TABLE documents (
 
 ---
 
+## Contest submissions (schema only, no UI in the demo)
+
+Pre-convention contests, graphic arts entries, and lost-and-found photos all follow one upload path: the browser posts the file to Modal, Modal hands it to the Apps Script puppet, and the puppet files it under the **automated Drive root** — organized by contest, then by chapter — and returns a Drive file ID.
+
+```sql
+CREATE TABLE contest_submissions (
+  id             INTEGER PRIMARY KEY,
+  person_id      INTEGER REFERENCES people(id),
+  school_id      INTEGER NOT NULL REFERENCES schools(id),
+  item_id        INTEGER NOT NULL REFERENCES catalog_items(id),
+  drive_file_id  TEXT NOT NULL,
+  drive_folder_id TEXT NOT NULL,
+  original_name  TEXT NOT NULL,
+  mime_type      TEXT,
+  size_bytes     INTEGER,
+  submitted_at   TEXT NOT NULL,
+  UNIQUE (person_id, item_id)
+);
+CREATE INDEX idx_contest_submissions_item   ON contest_submissions (item_id);
+CREATE INDEX idx_contest_submissions_school ON contest_submissions (school_id);
+```
+
+**No file bytes are ever stored in the database.** Chairs are granted access to the relevant Drive folder directly and judge there; this site stores pointers, not content. This root is entirely separate from the per-school packet folders holding medical forms and waivers, which no code touches — see `structure.md`.
+
 ## Awards infrastructure (schema only, no UI in the demo)
 
 ```sql
@@ -505,15 +547,15 @@ This is the most visible piece of the demo and the most likely to embarrass you 
 1. **Split** on `\r\n`, `\n`, `\r`. Drop empty and whitespace-only lines.
 2. **Strip line noise** per line: leading bullets (`-`, `–`, `*`, `•`, `·`), leading numbering (`1.`, `1)`, `(1)`, `1 -`), surrounding straight and smart quotes, trailing commas and semicolons.
 3. **Delimiters.** If the line contains tabs, split on tabs. If it contains commas and splitting yields exactly two fields where both look like name fragments, treat as `Last, First [Middle]`. If splitting yields more than two fields, treat field 1 as the name and attempt to map remaining fields onto grade, Latin level, phone, and email by pattern.
-4. **Extract non-name data** wherever it appears: anything matching an email pattern goes to `email` (and is discarded with a warning for delegates), anything matching a 10-digit phone pattern goes to `cell_phone`, a bare integer 6–12 goes to `grade`, and a token matching `MS-[123]`, `HS-[123]`, or `HS-Adv` (case-insensitively, with or without the hyphen) goes to `latin_level`.
+4. **Extract non-name data** wherever it appears: anything matching an email pattern goes to `email` (and is discarded with a warning for delegates), anything matching a 10-digit phone pattern goes to `cell_phone`, a bare integer 6–12 goes to `grade`, and a token matching `MS-[123]`, `HS-[123]`, or `HS-Adv` (case-insensitively, with or without the hyphen) goes to `latin_level`. Accept the legacy spellings sponsors still have in their own spreadsheets and normalize them silently: `HS-4`, `HS4`, `Latin 4`, `AP`, and `AP Latin` all map to `HS-Adv`; a bare `1`–`3` in a Latin-level column maps to the matching level for that school's type. Normalizing quietly is right here — a sponsor pasting last year's spreadsheet should not be made to fix vocabulary we changed.
 5. **Suffixes.** Strip a trailing `Jr`, `Jr.`, `Sr`, `Sr.`, `II`, `III`, `IV`, `V` into `suffix`.
-6. **Particles.** Scan right to left; fold lowercase particles (`de`, `del`, `de la`, `de los`, `della`, `van`, `van der`, `van den`, `von`, `da`, `di`, `dos`, `du`, `la`, `le`, `bin`, `binte`, `ibn`, `al`, `ter`, `ten`) into the last name.
-7. **Assign** remaining tokens: one token → last name only, warn. Two → first, last. Three → first, middle, last, and **flag for confirmation**. Four or more → first token to first name, last token to last name, remainder to middle, and **flag for confirmation**.
+6. **Particles.** Scan right to left; fold lowercase particles into the last name. **This list is canonical and lives in exactly one constant in the codebase** — no other document or module may hold its own copy: `de`, `del`, `de la`, `de los`, `della`, `van`, `van der`, `van den`, `von`, `da`, `di`, `dos`, `du`, `la`, `le`, `bin`, `binte`, `ibn`, `al`, `ter`, `ten`.
+7. **Assign** remaining tokens: one token → last name only, warn. Two → first, last. Three → first, middle, last, **no warning** — a middle name is ordinary and flagging it would put a warning on a third of any real roster, which teaches sponsors to dismiss warnings without reading them. Four or more → first token to first name, last token to last name, remainder to middle, and **flag for confirmation**.
 8. **Casing.** Preserve the input's casing. Only if the entire line is uppercase or entirely lowercase, apply title casing with `Mc`/`Mac`/`O'`/hyphen handling and particles left lowercase.
 9. **Warnings** attached per row: `multi_token_name`, `single_token_name`, `duplicate_in_paste`, `duplicate_in_roster` (matched on normalized first+last, disambiguated by guardian name/phone), `unexpected_character` (control characters or unmatched brackets), `email_discarded`, `ambiguous_delimiter`, `possible_header_row` (a first line reading `Name`, `Student`, `First`, etc.).
 10. **Preview** renders an editable table: type (delegate/adult), first, middle, last, suffix, grade, Latin level, meal, guardian name, guardian phone — all editable inline, with warnings shown per row and a per-row dismiss.
 
-**Test fixtures must include:** `de la Cruz, Mary Beth`; `MARY BETH DE LA CRUZ`; `mary beth de la cruz`; `Robert McDonald Jr.`; `O'Brien, Seán`; `Nguyễn Thị Minh Anh`; `Smith,John,9,HS-1`; a tab-separated spreadsheet paste with a header row; a list with `1.` numbering; two identical names; a line containing only whitespace; a 300-line paste; and a line with a zero-width space in it.
+**Test fixtures must include:** `de la Cruz, Mary Beth`; `MARY BETH DE LA CRUZ`; `mary beth de la cruz`; `Robert McDonald Jr.`; `O'Brien, Seán`; `Nguyễn Thị Minh Anh`; `Smith,John,9,HS-1`; `Chen, Timothy Wei` (three tokens, must produce **no** warning); `Liu,Carl,12,AP Latin`; `Rivera Ana 7 MS-2`; a tab-separated spreadsheet paste with a header row; a list with `1.` numbering; two identical names disambiguated only by guardian phone; a line containing only whitespace; a 300-line paste; and a line with a zero-width space in it.
 
 ---
 
@@ -548,7 +590,7 @@ All endpoints are under one Modal FastAPI app. Every endpoint declares a require
 | POST | `/sponsor/people/{id}/cancel` | `sponsor` | Soft; recompute stats |
 | POST | `/sponsor/people/{id}/restore` | `sponsor` | |
 | POST | `/sponsor/people/{id}/regenerate-code` | `sponsor` | Revokes sessions; returns the new code once |
-| POST | `/sponsor/people/{id}/chapter-leader` | `sponsor` | Grants/revokes the `chapter` scope |
+| POST | `/sponsor/people/{id}/chapter-leader` | `sponsor` | Inserts or deletes a `person_roles` row for the system role `chapter_leader`. Scopes are never attached to a person directly — the only path from person to scope is `person_roles` → `roles` → `role_scopes`. |
 | POST | `/sponsor/paper-forms` | `sponsor` | `{person_id, form_type, received}` |
 | GET | `/sponsor/packet` | `sponsor` | HTML print view |
 | GET | `/sponsor/packet.pdf` | `sponsor` | Spawns the fat-image worker |
@@ -597,7 +639,9 @@ All endpoints are under one Modal FastAPI app. Every endpoint declares a require
 
 All fabricated. Generated programmatically and reproducible from a fixed seed.
 
-- **12 schools** — 9 high school, 3 middle school — with realistic-sounding invented California school names, none of them real, at varying stages of registration so the chair dashboard shows a genuine spread.
+- **12 schools** — 9 high school, 3 middle school — with plausible-sounding **invented** California school names, none of them real, at varying stages of registration so the chair dashboard shows a genuine spread.
+- **One `billing_exempt` chapter** named SCL, with a couple of adults, so the zero-invoice path is visible in the demo rather than untested.
+- A **persistent "Demonstration data — not real attendees" marker** in the site header whenever the database is seeded. The demo is projected in a room full of teachers; nobody should have to wonder.
 - **University High School (HS)** fully populated with **30 delegates and 4 adults** (2 sponsors, 2 chaperones), realistic mixed completion: roughly 60% of activity sheets submitted, 40% of paper forms marked received, one cancelled delegate, one restored delegate, and one delegate whose name exercises the particle parser.
 - **4 admin accounts** with `*` for the two convention presidents and two technology commissioners.
 - **A populated audit log** covering the past several weeks, so the log page shows something real.

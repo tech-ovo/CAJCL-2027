@@ -16,9 +16,13 @@ The welcome page carries the masthead, the convention theme, the dates and venue
 
 # **Account**
 
-Each attendee receives one secret code, generated at registration, in the format `PPP-XXXXX-XXXXX` — a three-letter prefix (`SPO` sponsor, `DEL` delegate, `VOL` adult volunteer or chaperone, `ADM` admin), nine random Crockford Base32 characters, and a check symbol. A person holds exactly one code no matter how many roles they have; additional permissions are scopes attached to the account, not additional codes.
+Each attendee receives one secret code, generated at registration, in the format `PPP-XXXXX-XXXXX` — a three-letter prefix (`SPO` sponsor, `DEL` delegate, `VOL` adult volunteer or chaperone, `ADM` admin), nine random Crockford Base32 characters, and a check symbol. A person holds exactly one code no matter how many roles they have. Additional permissions come from **roles granted to the account**, and roles carry scopes; a scope is never attached to a person directly, and there is never a second code.
 
-They enter it once, or scan the QR code on their printed sheet, and `localStorage` keeps a session token so they never log in again on that device. The raw code is never stored on the device. If someone loses their code they talk to their sponsor, who regenerates it — which invalidates the old code, the old QR, and every session derived from it.
+They enter it once, or scan the QR code on their printed sheet, and `localStorage` keeps a session token so they never log in again on that device. The raw code is never stored on the device.
+
+**Assume shared devices.** Many delegates will use a school Chromebook or a friend's phone, so a sign-out control must be visible on every page — not buried in a menu — and signing out must revoke that session server-side rather than only clearing `localStorage`. A person's own account page lists their active sessions with device and last-seen, and lets them revoke any of them.
+
+If someone loses their code they talk to their sponsor, who regenerates it. Regeneration invalidates the old code, the old QR, and every session derived from it, and it **must immediately offer a single-attendee reprint** — otherwise the sponsor is left holding a packet page whose QR no longer works, with no obvious way to produce a new one.
 
 *[Demo: all of this.]*
 
@@ -40,9 +44,9 @@ A chapter that sends both middle and high school delegates registers twice, as t
 
 The sponsor pastes in the names of every delegate and adult in their chapter. **Accept any format.** Sponsors will paste from a spreadsheet with tabs, from a Word document with bullets and numbering, from an email with commas, with `Last, First` in some rows and `First Last` in others, with trailing whitespace and smart quotes and stray blank lines. One name per line is the only real rule, and even that should degrade gracefully.
 
-Parsing produces first, middle, and last name. Middle is blank when there isn't one. Lowercase particles — `de`, `de la`, `van`, `van der`, `von`, `da`, `di`, `du`, `le`, `bin`, `al` — attach to the last name rather than being read as a middle name. Suffixes like `Jr.`, `III` go to a suffix field. Capitalization from the input is preserved rather than normalized, because title-casing mangles `McDonald` and `de la Cruz`; the only exception is a line that arrives entirely uppercase or entirely lowercase, which gets careful title casing with particle and `Mc`/`O'` handling.
+Parsing produces first, middle, and last name. Middle is blank when there isn't one. Lowercase particles attach to the last name rather than being read as a middle name — the canonical particle list lives in `schema.md` and is the only copy; do not duplicate it. Suffixes like `Jr.`, `III` go to a suffix field. Capitalization from the input is preserved rather than normalized, because title-casing mangles `McDonald` and `de la Cruz`; the only exception is a line that arrives entirely uppercase or entirely lowercase, which gets careful title casing with particle and `Mc`/`O'` handling.
 
-Parsing **never writes to the database**. It returns a preview: an editable table with one row per parsed name, with warnings attached. Anything that produced more than two name tokens after particle folding is flagged for confirmation. So is any duplicate within the paste, any duplicate against the existing roster, and any line containing an unexpected character. The sponsor reviews, corrects inline, and confirms — and only then does anything get written.
+Parsing **never writes to the database**. It returns a preview: an editable table with one row per parsed name, with warnings attached. First-middle-last is ordinary and is *not* flagged; only four or more tokens after particle folding, or a single token, get a confirmation warning. So does any duplicate within the paste, any duplicate against the existing roster, and any line containing an unexpected character. Warnings should be rare enough that a sponsor reads them — flagging every third row trains people to click through. The sponsor reviews, corrects inline, and confirms — and only then does anything get written.
 
 The confirm request carries an **idempotency key** issued with the preview. A double-click, a flaky connection, or an impatient refresh cannot create the roster twice. This is the single most damaging thing a sponsor could accidentally do, and it must be impossible.
 
@@ -62,11 +66,13 @@ The packet also includes the paper forms that are **not** filled out online: the
 
 That Drive folder link is stored in the database and visible **only to the Convention Presidents**. Registration chairs never see it. Instead, the sponsor attests to completeness in the portal with two checkboxes per attendee — waiver received, medical received — as part of assembling the packet they're already mailing. Chairs see the attestation; Presidents can audit against Drive; nobody else touches minors' medical information. Legibility and signature checks happen at Friday check-in.
 
+**This folder is not managed by Apps Script and this site never reads it.** The sponsor uploads to it directly with their own Google account, sharing is granted manually to the Presidents, and the database holds nothing but a URL string. It is deliberately outside the automated path: medical data for minors should not be reachable by any code we write, and there is no feature that would benefit from it being reachable. This is entirely separate from the Apps-Script-managed Drive described under pre-convention contests and exports below — do not conflate the two.
+
 The printed sheet also notes that an attendee with no access to any electronic device can ask their sponsor to print physical copies of the [delegate](https://docs.google.com/document/d/1G1BEMj3XtU-W4DLDzbMDaL9iJW1q0Q4-KvWGX6APQSs/edit?usp=sharing) and [adult](https://docs.google.com/document/d/1uiMRT6wFq2TGTYWkrJiq4cD6a5gEKrSRR-9K2LoCVnI/edit?usp=sharing) forms, which the sponsor then transcribes. This is strongly discouraged, and the printed sheet says so.
 
 Because the sheet carries a working credential, it says that too, and shows the attendee's name large enough that a sponsor cannot hand the wrong page to the wrong student.
 
-*[Demo: the packet as an HTML print view with a real print stylesheet, which works even if PDF generation is down and is the first thing to cut if time runs short. Server-side PDF via WeasyPrint on a separate fat Modal image comes second.]*
+*[Demo: the packet, rendered server-side from a single HTML template. That template is served to the browser as a print view and is also what WeasyPrint consumes to produce the PDF, so there is one layout to maintain rather than two. If time runs short, ship the print view and add the PDF renderer after; both need Modal either way, so neither is a fallback for the other.]*
 
 ## What delegates fill out online
 
@@ -86,7 +92,7 @@ None of these choices are binding. They exist so the Academics, Activities, and 
 
 ## What adults fill out online
 
-The **Adult Registration Sheet** becomes a web form collecting name, email, cell phone, type (Latin teacher/sponsor, parent/chaperone, SCL, other), meal preference, and a single yes/no for whether they know Latin — replacing the original four-level scale, of which only two levels were ever used.
+The **Adult Registration Sheet** becomes a web form collecting name, email, cell phone, type (Latin teacher/sponsor, parent/chaperone, SCL, other), meal preference, and Latin knowledge on the original four-level scale: none, novice, intermediate, advanced. Keep all four even though every current role requires either nothing or advanced — different jobs need different familiarity with the language, and a future chair should be able to mark a role as requiring intermediate Latin without a schema change.
 
 Adults then choose volunteer roles from the same dashboard-editable catalog: Wherever Needed, Certamen Reader, Certamen Scorer/Timer, Graphic Arts Judge, Olympika Volunteer, Ludi Volunteer, and the creative arts judging roles (Latin Oratory, Sight Latin Reading, Essay Reading, Costume, English Oratory, Dramatic Interpretation). Roles requiring Latin are marked. **There are no time blocks** — adults simply indicate which events they are willing to run — and a free-text note field captures availability constraints and anything else they need to explain.
 
@@ -102,6 +108,8 @@ Sponsors see how much their chapter owes, how much has been received, and the re
 
 The invoice is `$140 × active delegates`, plus `max(0, $75 × (active adults − ceil(active delegates ÷ 10)))`. A school with five delegates gets one free adult. Both fee amounts, and every other figure below, are editable in the dashboard rather than hard-coded.
 
+**Some chapters are not billed.** SCL pays nothing but still needs accounts so its members can complete forms, and the At Large chapter will need similar handling. This is a `billing_exempt` flag on the school record, toggled in the admin dashboard — **not** a special case keyed to the name "SCL" in code. A name check would silently break the first time someone types "S.C.L." or creates a second exempt chapter. An exempt school computes an invoice total of zero, its invoice page says why in plain words rather than showing a blank, and it is excluded from the chair dashboard's outstanding-balance total so the number stays meaningful.
+
 The generic invoice details — payment deadline of February 13, 2027, and remit to University High School JCL c/o Mark Michalak, University High School, 4771 Campus Drive, Irvine, CA 92612 — are dashboard-editable settings. There is a [sample invoice](https://docs.google.com/spreadsheets/d/180ZfF7xyLx_PvS293pFebJZp7511rYZ2JMQz00zSAJ0/edit?usp=sharing) from two years ago to work from.
 
 *[Demo: the invoice, the sponsor's view of amount owed and amount paid, and the admin action to record a payment. Not yet decided and left as explicit TODOs in the code: whether a cancelled attendee still counts toward the invoice, and what happens when the fee changes mid-cycle. There is probably no late registration fee.]*
@@ -112,7 +120,7 @@ Delegate and adult forms lock on **February 13, 2027**, the same date as the pay
 
 # **Administration**
 
-Admin accounts carry scopes. The four scopes are `registration` (roster, payment, check-in), `academics` (test and activity registration, pre-convention contests, grading and scanning, Certamen), `awards` (score entry, test printing, tabulation), and `*`, which subsumes everything including announcements, audit log access, exports, role management, and impersonation. Scopes are global rather than per-school. If a chair can read a thing, they can generally write it — the exception is that nobody outside the Convention Presidents sees the Drive folders.
+Every account gets its permissions from roles, and roles carry scopes. Four scopes are **administrative**: `registration` (roster, payment, check-in), `academics` (test and activity registration, pre-convention contests, grading and scanning, Certamen), `awards` (score entry, test printing, tabulation), and `*`, which subsumes everything including announcements, audit log access, exports, role management, and impersonation. Three more are **identity** scopes carried by ordinary accounts and always school-limited: `sponsor`, `delegate`, and `chapter` (chapter team entries, held by sponsors and by any delegate a sponsor promotes to chapter leader). Administrative scopes are global rather than per-school; identity scopes never are. If a chair can read a thing, they can generally write it — the exception is that nobody outside the Convention Presidents sees the Drive folders.
 
 An admin with `*` can create new roles with any combination of scopes and grant them to any account, so future chairs can be provisioned without code changes.
 
@@ -130,9 +138,13 @@ Nametag PDF generation is deferred.
 
 ## `Academics, Activities, and Athletics`
 
-Chairs track how many students registered for each test and activity so they can prepare materials. They receive submitted pre-convention contests — **Modern Myth, Poetry, Slogan (English), and Slogan (Latin)** — along with graphic arts and other entries, and distribute them to judges. During convention they enter scores directly; academic chairs upload a scan of the bubble sheets for optical mark recognition.
+Chairs track how many students registered for each test and activity so they can prepare materials. During convention they enter scores directly; academic chairs upload a scan of the bubble sheets for optical mark recognition.
 
-*[Demo: none of this, though the activity registration counts the chairs will eventually consume are already being collected.]*
+**Pre-convention contests** — Modern Myth, Poetry, Slogan (English), and Slogan (Latin) — are submitted by delegates **through the website**. The delegate uploads their file to the portal, Modal passes it to the Apps Script puppet, and the puppet files it into Timothy's Drive under a folder structure organized by contest and then by chapter, returning the Drive file ID for Modal to store alongside the submission record. Chairs are then simply granted access to the relevant contest folder in Drive and judge from there; they do not download anything through this site.
+
+This is a **different Drive mechanism** from the packet folders described under Registration. Contest submissions are written by Apps Script, live in Timothy's Drive, are organized automatically, and are non-sensitive student creative work. Medical forms and waivers are uploaded manually by sponsors to a separate folder that no code touches and only the Presidents can open. Keep them structurally separate, with separate folder roots, so no future change can accidentally widen access to the second while working on the first.
+
+*[Demo: none of this, though the activity registration counts the chairs will eventually consume are already being collected. When it is built, the same upload path serves graphic arts entries and lost-and-found photos.]*
 
 ## `Awards`
 

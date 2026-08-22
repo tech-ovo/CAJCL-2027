@@ -51,7 +51,10 @@ Incidental Latin is permitted where it is doing real work — `salvē` greeting 
 | `--lavender` | `#D9CBE5` | Tints, table zebra, selected rows |
 | `--ivory` | `#F8F5EE` | Primary page background |
 | `--slate` | `#46515F` | Metadata, captions, secondary text |
+| `--mist` | `#B9BEC6` | Hairline rules, input borders, disabled states, table dividers |
 | `--white` | `#FFFFFF` | Panels, inputs, print |
+
+`--mist` on ivory is **2.0:1** — it is a rule and border color only, never text, never a focus ring. It exists because the palette otherwise had exactly one neutral, which made both the table hierarchy and the grayscale print rule below impossible to satisfy.
 
 **These contrast rules are hard constraints, not preferences.** They were measured, not guessed:
 
@@ -93,7 +96,7 @@ Buttons: one primary action per screen in purple with white text, secondary acti
 
 The registration chair dashboard is a table of fifty schools; the sponsor roster is a table of thirty people. These need to be genuinely good, not styled generically.
 
-Header row in Plex Sans small caps with a 1px navy rule beneath. Body rows separated by hairline slate rules at 20% opacity, not full borders and not alternating fills except where a lavender tint marks a selected or flagged row. Numbers right-aligned and tabular. Sortable columns carry a visible affordance and an `aria-sort` attribute. Sticky header on scroll. Row density compact enough that thirty rows fit without scrolling on a laptop.
+Header row in Plex Sans small caps with a 1px navy rule beneath. Body rows separated by 1px `--mist` rules, not full borders and not alternating fills except where a lavender tint marks a selected or flagged row. Numbers right-aligned and tabular. Sortable columns carry a visible affordance and an `aria-sort` attribute. Sticky header on scroll. Row density compact enough that thirty rows fit without scrolling on a laptop.
 
 Every table has a designed empty state that invites the next action ("No delegates yet. Paste your roster to get started.") and a designed loading state — never a bare spinner, never an indefinite skeleton.
 
@@ -107,9 +110,11 @@ The public welcome page must render its convention facts and statistics from a b
 
 ## Print
 
-The printed instruction sheet, the packet cover, and the invoice are real deliverables that go in an envelope with a check. Build them as HTML with a proper `@media print` stylesheet — this makes them work even when Modal is down, and the same template later feeds server-side PDF generation.
+The printed instruction sheet, the packet cover, and the invoice are real deliverables that go in an envelope with a check.
 
-US Letter, 0.75in margins, 11pt body. Everything must be legible in **grayscale** on a school printer, so print styles convert brand colors to black, white, and two grays, and rely on rule weight and type weight for hierarchy. Use `break-inside: avoid` on each attendee's block so no one's credential splits across pages, and `break-after: page` between attendees on the packet. Hide navigation, buttons, and the announcement banner. Print the convention contact address in the footer of every printed page.
+**There is one implementation, not two.** The server renders a single HTML template per document. That same HTML is served to the browser as a print view *and* fed to WeasyPrint to produce the PDF — WeasyPrint is an HTML/CSS renderer, so the print stylesheet **is** the PDF stylesheet. Do not write a separate PDF layout, and do not treat the browser print view as a fallback for the PDF: both require Modal, because both need data that only Modal can supply. Building a second path would mean maintaining two things that fail together.
+
+US Letter, 0.75in margins, 11pt body. Everything must be legible in **grayscale** on a school printer, so print styles map navy and purple to black, slate to a mid gray, and `--mist` to a light gray, dropping gold and Columbia blue entirely and relying on rule weight and type weight for hierarchy. Use `break-inside: avoid` on each attendee's block so no one's credential splits across pages, and `break-after: page` between attendees on the packet. Hide navigation, buttons, and the announcement banner. Print the convention contact address in the footer of every printed page.
 
 ## Imagery
 
