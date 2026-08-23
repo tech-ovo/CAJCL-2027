@@ -10,5 +10,5 @@
 window.CAJCL_CONFIG = {
   apiBase: location.hostname === "localhost" || location.hostname === "127.0.0.1"
     ? "http://127.0.0.1:8000"
-    : "https://uhsjcl--cajcl-2027-web.modal.run",
+    : "https://techuhsjcl--cajcl-2027-web.modal.run",
 };

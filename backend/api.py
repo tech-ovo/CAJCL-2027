@@ -35,7 +35,7 @@ from .lib.db import connect
 # holds a database credential and never talks to Turso.
 ALLOWED_ORIGINS = [
     "https://state.uhsjcl.org",
-    "https://uhsjcl.github.io",
+    "https://tech-ovo.github.io",
     "http://localhost:8000",
     "http://127.0.0.1:8000",
 ]
