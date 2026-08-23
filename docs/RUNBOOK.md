@@ -171,36 +171,77 @@ would be worse than stopping.
 
 ### Which terminal?
 
-**Use WSL** (Windows Subsystem for Linux) if you have it. It is the same kind of
-system Modal runs on, so anything that works there works in production. It also
-runs the PDF tools, which do not install on Windows at all.
+**Whichever one you already use, and only one copy of the repository.** On
+Windows that is PowerShell or the VS Code terminal; on macOS or Linux, your
+usual terminal. Everything in this project runs natively on all three.
 
-The VS Code terminal works too — and you can point VS Code *at* WSL, which gives
-you both. Either is fine. What matters is picking one and staying with it, so
-you are not maintaining two half-working setups.
+The tempting mistake on Windows is to keep a second copy of the repository
+inside WSL — the Linux environment that ships with Windows — on the grounds
+that Modal runs on Linux. It costs more than it gives. Two copies drift apart
+within a day: you edit one, run a script in the other, and lose an afternoon
+working out why the two disagree.
+
+Nothing here needs Linux:
+
+- The test suite passes on Windows.
+- `scripts/build_fonts.py` and `scripts/build_snapshot.py` are plain Python.
+- The Modal command line tool has a Windows version.
+- WeasyPrint, which is the awkward one to install, is never installed locally.
+  It lives in `backend/requirements-worker.txt` and runs only inside Modal's
+  own image. See section 2 for what that image is.
+
+The single exception is Turso's command line tool, which is published for macOS
+and Linux only. On Windows, run those few commands in WSL — they ask Turso
+about your account and never touch your files, so it does not matter which
+folder you are in. Turso's website can do the same jobs if you would rather not
+use WSL at all.
+
+**If you have ended up with two copies**, keep the one your editor opens, and
+delete the other. Nothing is stored in the working folder that is not either in
+Git or recoverable: `.venv` is rebuilt with one command, and `~/.modal.toml` is
+recreated by `modal setup`.
 
 ### Python and the virtual environment
 
-Modern Ubuntu refuses to let `pip` install into the system Python. That is not a
-mistake on your part; it is a deliberate safety feature, and the fix is a
-**virtual environment** — a private folder of Python packages belonging to this
-project.
+A **virtual environment** is a private folder of Python packages belonging to
+this project alone, so that installing something here cannot break something
+else on your computer. Some systems — Ubuntu among them — refuse to let `pip`
+install anything without one, which is a deliberate safety feature rather than
+a mistake on your part.
 
 Keep it *inside the project*, not in your home folder, so it is obvious what it
-belongs to:
+belongs to.
+
+Windows, in PowerShell:
+
+```powershell
+cd path\to\CAJCL-2027
+py -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r backend/requirements.txt
+pip install pytest httpx esprima fonttools brotli modal
+```
+
+macOS or Linux:
 
 ```bash
-cd ~/CAJCL-2027
+cd path/to/CAJCL-2027
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r backend/requirements.txt
 pip install pytest httpx esprima fonttools brotli modal
 ```
 
-You must run `source .venv/bin/activate` **each time you open a new terminal**.
-You will know it worked because your prompt gains a `(.venv)` prefix. If a
-command suddenly reports that a package is missing, that is almost always the
-reason.
+You must run the activate line **each time you open a new terminal**. You will
+know it worked because your prompt gains a `(.venv)` prefix. If a command
+suddenly reports that a package is missing, that is almost always the reason.
+
+If PowerShell refuses to run the activate script and mentions an execution
+policy, allow local scripts once, for your account only:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
 
 `.venv` is already in `.gitignore`, so it will not be committed.
 
@@ -210,10 +251,19 @@ Skip this unless `pip install` fails with a wall of Rust output ending in
 **`is cmake not installed?`**
 
 The driver that talks to hosted Turso is called `libsql`. It ships ready-built
-for x86_64 Linux, both kinds of Mac, and Windows — but **not for ARM64 Linux**.
-If your laptop has a Snapdragon or similar ARM chip, WSL is ARM64 Linux, so pip
-tries to compile the driver from Rust source instead. That needs cmake and a
-full toolchain, takes about ten minutes, and often fails anyway.
+for x86_64 Linux, both kinds of Mac, and x86_64 Windows — but for **no ARM
+platform except Apple silicon**. If your laptop has a Snapdragon or similar ARM
+chip, that rules out both Windows itself and WSL on it, so pip tries to compile
+the driver from Rust source instead. That needs cmake and a full toolchain,
+takes about ten minutes, and often fails anyway.
+
+To find out which you have:
+
+```bash
+python -c "import platform, sys; print(platform.machine(), sys.platform)"
+```
+
+`ARM64 win32` or `aarch64 linux` means this section applies to you.
 
 **You almost certainly do not need it.** Local work uses a plain file and the
 `sqlite3` module that comes with Python. The driver is only needed to reach the
@@ -233,10 +283,11 @@ The access codes come back to your terminal and are written to
 This is better practice anyway: the migration runs in the same environment as
 the code that will use it.
 
-`backend/requirements.txt` already skips the driver on ARM64 Linux, so a plain
-`pip install -r backend/requirements.txt` works there. If you genuinely want
-direct access from an ARM machine, `sudo apt install cmake build-essential`
-then `pip install libsql` — but try the Modal route first.
+`backend/requirements.txt` already skips the driver on both ARM platforms that
+lack a wheel, so a plain `pip install -r backend/requirements.txt` works there.
+If you genuinely want direct access from an ARM machine, install cmake and a
+Rust toolchain — on WSL, `sudo apt install cmake build-essential` — then
+`pip install libsql`. Try the Modal route first.
 
 ---
 
@@ -553,6 +604,29 @@ Turso command-line tool connects to the same database perfectly happily.
 pip uninstall libsql-client
 pip install libsql
 ```
+
+### `is cmake not installed?` while running `pip install`
+
+Your machine is ARM and the Turso driver has no ready-built version for it.
+Nothing is broken and there is nothing to fix — see *Working with the real
+database from an ARM machine* in section 3.
+
+### The published site shows *There isn't a GitHub Pages site here*
+
+Nothing has ever been published. This is not a misconfiguration of the site
+itself; it is the message GitHub shows for an address with no site behind it.
+
+The publishing workflow has two jobs and the second waits for the first, so a
+failure in the Modal half means the site half never runs. Open the **Actions**
+tab and look at the most recent run. The usual cause is a missing repository
+secret — see `docs/DEPLOY.md` step 7 for the four of them. Fix the cause, then
+use **Re-run failed jobs** on that run; there is no need to make a commit
+purely to trigger it.
+
+If the workflow has succeeded and the site is still missing, check whether a
+custom domain is set. GitHub then serves the site only at that domain and
+redirects the `github.io` address to it, so a domain whose DNS is not ready
+yet makes a perfectly good deployment look like a broken one.
 
 ### Nobody can sign in
 

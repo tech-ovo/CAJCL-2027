@@ -22,29 +22,55 @@ Budget about **90 minutes** the first time you do this, then rehearse twice.
 
 ## 0. Your terminal, before anything else
 
-Use **WSL** — Windows Subsystem for Linux — or the VS Code terminal with WSL
-selected. Either is fine; pick one and stay with it. WSL matches the Linux
-environment that Modal runs on, and it is also the only one of the two where
-the PDF tools install at all.
+**Keep exactly one copy of this repository, and work in it from your ordinary
+terminal.** On Windows that means PowerShell or the VS Code terminal; on macOS
+or Linux, the terminal you already use. Every command in this document runs
+there.
 
-Modern Ubuntu will not let `pip` install packages into the system copy of
-Python. That is a safety feature, not a mistake. The answer is a **virtual
-environment**: a private folder of installed packages belonging to one project.
-Make it inside the project folder, so it is obvious what it belongs to:
+The temptation, on Windows, is to keep a second copy inside WSL — the Linux
+environment that ships with Windows — because Modal runs on Linux. Resist it.
+Two copies drift apart within a day: you edit one, run a script in the other,
+and spend an afternoon working out why the results disagree. Nothing here needs
+Linux. The tests, the build scripts, and the Modal command line tool all run
+natively on Windows, and the PDF renderer only ever runs on Modal, never on
+your own machine.
+
+The one exception is in step 1. Turso's command line tool has no Windows
+version, so those few commands need either WSL or Turso's website, and the
+step says so where it comes up. Nothing about it touches the repository.
+
+### The virtual environment
+
+A **virtual environment** is a private folder of installed Python packages
+belonging to one project, so that this project's packages cannot collide with
+another's. Make it inside the project folder, where it is obvious what it
+belongs to.
+
+Windows, in PowerShell:
+
+```powershell
+cd path\to\CAJCL-2027
+py -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r backend/requirements.txt
+pip install modal
+```
+
+macOS or Linux:
 
 ```bash
-cd ~/CAJCL-2027
+cd path/to/CAJCL-2027
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r backend/requirements.txt
 pip install modal
 ```
 
-You must run `source .venv/bin/activate` in **every new terminal window**. When
-it has worked, your prompt gains a `(.venv)` prefix, like this:
+You must run the activate line in **every new terminal window**. When it has
+worked, your prompt gains a `(.venv)` prefix, like this:
 
 ```
-(.venv) you@yourmachine:~/CAJCL-2027$
+(.venv) PS C:\Users\you\CAJCL-2027>
 ```
 
 If a command suddenly says a package is missing, the reason is almost always
@@ -52,12 +78,22 @@ that you opened a new terminal and forgot this step.
 
 The `.venv` folder contains thousands of installed files and is specific to
 your computer. It is listed in `.gitignore` — the file that tells Git which
-things to leave out of the repository — so it is never committed and you never
+things to leave out of the repository — so it is never committed, and you never
 need to think about it again.
 
 ---
 
 ## 1. Turso, the database — 15 minutes
+
+**On Windows, this is the one step that needs WSL.** Turso publishes its
+command line tool for macOS and Linux only. Open a WSL terminal — `wsl` from
+PowerShell — and run these there. They ask Turso about your account, not about
+your files, so it does not matter which folder you are in and there is no
+reason to copy the repository into WSL.
+
+If you would rather not use WSL at all, everything below can be done at
+[app.turso.tech](https://app.turso.tech) instead: create the database, then
+read the URL and create a token from the database's page.
 
 ```bash
 curl -sSfL https://get.tur.so/install.sh | bash
@@ -120,9 +156,17 @@ they are stored. Generate it into a variable so you can see it, rather than
 piping it straight into the secret — a value you have never seen is a value you
 cannot save anywhere:
 
+In PowerShell:
+
+```powershell
+$env:CODE_PEPPER = (python -c "import secrets; print(secrets.token_urlsafe(48))")
+$env:CODE_PEPPER           # put this in a password manager NOW
+```
+
+In bash:
+
 ```bash
 export CODE_PEPPER="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
-
 echo "$CODE_PEPPER"        # put this in a password manager NOW
 ```
 
@@ -136,13 +180,42 @@ Do not let that be your only copy.
 
 ### Then the two values that point at the database
 
-Rather than pasting the URL and token by hand, let the Turso command line tool
-produce them. A token is several hundred characters long, and pasting one by
-hand is the single most common way this step goes wrong:
+**Never select these with the mouse.** A Turso token is several hundred
+characters long and wraps across several lines in a terminal; selecting it
+takes the wrap along, and a line break inside a token makes it unusable in a
+way that reports itself as a network fault. Let the machine move the value
+instead.
+
+On macOS or Linux, where Turso and Modal share one terminal, that means
+capturing the output directly:
 
 ```bash
 export TURSO_DATABASE_URL="$(turso db show cajcl-2027 --url)"
 export TURSO_AUTH_TOKEN="$(turso db tokens create cajcl-2027)"
+```
+
+On Windows the two commands live in different shells, so send each value
+through the clipboard. In **WSL**, where `clip.exe` writes to the Windows
+clipboard and `tr -d '\n'` guarantees no line break survives:
+
+```bash
+turso db show cajcl-2027 --url | tr -d '\n' | clip.exe
+```
+
+Then, in **PowerShell**, without touching the keyboard in between:
+
+```powershell
+$env:TURSO_DATABASE_URL = Get-Clipboard
+```
+
+Repeat for the token:
+
+```bash
+turso db tokens create cajcl-2027 | tr -d '\n' | clip.exe    # WSL
+```
+
+```powershell
+$env:TURSO_AUTH_TOKEN = Get-Clipboard                        # PowerShell
 ```
 
 ### The optional usage settings
@@ -161,22 +234,44 @@ page in the admin area. **If this part gives you trouble, skip it** — the usag
 page then shows a message pointing at the Turso dashboard rather than
 misleading zeros, and nothing else is affected.
 
-Note that the verb is `mint`, not `create`, and that `--org` is now required:
+Note that the verb is `mint`, not `create`, and that `--org` is now required.
+Run this wherever the Turso tool lives — WSL on Windows:
 
 ```bash
-export TURSO_ORG="<your organisation slug, from turso org list>"
-export TURSO_DB_NAME="cajcl-2027"
-export TURSO_PLATFORM_TOKEN="$(turso auth api-tokens mint cajcl-usage --org "$TURSO_ORG")"
-
-echo "${#TURSO_PLATFORM_TOKEN} characters"   # zero means the command failed
+turso auth api-tokens mint cajcl-usage --org "<your organisation slug>" \
+  | tr -d '\n' | clip.exe            # drop the clip.exe on macOS and Linux
 ```
 
-Do not pipe that command through `tail` or `head`. Those discard error
-messages, so a mistyped command leaves you with an empty variable and no
-explanation. The token is shown once and never again, so if you lose it, mint
-another under a different name.
+Do not pipe it through `tail` or `head`. Those discard error messages, so a
+mistyped command leaves you with an empty value and no explanation. The token
+is shown once and never again, so if you lose it, mint another under a
+different name.
+
+Your organisation slug comes from `turso org list`. Then set the last three
+values, in the shell where you have been building the secret:
+
+```powershell
+$env:TURSO_PLATFORM_TOKEN = Get-Clipboard
+$env:TURSO_ORG = "<your organisation slug>"
+$env:TURSO_DB_NAME = "cajcl-2027"
+```
 
 ### Create the secret
+
+In PowerShell, where a backtick at the end of a line continues it:
+
+```powershell
+modal secret create cajcl-2027 `
+  CODE_PEPPER="$env:CODE_PEPPER" `
+  TURSO_DATABASE_URL="$env:TURSO_DATABASE_URL" `
+  TURSO_AUTH_TOKEN="$env:TURSO_AUTH_TOKEN" `
+  CAJCL_ENV="production" `
+  TURSO_PLATFORM_TOKEN="$env:TURSO_PLATFORM_TOKEN" `
+  TURSO_ORG="$env:TURSO_ORG" `
+  TURSO_DB_NAME="$env:TURSO_DB_NAME"
+```
+
+In bash, where a backslash does the same job:
 
 ```bash
 modal secret create cajcl-2027 \
@@ -189,19 +284,11 @@ modal secret create cajcl-2027 \
   TURSO_DB_NAME="$TURSO_DB_NAME"
 ```
 
-If you skipped the usage settings, leave off the last three lines — and
-remember to remove the trailing `\` from the `CAJCL_ENV` line, which is what
-joins each line to the next.
+If you skipped the usage settings, leave off the last three lines — and remove
+the continuation character from the end of the `CAJCL_ENV` line, since that is
+what joins each line to the next.
 
-Double-check that all secrets were stored correctly.
-
-```bash
-modal shell --secret cajcl-2027 --cmd "env | grep -E '^(CODE_PEPPER|TURSO_DATABASE_URL|TURSO_AUTH_TOKEN|CAJCL_ENV|TURSO_PLATFORM_TOKEN|TURSO_ORG|TURSO_DB_NAME)='"
-```
-
-That prints every value in full, so do not run it while your screen is being
-projected. Step 3 has `modal run backend/app.py::doctor`, which checks the same
-settings without revealing them.
+Step 3 checks that all of this arrived intact.
 
 ### Adding or changing settings afterwards
 
@@ -271,36 +358,8 @@ The tables and columns are defined by the numbered files in
 `backend/migrations/`, and when someone adds a new one, `--no-seed` applies it
 and leaves every school, person, and payment exactly where it was.
 
-### If step 3 or step 4 fails
-
-**`Hrana: http error: http::Error(InvalidHeaderValue)`**
-
-The authentication token contains a character that cannot be sent over the
-network — nearly always a line break, picked up when a long token wrapped
-across two lines in the terminal and was copied along with the wrap. Set the
-values using the commands in step 2, which never involve pasting, then re-create
-the secret with `--force`.
-
-**`WSServerHandshakeError: 400`**
-
-An obsolete database driver is installed, left over from an earlier attempt.
-Remove it:
-
-```bash
-pip uninstall -y libsql-client
-```
-
-**`is 'cmake' not installed?` while running `pip install`**
-
-Your computer has an ARM processor — a Snapdragon laptop, or Linux running on
-Apple silicon. The `libsql` database driver has no ready-built version for that
-combination, so `pip` tries to compile it from source and fails.
-
-Nothing is broken, and there is nothing to fix. `backend/requirements.txt`
-already skips that driver on ARM machines, and none of the steps in this
-document need it, because everything that touches the live database runs on
-Modal. Local development uses a plain file on disk and a driver built into
-Python.
+If step 3 or step 4 fails, `docs/RUNBOOK.md` section 12 lists the errors that
+have actually happened here and what each one means.
 
 ---
 
@@ -347,23 +406,39 @@ Browsers refuse to let a page at one address call a backend at another unless
 the backend explicitly says that address is allowed. Until your address is in
 that list, every request from the published site is blocked, and the only place
 that says so is the browser's developer console — the page itself just sits
-there. Run `modal deploy backend/app.py` again after changing this file.
+there.
+
+### Then deploy again
+
+```bash
+modal deploy backend/app.py
+```
+
+`ALLOWED_ORIGINS` is a few lines of `backend/api.py`, and `backend/api.py` runs
+**on Modal**, not on your computer. Editing the file changes only the copy on
+your disk. Deploying is what uploads it, so until you deploy, the running
+backend is still refusing your site.
+
+The other file, `config.js`, belongs to the website rather than the backend, and
+reaches its destination in step 7 when GitHub Pages publishes it.
+
+Once the repository is on GitHub, pushing to `main` deploys Modal for you — the
+workflow in `.github/workflows/deploy.yml` does it on every push. This manual
+deploy is for the first time round, and for whenever you want to see a change
+without committing it.
 
 ---
 
 ## 7. Publish the website — 10 minutes
 
-```bash
-python scripts/build_fonts.py            # writes the font files
-python scripts/build_snapshot.py         # bakes the statistics into index.html
-```
+The site is published by a GitHub Actions workflow, `.github/workflows/deploy.yml`,
+which runs on every push to `main`. Doing it in that order matters: **add the
+secrets before you push**, because a push without them fails within seconds and
+publishes nothing at all.
 
-In the repository on GitHub: **Settings → Pages → Source: GitHub Actions**.
+### First, the four repository secrets
 
-Add these four repository secrets first, under **Settings → Secrets and
-variables → Actions**. Without them the publishing workflow fails within
-seconds, which is exactly what happens if you push a change before setting
-them:
+Under **Settings → Secrets and variables → Actions**, add:
 
 `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET`, `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`
 
@@ -371,9 +446,59 @@ The two Modal values are in the file `~/.modal.toml` on your computer after you
 ran `modal setup`, and are also on the Modal dashboard under Settings → API
 Tokens. The two Turso values are the same ones you used in step 2.
 
-If the custom domain is not ready yet, delete the file `frontend/CNAME` and use
-the `github.io` address instead. Either way, whichever address you end up with
-has to appear in `ALLOWED_ORIGINS` from step 6.
+### Then turn Pages on
+
+**Settings → Pages → Source: GitHub Actions.** Not "Deploy from a branch" —
+this repository builds the site rather than serving files straight out of it.
+
+### Then push
+
+```bash
+git push
+```
+
+The workflow has two jobs and the second one **waits for the first**. It
+deploys Modal and runs the migrations, and only then builds and publishes the
+site. So a failure in the Modal half means the site is never published, and
+GitHub shows the plain 404 page reading *There isn't a GitHub Pages site here.*
+That message means nothing has ever been published, not that something is
+misconfigured about the site itself.
+
+You do not need to make an empty commit to try again. Open the **Actions** tab,
+pick the failed run, and use **Re-run failed jobs**. The workflow also has a
+**Run workflow** button, from the `workflow_dispatch` line in its configuration.
+
+### About the custom domain
+
+`frontend/CNAME` currently contains `state.uhsjcl.org`, and the workflow copies
+it into the published site. Setting a custom domain has consequences worth
+knowing:
+
+- The site is served at that domain, and the `github.io` address redirects to
+  it. If DNS is not set up yet, both addresses appear broken even though the
+  publish succeeded.
+- DNS needs a `CNAME` record for `state` under `uhsjcl.org`, pointing at
+  `<your-github-username>.github.io`. That is set up wherever `uhsjcl.org` is
+  registered, not on GitHub, and takes anywhere from minutes to a day to take
+  effect.
+- The domain must appear in `ALLOWED_ORIGINS` in `backend/api.py`, or the
+  pages will load but no data will.
+
+**If the domain is not ready, delete `frontend/CNAME` and clear the custom
+domain box in Settings → Pages.** The site then publishes at
+`https://<your-github-username>.github.io/<repository>/` and works immediately.
+You can add the domain later. Whichever address you end up using has to be in
+`ALLOWED_ORIGINS`.
+
+### The two build scripts
+
+The workflow runs these itself, so you do not have to. Run them by hand only
+when you want to see the result locally before pushing:
+
+```bash
+python scripts/build_fonts.py            # writes the font files
+python scripts/build_snapshot.py         # bakes the statistics into index.html
+```
 
 ---
 

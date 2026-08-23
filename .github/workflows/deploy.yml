@@ -79,9 +79,12 @@ jobs:
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
         run: python scripts/build_snapshot.py
 
+      # CNAME is optional. A commissioner with no custom domain deletes it and
+      # uses the github.io address; without this guard, doing so would fail the
+      # build here rather than anywhere that explains why.
       - name: Assemble the site
         run: |
-          cp frontend/CNAME frontend/public/CNAME
+          if [ -f frontend/CNAME ]; then cp frontend/CNAME frontend/public/CNAME; fi
           touch frontend/public/.nojekyll
 
       - uses: actions/configure-pages@v5

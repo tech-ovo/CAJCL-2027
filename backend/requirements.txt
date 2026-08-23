@@ -8,19 +8,22 @@ fastapi
 # see the comment in backend/lib/db.py.
 #
 # THE MARKER IS DELIBERATE. libsql publishes wheels for x86_64 Linux, both macOS
-# architectures, and Windows -- but NOT for ARM64 Linux. On an ARM machine pip
-# would fall back to compiling it from Rust source, which needs cmake and a full
-# toolchain and usually fails.
+# architectures, and x86_64 Windows -- but for NO ARM platform except macOS.
+# Everywhere else on ARM, pip falls back to compiling it from Rust source, which
+# needs cmake and a full toolchain and usually fails.
+#
+# Two ARM cases are excluded here:
+#   aarch64          ARM Linux, which is what WSL is on a Snapdragon laptop
+#   win32 + ARM64    Windows itself on the same laptop
+# macOS on Apple silicon reports `arm64` and DOES have a wheel, so it is left in.
 #
 # Nothing local needs this driver: a local .db file uses `sqlite3` from the
 # standard library. It is needed only to reach a hosted Turso database, and
 # Modal's image is x86_64, so production installs it normally. If you are on
 # ARM and want to reach Turso from your own machine, see docs/RUNBOOK.md --
 # the short answer is `modal run backend/app.py::setup`.
-#
-# macOS on Apple silicon reports `arm64`, not `aarch64`, so it still gets the
-# wheel. This marker excludes ARM *Linux* only.
-libsql; platform_machine != "aarch64"
+# (Marker syntax has no `not`, hence the or-form of "neither of those two".)
+libsql; platform_machine != "aarch64" and (sys_platform != "win32" or platform_machine != "ARM64")
 
 segno
 
