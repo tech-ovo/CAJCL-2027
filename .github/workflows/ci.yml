@@ -1,0 +1,97 @@
+# Every check that stands between a push and a broken convention.
+#
+# The two that matter most and are least obvious:
+#
+#   * EXPLAIN QUERY PLAN over every query. In Turso a "row read" is a row
+#     SCANNED, and exceeding the monthly quota returns BLOCKED -- the database
+#     stops answering and no amount of money fixes it. One unindexed list view
+#     can burn the whole quota in a week.
+#
+#   * The font subset check. The convention theme needs Latin Extended-A for its
+#     macrons, which default subsetting silently drops, and the failure is tofu
+#     boxes on the one line the entire design is built around.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest httpx esprima fonttools brotli
+          python -m pip install -r backend/requirements.txt
+
+      - name: Query plans - no SCAN of any table over 200 rows
+        run: python scripts/check_query_plans.py
+
+      - name: Fonts - the theme's macrons must render
+        run: python scripts/build_fonts.py --check
+
+      - name: Tests
+        env:
+          CODE_PEPPER: ci-pepper-not-a-secret
+        run: python -m pytest backend/tests -q
+
+  # A second, deliberately separate job. Migrations are forward-only and the
+  # runner refuses to re-apply an edited one, so this proves a FRESH database
+  # builds from nothing -- which is what a disaster recovery actually does.
+  migrate-from-scratch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r backend/requirements.txt
+
+      - name: Build a database from the migrations alone
+        run: |
+          python -m backend.lib.migrate --db fresh.db
+          python -m backend.lib.migrate --db fresh.db   # must be idempotent
+
+      - name: Seed it, and check the demo numbers are what we say they are
+        env:
+          CODE_PEPPER: ci-pepper-not-a-secret
+        run: |
+          python scripts/seed.py --db fresh.db --reset
+          python - <<'EOF'
+          import sqlite3
+          conn = sqlite3.connect("fresh.db")
+          q = lambda s: conn.execute(s).fetchone()[0]
+          chapters = q("SELECT COUNT(*) FROM schools WHERE kind='chapter'")
+          assert chapters == 12, f"expected 12 chapters, got {chapters}"
+          uni = q("SELECT id FROM schools WHERE name='University High School'")
+          delegates = q(f"SELECT COUNT(*) FROM people WHERE school_id={uni} AND person_type='delegate'")
+          assert delegates == 30, f"expected 30 delegates at Uni, got {delegates}"
+          print(f"{chapters} chapters, {delegates} delegates at the host school")
+          EOF
+
+      - name: The export must restore into a working database
+        env:
+          CODE_PEPPER: ci-pepper-not-a-secret
+        run: |
+          python -m pip install openpyxl
+          python backend/workers/export.py --db fresh.db --out ./exports
+          python - <<'EOF'
+          import glob, pathlib, sqlite3
+          dump = pathlib.Path(glob.glob("exports/*-full.sql")[0]).read_text(encoding="utf-8")
+          conn = sqlite3.connect(":memory:")
+          conn.executescript(dump)
+          people = conn.execute("SELECT COUNT(*) FROM people").fetchone()[0]
+          assert people > 100, f"restore produced only {people} people"
+          print(f"restored {people} people from the SQL export")
+          EOF

@@ -54,7 +54,9 @@ In the same preview table, the sponsor can prefill per-delegate details so stude
 
 Each attendee gets a sequential ID, assigned in order and not tied to their school, and a code. Sponsors can add attendees, remove them, reset codes, and edit any field at any time. Delegates cannot change their own name and must ask their sponsor.
 
-An attendee who can no longer attend is **marked cancelled rather than deleted**, and can be restored.
+An attendee who can no longer attend is **marked cancelled rather than deleted**, and can be restored. Because there are **no refunds**, cancellation has two forms and the site picks between them from the payment record: someone who withdraws before their chapter's check arrives stops being billed, while someone who withdraws after it arrives keeps counting toward the invoice so the balance still reads correctly. The sponsor is never asked which — they should not have to know the billing policy to remove a student.
+
+A person is never **moved** between chapters. Chapters are completely separate, and a chapter sending both middle and high school delegates is already two schools with two sponsors. If a sponsor enters someone under the wrong chapter, they cancel that row and enter them again under the right one.
 
 *[Demo: all of this. The parsing logic should be genuinely good, since it is the most impressive thing to show a board. Later: richer duplicate detection, a manual per-student edit form with more validation, and SCL and delegate-at-large registration — which is easy, just a school named SCL and a school named At Large with some ad hoc handling. SCL does not pay but still needs accounts.]*
 
@@ -106,13 +108,19 @@ Adults then choose volunteer roles from the same dashboard-editable catalog: Whe
 
 Sponsors see how much their chapter owes, how much has been received, and the remaining balance. An admin records payments in the dashboard, entering the exact amount received so it can be corrected, with the audit log preserving each individual entry.
 
-The invoice is `$140 × active delegates`, plus `max(0, $75 × (active adults − ceil(active delegates ÷ 10)))`. A school with five delegates gets one free adult. Both fee amounts, and every other figure below, are editable in the dashboard rather than hard-coded.
+The invoice is `$140 × billable delegates`, plus `max(0, $75 × (billable adults − ceil(billable delegates ÷ 10)))`, minus the school's discount, floored at zero. A school with five delegates gets one free adult. Both fee amounts, and every other figure below, are editable in the dashboard rather than hard-coded.
+
+**Billable** means active attendees plus anyone who cancelled after the chapter paid — see the roster section above. **The discount** is a per-school amount an admin sets by hand, with a reason shown on the invoice: a new-chapter discount, a hardship arrangement, or the way a fee change gets honoured after invoicing. There is no early-bird discount and no late fee; every chapter pays the same amount at the same time.
 
 **Some chapters are not billed.** SCL pays nothing but still needs accounts so its members can complete forms, and the At Large chapter will need similar handling. This is a `billing_exempt` flag on the school record, toggled in the admin dashboard — **not** a special case keyed to the name "SCL" in code. A name check would silently break the first time someone types "S.C.L." or creates a second exempt chapter. An exempt school computes an invoice total of zero, its invoice page says why in plain words rather than showing a blank, and it is excluded from the chair dashboard's outstanding-balance total so the number stays meaningful.
 
 The generic invoice details — payment deadline of February 13, 2027, and remit to University High School JCL c/o Mark Michalak, University High School, 4771 Campus Drive, Irvine, CA 92612 — are dashboard-editable settings. There is a [sample invoice](https://docs.google.com/spreadsheets/d/180ZfF7xyLx_PvS293pFebJZp7511rYZ2JMQz00zSAJ0/edit?usp=sharing) from two years ago to work from.
 
-*[Demo: the invoice, the sponsor's view of amount owed and amount paid, and the admin action to record a payment. Not yet decided and left as explicit TODOs in the code: whether a cancelled attendee still counts toward the invoice, and what happens when the fee changes mid-cycle. There is probably no late registration fee.]*
+There is **no refund**, for a school or an attendee, in any circumstance: an event this size runs on pre-payment. A school that withdraws after paying keeps its payment on record; a chapter is only ever marked exempt on bookkeeping grounds, like SCL, and never after money has arrived.
+
+If a fee ever did change mid-cycle it is handled ad hoc rather than by machinery, using the discount field and — where money has to go back — a negative payment row. The payment history and the audit log carry the record.
+
+*[Demo: the invoice including the discount line and the exempt path, the sponsor's view of amount owed and amount paid, and the admin action to record a payment.]*
 
 ## Deadlines
 

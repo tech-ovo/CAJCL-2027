@@ -1,0 +1,8 @@
+# Fat image. Cold-starts only when someone actually asks for a PDF or an
+# export, so the interactive path never pays for it.
+#
+# WeasyPrint needs Pango and Cairo apt-installed -- see backend/app.py for the
+# image definition. It is an HTML/CSS renderer, which is the entire reason the
+# print stylesheet IS the PDF stylesheet and there is one layout, not two.
+weasyprint
+openpyxl

@@ -1,0 +1,13 @@
+{
+  "_comment": [
+    "The SECOND layer for emergency announcements. Edit this file in the",
+    "GitHub web interface and a banner appears on every page within a",
+    "minute -- no server, no deploy, no terminal.",
+    "The live value from the API overrides this whenever Modal is",
+    "reachable; this file is what still works when it is not.",
+    "Set active to true, write body_md, choose info | warning | critical."
+  ],
+  "active": false,
+  "level": "info",
+  "body_md": ""
+}

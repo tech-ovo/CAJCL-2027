@@ -1,0 +1,703 @@
+/* app.css — the design system.
+ *
+ * Every colour comes from tokens.css. There are no hex literals in this file.
+ *
+ * The look is a contemporary editorial publication: strong typography,
+ * generous whitespace, thin rules, intentional asymmetry, editorial labels.
+ * Classical scholarship shows up through proportion, grid and rule-work — not
+ * through temples, laurels, marble, or faux parchment, of which there are none.
+ */
+
+/* ===========================================================================
+ * Fonts — self-hosted subsets. No CDN, no third-party request.
+ * The subset includes Latin Extended-A; scripts/build_fonts.py fails the build
+ * if the theme's macrons are missing. See docs/design.md.
+ * ======================================================================== */
+
+@font-face {
+  font-family: "Literata"; font-style: normal; font-weight: 400;
+  src: url("fonts/literata-400.woff2") format("woff2"); font-display: swap;
+}
+@font-face {
+  font-family: "Literata"; font-style: normal; font-weight: 600;
+  src: url("fonts/literata-600.woff2") format("woff2"); font-display: swap;
+}
+@font-face {
+  font-family: "Literata"; font-style: italic; font-weight: 400;
+  src: url("fonts/literata-italic-400.woff2") format("woff2"); font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Sans"; font-style: normal; font-weight: 400;
+  src: url("fonts/plex-sans-400.woff2") format("woff2"); font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Sans"; font-style: normal; font-weight: 600;
+  src: url("fonts/plex-sans-600.woff2") format("woff2"); font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Mono"; font-style: normal; font-weight: 400;
+  src: url("fonts/plex-mono-400.woff2") format("woff2"); font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Mono"; font-style: normal; font-weight: 500;
+  src: url("fonts/plex-mono-500.woff2") format("woff2"); font-display: swap;
+}
+
+/* ===========================================================================
+ * Reset and base
+ * ======================================================================== */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--page-bg);
+  color: var(--text);
+  font-family: var(--font-serif);
+  font-size: var(--size-base);
+  line-height: var(--leading-body);
+  font-synthesis-weight: none;
+}
+
+h1, h2, h3, h4 {
+  font-weight: var(--weight-semi);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-tight);
+  margin: 0 0 var(--space-3);
+  text-wrap: balance;
+}
+h1 { font-size: var(--size-xl); }
+h2 { font-size: var(--size-lg); }
+h3 { font-size: var(--size-md); }
+
+p { margin: 0 0 var(--space-4); max-width: var(--measure); }
+ul, ol { margin: 0 0 var(--space-4); padding-left: var(--space-5); max-width: var(--measure); }
+li { margin-bottom: var(--space-1); }
+
+a {
+  color: var(--link);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+}
+a:hover { text-decoration-thickness: 2px; }
+
+/* Visible focus, always, never removed. Purple or navy — never gold, which at
+ * 2.06:1 on ivory is a ring some people cannot see at all. */
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: var(--radius);
+}
+.on-dark :focus-visible { outline-color: var(--focus-on-dark); }
+
+::selection { background: var(--tint); color: var(--ink); }
+
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}
+
+/* Skip link — the first thing in the tab order on every page. */
+.skip-link {
+  position: absolute; left: var(--space-3); top: -4rem; z-index: 100;
+  background: var(--ink); color: var(--ivory);
+  padding: var(--space-2) var(--space-4);
+  font-family: var(--font-sans); font-size: var(--size-sm);
+  transition: top var(--transition);
+}
+.skip-link:focus { top: var(--space-3); }
+
+/* ===========================================================================
+ * Editorial primitives
+ * ======================================================================== */
+
+/* The metadata voice: letterspaced small capitals in Plex Sans. */
+.label {
+  font-family: var(--font-sans);
+  font-size: var(--size-xs);
+  font-weight: var(--weight-semi);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0;
+}
+.label--ink { color: var(--text); }
+
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.lede { font-size: var(--size-md); color: var(--text); }
+.muted { color: var(--text-muted); }
+.small { font-size: var(--size-sm); }
+
+hr.rule { border: 0; border-top: var(--border-strong); margin: var(--space-6) 0; }
+hr.hair { border: 0; border-top: var(--border); margin: var(--space-5) 0; }
+
+/* A gold hairline is legitimate: it is a rule, not text, and carries no
+ * information a reader has to read. This is the only place gold appears on
+ * ivory anywhere in the site. */
+hr.accent { border: 0; border-top: 2px solid var(--accent); width: var(--space-7); margin: var(--space-4) 0; }
+
+/* ===========================================================================
+ * THE TABULA — the signature element
+ *
+ * A thin 1px rule box with a second hairline inset 3px on the top and bottom
+ * edges only: a restrained echo of inscriptional double-ruling. Used wherever
+ * the site identifies a person, a chapter, or an entry.
+ *
+ * This is the one place to spend boldness. Everything around it stays quiet,
+ * and there is deliberately no second signature device.
+ * ======================================================================== */
+
+.tabula {
+  position: relative;
+  border: var(--border-strong);
+  background: var(--panel-bg);
+  padding: var(--space-4) var(--space-5);
+  margin: 0 0 var(--space-5);
+}
+.tabula::before,
+.tabula::after {
+  content: ""; position: absolute; left: 0; right: 0;
+  border-top: 1px solid var(--rule-strong);
+  opacity: 0.45;
+}
+.tabula::before { top: 3px; }
+.tabula::after  { bottom: 3px; }
+
+.tabula__name {
+  font-size: var(--size-xl);
+  font-weight: var(--weight-semi);
+  line-height: var(--leading-tight);
+  margin: var(--space-1) 0 var(--space-3);
+  letter-spacing: var(--tracking-tight);
+  overflow-wrap: anywhere;   /* a 90-character surname must not break the box */
+}
+.tabula__row {
+  display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-5);
+  justify-content: space-between; align-items: baseline;
+}
+.tabula__code {
+  font-family: var(--font-mono);
+  font-size: var(--size-md);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.06em;
+}
+.tabula__id { font-family: var(--font-mono); color: var(--text-muted); font-size: var(--size-sm); }
+
+/* On a narrow screen the tabula goes full-bleed rather than shrinking. */
+@media (max-width: 40rem) {
+  .tabula {
+    margin-left: calc(var(--space-4) * -1);
+    margin-right: calc(var(--space-4) * -1);
+    border-left: 0; border-right: 0;
+  }
+}
+
+/* ===========================================================================
+ * Page frame — a 12-column field with varied spans, not a card grid
+ * ======================================================================== */
+
+.page {
+  max-width: var(--page-max);
+  margin: 0 auto;
+  padding: 0 var(--space-4) var(--space-9);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--gutter);
+}
+.span-3 { grid-column: span 3; }
+.span-4 { grid-column: span 4; }
+.span-5 { grid-column: span 5; }
+.span-6 { grid-column: span 6; }
+.span-7 { grid-column: span 7; }
+.span-8 { grid-column: span 8; }
+.span-9 { grid-column: span 9; }
+.span-12 { grid-column: 1 / -1; }
+
+@media (max-width: 60rem) {
+  .grid > [class*="span-"] { grid-column: 1 / -1; }
+}
+
+/* The metadata rail: a left column on desktop, a top strip on mobile. Editorial
+ * hierarchy is preserved on narrow screens rather than desktop components being
+ * stacked. */
+.with-rail { display: grid; grid-template-columns: 12rem 1fr; gap: var(--space-7); }
+@media (max-width: 60rem) {
+  .with-rail { grid-template-columns: 1fr; gap: var(--space-4); }
+  .rail { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-5);
+          border-bottom: var(--border); padding-bottom: var(--space-3); }
+}
+
+.rail > * + * { margin-top: var(--space-4); }
+@media (max-width: 60rem) { .rail > * + * { margin-top: 0; } }
+
+/* ===========================================================================
+ * Masthead
+ * ======================================================================== */
+
+.masthead {
+  border-bottom: var(--border-strong);
+  margin-bottom: var(--space-6);
+  padding-top: var(--space-5);
+}
+.masthead__bar {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: var(--space-5); flex-wrap: wrap;
+  padding-bottom: var(--space-3);
+}
+.masthead__mark {
+  font-family: var(--font-serif);
+  font-size: var(--size-2xl);
+  font-weight: var(--weight-semi);
+  letter-spacing: 0.02em;
+  line-height: 1;
+  margin: 0;
+  color: var(--text);
+}
+.masthead__mark a { color: inherit; text-decoration: none; }
+/* The reserved slot for the real CAJCL vector mark when it arrives. There is no
+ * logo image in the demo: the available mark is 216x184 and the NJCL mark
+ * belongs to a different organisation. A type-only masthead is the stronger
+ * choice regardless, given that typography carries the identity here. */
+.masthead__slot { display: none; }
+.masthead__line {
+  font-family: var(--font-sans); font-size: var(--size-sm);
+  color: var(--text-muted); margin: var(--space-1) 0 0;
+}
+
+/* The theme epigraph. Content, not decoration, and it earns exactly one
+ * privileged placement. Full on the welcome page, a single-line rail elsewhere. */
+.epigraph { padding: var(--space-5) 0 var(--space-6); }
+.epigraph__latin {
+  font-family: var(--font-serif); font-style: italic;
+  font-size: var(--size-2xl); line-height: 1.15;
+  margin: 0 0 var(--space-3); max-width: 18ch;
+  text-wrap: balance;
+}
+.epigraph__english {
+  font-family: var(--font-sans); font-size: var(--size-sm);
+  color: var(--text); margin: 0 0 var(--space-2); max-width: var(--measure);
+}
+.epigraph__cite { font-family: var(--font-sans); font-size: var(--size-xs);
+  letter-spacing: var(--tracking-label); text-transform: uppercase;
+  color: var(--text-muted); }
+
+.epigraph--inline {
+  padding: 0; display: flex; gap: var(--space-3); align-items: baseline;
+  flex-wrap: wrap; font-size: var(--size-sm);
+}
+.epigraph--inline .epigraph__latin {
+  font-size: var(--size-base); margin: 0; max-width: none;
+}
+.epigraph--inline .epigraph__english { margin: 0; color: var(--text-muted); }
+
+/* ===========================================================================
+ * Navigation
+ * ======================================================================== */
+
+.nav {
+  display: flex; flex-wrap: wrap; gap: var(--space-4);
+  align-items: center; padding: var(--space-3) 0;
+  font-family: var(--font-sans); font-size: var(--size-sm);
+  border-bottom: var(--border);
+  margin-bottom: var(--space-6);
+}
+.nav a {
+  color: var(--text); text-decoration: none;
+  padding: var(--space-2) 0; border-bottom: 2px solid transparent;
+  transition: border-color var(--transition), color var(--transition);
+}
+.nav a:hover { color: var(--link); }
+.nav a[aria-current="page"] { border-bottom-color: var(--link); color: var(--link); font-weight: var(--weight-semi); }
+.nav__spacer { margin-left: auto; }
+
+/* Sign-out is visible on EVERY page, never buried in a menu. Assume shared
+ * devices: a school Chromebook will hold sessions for a dozen delegates. */
+.nav__signout { font-weight: var(--weight-semi); }
+
+/* ===========================================================================
+ * Banners
+ * ======================================================================== */
+
+.banner {
+  font-family: var(--font-sans); font-size: var(--size-sm);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: var(--border-strong);
+  display: flex; gap: var(--space-3); align-items: baseline; flex-wrap: wrap;
+}
+.banner--demo { background: var(--tint); color: var(--ink); }
+.banner--info { background: var(--tint); color: var(--ink); }
+.banner--warning { background: var(--ink); color: var(--ivory); }
+.banner--critical { background: var(--ink); color: var(--ivory); border-bottom-color: var(--accent); border-bottom-width: 3px; }
+.banner__label {
+  font-size: var(--size-xs); letter-spacing: var(--tracking-label);
+  text-transform: uppercase; font-weight: var(--weight-semi);
+  flex: 0 0 auto;
+}
+
+/* The impersonation banner names BOTH identities and never goes away. */
+.banner--impersonating { background: var(--ink); color: var(--ivory); position: sticky; top: 0; z-index: 40; }
+.banner--impersonating .banner__label { color: var(--blue); }
+.banner--impersonating button { margin-left: auto; }
+
+/* ===========================================================================
+ * Buttons — compact rectangles. One primary action per screen.
+ * ======================================================================== */
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--control-h);
+  padding: var(--space-2) var(--space-4);
+  font-family: var(--font-sans); font-size: var(--size-sm);
+  font-weight: var(--weight-semi);
+  border: 1px solid var(--rule-strong); border-radius: var(--radius);
+  background: var(--panel-bg); color: var(--text);
+  cursor: pointer; text-decoration: none;
+  transition: background var(--transition), color var(--transition),
+              border-color var(--transition);
+}
+.btn:hover { border-color: var(--link); color: var(--link); }
+
+.btn--primary {
+  background: var(--link); border-color: var(--link); color: var(--white);
+}
+.btn--primary:hover { background: var(--ink); border-color: var(--ink); color: var(--white); }
+
+/* Destructive actions are navy, not red — the palette has no red, and a
+ * confirmation step carries the weight instead of a colour. */
+.btn--danger { background: var(--ink); border-color: var(--ink); color: var(--ivory); }
+.btn--danger:hover { background: var(--panel-bg); color: var(--ink); }
+
+.btn--quiet { border-color: var(--rule); color: var(--text-muted); }
+.btn--small { min-height: auto; padding: var(--space-1) var(--space-3); font-size: var(--size-xs); }
+
+.btn[disabled], .btn[aria-disabled="true"] {
+  opacity: 0.5; cursor: not-allowed; border-color: var(--rule); color: var(--text-muted);
+  background: var(--panel-bg);
+}
+
+.btn-row { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; margin: var(--space-5) 0; }
+
+@media (pointer: coarse) {
+  /* 44px minimum where a finger is doing the pointing. Applied on coarse
+   * pointers only: forcing 44px table rows on a laptop would mean thirty
+   * delegates no longer fit on screen, which the roster design depends on. */
+  .btn, .nav a, .table td a, input, select, textarea { min-height: var(--touch-min); }
+  .btn--small { min-height: var(--touch-min); }
+}
+
+/* ===========================================================================
+ * Forms — a first-class surface. Most of this site is forms.
+ * ======================================================================== */
+
+.field { margin-bottom: var(--space-5); max-width: 30rem; }
+.field--wide { max-width: none; }
+
+/* Labels sit above inputs, left-aligned to the input edge. */
+.field > label, .field > .field__label {
+  display: block;
+  font-family: var(--font-sans); font-size: var(--size-xs);
+  font-weight: var(--weight-semi); letter-spacing: var(--tracking-label);
+  text-transform: uppercase; color: var(--text);
+  margin-bottom: var(--space-2);
+}
+
+/* Help text sits BELOW the label and ABOVE the input: a person should read the
+ * guidance before the field, not after failing it. */
+.field__help {
+  font-family: var(--font-sans); font-size: var(--size-sm);
+  color: var(--text-muted); margin: 0 0 var(--space-2); max-width: var(--measure);
+}
+
+/* Required carries a text marker, not a red asterisk alone. */
+.field__required {
+  font-size: var(--size-xs); letter-spacing: var(--tracking-label);
+  color: var(--text-muted); font-weight: var(--weight-normal);
+  text-transform: uppercase; margin-left: var(--space-2);
+}
+
+input[type="text"], input[type="email"], input[type="tel"], input[type="number"],
+input[type="search"], input[type="date"], select, textarea {
+  width: 100%;
+  font-family: var(--font-sans); font-size: var(--size-base);
+  color: var(--text); background: var(--panel-bg);
+  border: 1px solid var(--slate); border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+  min-height: var(--control-h);
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+textarea { min-height: 9rem; resize: vertical; line-height: var(--leading-snug); }
+textarea.paste { font-family: var(--font-mono); font-size: var(--size-sm); min-height: 14rem; }
+
+input:hover, select:hover, textarea:hover { border-color: var(--ink); }
+input[aria-invalid="true"], textarea[aria-invalid="true"], select[aria-invalid="true"] {
+  border-color: var(--ink); border-width: 2px;
+}
+input::placeholder, textarea::placeholder { color: var(--text-muted); opacity: 1; }
+
+/* Error messages appear directly beneath the field, navy on a lavender tint,
+ * with a text label. Never colour alone; never a floating toast for a
+ * field-level problem. Copy states what happened and how to fix it. */
+.field__error {
+  display: flex; gap: var(--space-2);
+  font-family: var(--font-sans); font-size: var(--size-sm);
+  background: var(--tint); color: var(--ink);
+  border-left: 3px solid var(--ink);
+  padding: var(--space-2) var(--space-3);
+  margin-top: var(--space-2);
+}
+.field__error::before { content: "Error"; font-weight: var(--weight-semi); flex: 0 0 auto; }
+
+.field__warning {
+  display: flex; gap: var(--space-2);
+  font-family: var(--font-sans); font-size: var(--size-sm);
+  background: var(--panel-bg); color: var(--text);
+  border: var(--border); border-left: 3px solid var(--slate);
+  padding: var(--space-2) var(--space-3); margin-top: var(--space-2);
+}
+.field__warning::before { content: "Note"; font-weight: var(--weight-semi); flex: 0 0 auto; }
+
+.form-errors {
+  border: var(--border-strong); border-left-width: 3px;
+  background: var(--tint); color: var(--ink);
+  padding: var(--space-4); margin-bottom: var(--space-5);
+  font-family: var(--font-sans); font-size: var(--size-sm);
+}
+.form-errors h2 { font-family: var(--font-sans); font-size: var(--size-sm); margin-bottom: var(--space-2); }
+.form-errors ul { margin: 0; padding-left: var(--space-5); }
+
+/* Choice lists — real checkboxes and radios, never a styled div. */
+.choices { display: grid; gap: var(--space-1); margin: 0; padding: 0; border: 0; }
+.choices--two { grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); gap: var(--space-1) var(--space-5); }
+
+.choice {
+  display: grid; grid-template-columns: auto 1fr; gap: var(--space-3);
+  align-items: start;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: var(--border);
+  font-family: var(--font-sans); font-size: var(--size-sm);
+  transition: background var(--transition);
+}
+.choice:hover { background: var(--panel-bg); }
+.choice input { width: 1.05rem; height: 1.05rem; min-height: 0; margin-top: 0.2rem; accent-color: var(--link); }
+.choice__name { font-weight: var(--weight-medium); }
+.choice__why { display: block; color: var(--text-muted); font-size: var(--size-xs); margin-top: 2px; }
+
+/* Ineligible options are DISABLED with an explanation, never hidden. A delegate
+ * who cannot find Grammar 2 assumes the site is broken. */
+.choice--blocked { color: var(--text-muted); }
+.choice--blocked .choice__name { font-weight: var(--weight-normal); }
+.choice--blocked input { cursor: not-allowed; }
+
+.choice--selected { background: var(--tint); }
+
+fieldset { border: 0; margin: 0 0 var(--space-6); padding: 0; }
+legend { padding: 0; }
+
+.count-note {
+  font-family: var(--font-sans); font-size: var(--size-sm);
+  color: var(--text-muted); margin: var(--space-2) 0 var(--space-3);
+}
+.count-note--over { color: var(--text); font-weight: var(--weight-semi); }
+
+/* ===========================================================================
+ * Tables — the chair dashboard is fifty schools; the roster is thirty people.
+ * These need to be genuinely good.
+ * ======================================================================== */
+
+.table-wrap { overflow-x: auto; margin-bottom: var(--space-6); }
+
+.table {
+  width: 100%; border-collapse: collapse;
+  font-family: var(--font-sans); font-size: var(--size-sm);
+}
+.table th {
+  position: sticky; top: 0; z-index: 2;
+  background: var(--page-bg);
+  text-align: left; white-space: nowrap;
+  font-size: var(--size-xs); font-weight: var(--weight-semi);
+  letter-spacing: var(--tracking-label); text-transform: uppercase;
+  color: var(--text-muted);
+  border-bottom: var(--border-strong);
+  padding: var(--space-2) var(--space-3) var(--space-2) 0;
+}
+/* Body rows are separated by hairlines, not boxed and not zebra-striped. A
+ * lavender tint is reserved for a selected or flagged row, so it means
+ * something when it appears. */
+.table td {
+  padding: var(--space-2) var(--space-3) var(--space-2) 0;
+  border-bottom: var(--border);
+  vertical-align: baseline;
+}
+.table tbody tr.is-flagged { background: var(--tint); }
+.table tbody tr.is-inactive td { color: var(--text-muted); }
+
+.table .num, .table th.num { text-align: right; padding-right: 0;
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.table th.num { font-family: var(--font-sans); }
+
+.table__sort {
+  background: none; border: 0; padding: 0; cursor: pointer; color: inherit;
+  font: inherit; letter-spacing: inherit; text-transform: inherit;
+  display: inline-flex; align-items: center; gap: var(--space-1);
+}
+.table__sort::after { content: "\2195"; opacity: 0.4; font-size: 0.9em; }
+th[aria-sort="ascending"] .table__sort::after { content: "\2191"; opacity: 1; }
+th[aria-sort="descending"] .table__sort::after { content: "\2193"; opacity: 1; }
+th[aria-sort] { color: var(--text); }
+
+/* Status is never colour alone: each of these is a word or a glyph. */
+.pill {
+  font-family: var(--font-sans); font-size: var(--size-xs);
+  letter-spacing: 0.04em; white-space: nowrap;
+  padding: 2px var(--space-2);
+  border: var(--border); border-radius: var(--radius);
+  color: var(--text-muted); background: var(--panel-bg);
+}
+.pill--done { border-color: var(--status-done); color: var(--status-done); font-weight: var(--weight-semi); }
+.pill--attention { border-color: var(--status-attention); color: var(--status-attention); }
+
+/* On narrow screens tables become labelled row-groups rather than a horizontal
+ * scroll — reading a roster sideways on a phone is not reading it. */
+@media (max-width: 48rem) {
+  .table--responsive thead { display: none; }
+  .table--responsive tbody tr {
+    display: block; border-bottom: var(--border-strong);
+    padding: var(--space-3) 0;
+  }
+  .table--responsive td {
+    display: grid; grid-template-columns: 8rem 1fr; gap: var(--space-3);
+    border: 0; padding: var(--space-1) 0; text-align: left;
+  }
+  .table--responsive td::before {
+    content: attr(data-label);
+    font-size: var(--size-xs); letter-spacing: var(--tracking-label);
+    text-transform: uppercase; color: var(--text-muted);
+    font-weight: var(--weight-semi);
+  }
+  .table--responsive td.num { text-align: left; }
+}
+
+/* Designed empty states that invite the next action — never a blank region. */
+.empty {
+  border: 1px dashed var(--rule);
+  padding: var(--space-6);
+  text-align: center;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+}
+.empty h3 { font-family: var(--font-serif); color: var(--text); margin-bottom: var(--space-2); }
+
+/* ===========================================================================
+ * Cold start — a designed state, not a failure.
+ *
+ * Modal scales to zero, so the first request after an idle period takes
+ * several seconds. Inline in the content region, never a modal, never a bare
+ * spinner, and never indefinite.
+ * ======================================================================== */
+
+.waking {
+  font-family: var(--font-sans); font-size: var(--size-sm);
+  color: var(--text-muted);
+  border-left: 2px solid var(--rule);
+  padding: var(--space-3) var(--space-4);
+  margin: var(--space-5) 0;
+  display: flex; gap: var(--space-3); align-items: baseline; flex-wrap: wrap;
+}
+.waking--late { border-left-color: var(--ink); color: var(--text); }
+.waking--failed {
+  border: var(--border-strong); border-left-width: 3px;
+  background: var(--tint); color: var(--ink);
+  display: block;
+}
+.waking__dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--link); flex: 0 0 auto;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+@keyframes pulse { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
+
+/* A designed loading state for a table: shaped like the table, never a
+ * shimmering skeleton that promises data which may never arrive. */
+.loading-rows { border-top: var(--border-strong); }
+.loading-rows > div {
+  height: 2.2rem; border-bottom: var(--border);
+  display: flex; align-items: center;
+  font-family: var(--font-sans); font-size: var(--size-xs);
+  color: var(--text-muted); letter-spacing: var(--tracking-label);
+}
+
+/* ===========================================================================
+ * Statistics — the welcome page
+ * ======================================================================== */
+
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--space-5) var(--space-6); border-top: var(--border-strong); padding-top: var(--space-4); }
+.stat__value {
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+  font-size: var(--size-xl); font-weight: var(--weight-medium);
+  line-height: 1; display: block; margin-bottom: var(--space-2);
+}
+.stat--stale .stat__value { color: var(--text-muted); }
+
+/* A flat lavender field standing in for imagery that does not exist yet. There
+ * is no stock photography and no AI-generated classical imagery anywhere on
+ * this site, and the absence must not read as unfinished. */
+.image-slot {
+  background: var(--tint); border: var(--border);
+  min-height: 12rem; display: flex; align-items: flex-end;
+  padding: var(--space-4);
+}
+.image-slot .label { color: var(--ink); }
+
+/* ===========================================================================
+ * Panels and detail lists
+ * ======================================================================== */
+
+.panel { background: var(--panel-bg); border: var(--border); padding: var(--space-5); }
+.panel--flush { padding: 0; }
+
+.detail { display: grid; grid-template-columns: auto 1fr; gap: var(--space-2) var(--space-5); margin: 0; }
+.detail dt {
+  font-family: var(--font-sans); font-size: var(--size-xs);
+  letter-spacing: var(--tracking-label); text-transform: uppercase;
+  color: var(--text-muted); font-weight: var(--weight-semi);
+}
+.detail dd { margin: 0; }
+
+.totals { display: grid; gap: var(--space-2); font-family: var(--font-sans); font-size: var(--size-sm); }
+.totals__row { display: flex; justify-content: space-between; gap: var(--space-4);
+  padding: var(--space-2) 0; border-bottom: var(--border); }
+.totals__row--final { border-bottom: 0; border-top: var(--border-strong);
+  font-size: var(--size-md); font-weight: var(--weight-semi); padding-top: var(--space-3); }
+.totals__row .mono { font-variant-numeric: tabular-nums; }
+
+/* ===========================================================================
+ * Motion and print
+ * ======================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media print {
+  /* The real printed deliverables are server-rendered documents with their own
+   * stylesheet -- see backend/lib/printing.py. This is only so that printing an
+   * ordinary screen does not produce navigation and buttons. */
+  .nav, .banner, .btn, .btn-row, .skip-link, .waking { display: none !important; }
+  body { background: var(--white); }
+}

@@ -1,0 +1,6 @@
+# Slim image. This is the interactive path and it must cold-start in a couple
+# of seconds, so nothing heavy belongs here. Anything needing apt packages or
+# large wheels goes in requirements-worker.txt and runs as a spawned function.
+fastapi
+libsql-client
+segno

@@ -1,0 +1,92 @@
+# Deploy on push to main: Modal for the API, GitHub Pages for the site.
+#
+# Secrets live ONLY in Modal Secrets and GitHub Actions secrets. Never in the
+# repository, never in the frontend. This workflow needs:
+#
+#   MODAL_TOKEN_ID / MODAL_TOKEN_SECRET   to deploy the app
+#   TURSO_DATABASE_URL / TURSO_AUTH_TOKEN to run migrations and bake the snapshot
+#
+# NOTE: deploying resets the Modal autoscaler to whatever is written in
+# backend/app.py. That is why warmth is reconciled from the database every five
+# minutes rather than being set once by hand -- see the warm_reconciler cron.
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  migrate-and-deploy-api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: python -m pip install modal -r backend/requirements.txt
+
+      # Migrations run BEFORE the new code, so the new code never meets an old
+      # schema. Forward-only migrations make that safe: an old container can
+      # still serve against a newer schema for the minute the rollout takes.
+      - name: Run migrations against Turso
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: python -m backend.lib.migrate
+
+      - name: Deploy to Modal
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: modal deploy backend/app.py
+
+  publish-site:
+    runs-on: ubuntu-latest
+    needs: migrate-and-deploy-api
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install fonttools brotli -r backend/requirements.txt
+
+      # If the theme's macrons cannot render, the site does not ship. This is
+      # the check docs/design.md calls the most likely way it ships broken.
+      - name: Verify the font subsets
+        run: python scripts/build_fonts.py --check
+
+      # Bake the convention facts and the latest statistics into index.html, so
+      # a visitor arriving while Modal is cold sees a complete page instead of a
+      # spinner. The live values replace these quietly once the API answers.
+      - name: Bake the static snapshot
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: python scripts/build_snapshot.py
+
+      - name: Assemble the site
+        run: |
+          cp frontend/CNAME frontend/public/CNAME
+          touch frontend/public/.nojekyll
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend/public
+      - id: deploy
+        uses: actions/deploy-pages@v4

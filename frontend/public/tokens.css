@@ -1,0 +1,138 @@
+/* tokens.css — the ONLY place a colour, font, or spacing step is defined.
+ *
+ * THIS FILE IS THE INHERITANCE POINT. The 73rd convention is at a different
+ * school with a different theme, and next year's commissioners are expected to
+ * edit the palette, the typeface, and the masthead. Everything they need for
+ * the first two is in this one file. There are no hex literals anywhere else in
+ * the codebase, and a review that finds one should send it back.
+ *
+ * What is NOT here: fee amounts, deadlines, venue details, contact addresses,
+ * the activity catalog, printed prose. Those are rows in `settings`, `documents`
+ * and the catalog tables, edited from the admin dashboard. Brand and layout are
+ * code and are expected to change; convention operations are data and must
+ * never be code.
+ */
+
+:root {
+  /* ---------------------------------------------------------------------
+   * Colour
+   *
+   * CAJCL's purple and gold are the defining colours, supported by University
+   * High's navy and Columbia blue. Ivory is the page. Gold is an accent used
+   * sparingly and NEVER as text on ivory.
+   *
+   * The contrast rules below were measured, not guessed, and they are hard
+   * constraints. The measured figure follows each token.
+   * ------------------------------------------------------------------- */
+  --ink:       #102A56;  /* navy   — body text, headings, dark panels  12.97:1 on ivory */
+  --purple:    #542C6B;  /* CAJCL  — links, active states, primary      9.89:1 on ivory */
+  --gold:      #D4A72C;  /* CAJCL  — rules and marks on dark ONLY       2.06:1 on ivory */
+  --blue:      #7BA6D8;  /* Columbia — large fields, text on dark ONLY  2.33:1 on ivory */
+  --lavender:  #D9CBE5;  /* tints, zebra, selected rows, error grounds */
+  --ivory:     #F8F5EE;  /* the page */
+  --slate:     #46515F;  /* metadata, captions, secondary text          7.41:1 on ivory */
+  --mist:      #B9BEC6;  /* hairlines and borders ONLY — never text     1.72:1 on ivory */
+  --white:     #FFFFFF;  /* panels, inputs, print */
+
+  /* Semantic aliases. Prefer these in components: they say what a colour is
+   * FOR, so a future commissioner can re-skin by editing the block above
+   * without hunting for which --purple was a link and which was a heading. */
+  --page-bg:        var(--ivory);
+  --panel-bg:       var(--white);
+  --text:           var(--ink);
+  --text-muted:     var(--slate);
+  --link:           var(--purple);
+  --rule:           var(--mist);
+  --rule-strong:    var(--ink);
+  --accent:         var(--gold);
+  --tint:           var(--lavender);
+
+  /* Focus rings are purple or navy, NEVER gold. Gold on ivory is 2.06:1 and
+   * fails the 3:1 minimum for a non-text indicator, so a gold ring is a ring
+   * that some people simply cannot see. */
+  --focus:          var(--purple);
+  --focus-on-dark:  var(--gold);
+
+  /* Status. Never encode meaning by colour alone — every use of these is
+   * paired with a text label or a glyph. */
+  --status-done:      var(--purple);
+  --status-pending:   var(--slate);
+  --status-attention: var(--ink);
+
+  /* ---------------------------------------------------------------------
+   * Type
+   *
+   * Literata for headlines and body. IBM Plex Sans for labels, metadata,
+   * table headers, form labels, UI chrome. IBM Plex Mono for access codes,
+   * ID numbers, invoice amounts — anything a person reads aloud or transcribes.
+   *
+   * All three are self-hosted subsets in fonts/. The @font-face rules live in
+   * app.css, which is the only other place a font is named.
+   * ------------------------------------------------------------------- */
+  --font-serif: "Literata", Georgia, "Times New Roman", serif;
+  --font-sans:  "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono:  "IBM Plex Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+
+  /* A deliberate scale with real weight contrast, but no type used only for
+   * drama. 1.25 ratio, rounded to whole pixels where it matters. */
+  --size-xs:   0.75rem;    /* 12px — labels, metadata */
+  --size-sm:   0.875rem;   /* 14px — table body, help text */
+  --size-base: 1rem;       /* 16px — body */
+  --size-md:   1.125rem;   /* 18px — lead paragraphs */
+  --size-lg:   1.375rem;   /* 22px — section headings */
+  --size-xl:   1.875rem;   /* 30px — page headings */
+  --size-2xl:  2.5rem;     /* 40px — masthead */
+  --size-3xl:  3.25rem;    /* 52px — welcome masthead only */
+
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semi:   600;
+
+  --leading-tight: 1.2;
+  --leading-snug:  1.35;
+  --leading-body:  1.6;
+
+  /* Letterspaced small capitals are the site's metadata voice. */
+  --tracking-label: 0.14em;
+  --tracking-tight: -0.015em;
+
+  /* ---------------------------------------------------------------------
+   * Space — a 4px base, so everything lands on a shared rhythm.
+   * ------------------------------------------------------------------- */
+  --space-1:  0.25rem;
+  --space-2:  0.5rem;
+  --space-3:  0.75rem;
+  --space-4:  1rem;
+  --space-5:  1.5rem;
+  --space-6:  2rem;
+  --space-7:  3rem;
+  --space-8:  4rem;
+  --space-9:  6rem;
+
+  /* ---------------------------------------------------------------------
+   * Structure
+   *
+   * Thin borders, 2-4px radius at most, compact rectangular controls. No
+   * pills, no oversized rounded rectangles, no heavy shadows. Structure comes
+   * from typography, spacing, borders and alignment — not from cards.
+   * ------------------------------------------------------------------- */
+  --border:        1px solid var(--rule);
+  --border-strong: 1px solid var(--rule-strong);
+  --radius:        2px;
+  --radius-lg:     4px;
+
+  --measure:     34rem;   /* readable line length for body copy */
+  --page-max:    76rem;   /* the 12-column field */
+  --gutter:      var(--space-5);
+
+  /* Touch targets are at least 44px on a coarse pointer — many delegates are
+   * eleven years old on a shared phone. On a mouse a 44px-tall table row would
+   * mean thirty rows no longer fit on a laptop screen, so the minimum applies
+   * where it is actually needed. See app.css. */
+  --touch-min:   44px;
+  --control-h:   2.25rem;
+
+  /* Transitions are 120-160ms, on colour and border only. Every one of these
+   * is disabled under prefers-reduced-motion in app.css. */
+  --transition:  140ms ease;
+}

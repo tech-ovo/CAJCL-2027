@@ -1,0 +1,226 @@
+/* The Adult Registration Sheet.
+ *
+ * "Please sign up for at least two roles" is a WARNING, not a block. An adult
+ * who ignores it can still submit -- some of them genuinely can only do one
+ * thing, and refusing the form teaches them the site is broken.
+ *
+ * Roles needing Latin are shown DISABLED with the requirement stated, the same
+ * treatment as an ineligible test, for the same reason.
+ *
+ * There are no time blocks. Adults say which events they are willing to run,
+ * and the notes field carries availability and anything else a chair should
+ * know.
+ */
+
+import * as api from "../api.js";
+import {
+  el, clear, tabula, field, input, select, button, errorSummary, renderMarkdown,
+} from "../ui.js";
+
+const MEALS = [["", "Choose one"], ["regular", "Regular"],
+               ["vegetarian", "Vegetarian"], ["gluten_free", "Gluten free"]];
+
+/* The original four-level scale. Every current role needs either nothing or
+ * advanced, but all four are here so a future chair can mark a role as needing
+ * intermediate Latin from the dashboard without a schema change. */
+const LATIN = [
+  ["none", "None"],
+  ["novice", "Novice — I know a little"],
+  ["intermediate", "Intermediate — I can read with a dictionary"],
+  ["advanced", "Advanced — I teach it, or could"],
+];
+
+const TYPES = [
+  ["sponsor", "Latin teacher or sponsor"],
+  ["chaperone", "Parent or chaperone"],
+  ["scl", "SCL"],
+  ["other", "Other"],
+];
+
+export async function adultSheetPage(host) {
+  let sheet = await api.get("/me/adult-sheet", { statusHost: host });
+  let selected = new Set(sheet.selected);
+  let person = { ...sheet.person };
+  let knowledge = person.latin_knowledge || "none";
+  let errors = [];
+  let warnings = [];
+  let saved = false;
+
+  render();
+
+  function render() {
+    clear(host);
+
+    host.append(tabula({
+      label: "Adult",
+      name: `${person.first_name} ${person.last_name}`,
+      left: (TYPES.find(([v]) => v === person.adult_type) || ["", "Adult"])[1],
+      right: `№  ${String(person.id).padStart(4, "0")}`,
+    }));
+
+    if (sheet.locked) {
+      host.append(el("div", { class: "waking waking--failed" },
+        el("p", { class: "label label--ink" }, "Forms are closed"),
+        el("p", {}, "The deadline has passed. Ask a registration chair if " +
+                    "something needs to change.")));
+    }
+
+    if (saved) {
+      host.append(el("div", { class: "form-errors", role: "status" },
+        el("h2", {}, "Your registration is saved"),
+        ...(warnings.length
+          ? warnings.map((w) => el("p", { style: "margin:0" }, w))
+          : [el("p", { style: "margin:0" },
+              "You can change it any time before the deadline.")])));
+    }
+
+    host.append(
+      el("h1", {}, "Adult Registration Sheet"),
+      renderMarkdown(
+        "Tell us which events you are willing to help run. There are no time " +
+        "blocks to choose — chairs build the schedule around who is available, " +
+        "and the notes field at the bottom is where to explain anything they " +
+        "should know."),
+      errors.length ? errorSummary(errors) : null);
+
+    const form = el("form", {
+      novalidate: true,
+      onsubmit: (event) => { event.preventDefault(); save(); },
+    });
+
+    form.append(
+      el("fieldset", {},
+        el("legend", {}, el("h2", {}, "About you")),
+        el("div", { class: "grid" },
+          el("div", { class: "span-6" }, field({
+            id: "email", label: "Email", required: true,
+            help: "Chairs use this to reach you about your shifts.",
+            control: input({
+              type: "email", value: person.email || "",
+              oninput: (e) => { person.email = e.target.value; },
+            }),
+          })),
+          el("div", { class: "span-6" }, field({
+            id: "phone", label: "Cell phone",
+            help: "Used only during convention weekend.",
+            control: input({
+              type: "tel", value: person.cell_phone || "",
+              oninput: (e) => { person.cell_phone = e.target.value; },
+            }),
+          })),
+          el("div", { class: "span-6" }, field({
+            id: "type", label: "You are a", required: true,
+            control: select(TYPES.map(([v, t]) => [v, t, v === person.adult_type]),
+              { onchange: (e) => { person.adult_type = e.target.value; } }),
+          })),
+          el("div", { class: "span-6" }, field({
+            id: "meal", label: "Meal preference",
+            control: select(MEALS.map(([v, t]) => [v, t, v === person.meal]),
+              { onchange: (e) => { person.meal = e.target.value; } }),
+          })),
+          el("div", { class: "span-12" }, field({
+            id: "latin", label: "How much Latin do you know?", required: true,
+            help: "Some roles need advanced Latin. Answering honestly here is " +
+                  "what opens or closes them below.",
+            wide: true,
+            control: select(LATIN.map(([v, t]) => [v, t, v === knowledge]),
+              { onchange: (e) => { knowledge = e.target.value; regate(); } }),
+          })))));
+
+    for (const category of sheet.catalog) {
+      const chosen = category.items.filter((i) => selected.has(i.id)).length;
+      form.append(el("fieldset", {},
+        el("legend", {}, el("h2", {}, category.name)),
+        category.description ? el("p", { class: "muted" }, category.description) : null,
+        el("p", { class: "count-note", "aria-live": "polite" },
+          `You have chosen ${chosen}.` +
+          (category.min_selections && chosen < category.min_selections
+            ? ` Please choose at least ${category.min_selections} if you can — ` +
+              "you can still submit either way."
+            : "")),
+        el("div", { class: "choices choices--two" },
+          ...category.items.map((item) => choice(item)))));
+    }
+
+    form.append(
+      el("fieldset", {},
+        el("legend", {}, el("h2", {}, "Anything else")),
+        field({
+          id: "note", label: "Notes for the chairs", wide: true,
+          help: "When you can and cannot be there, what you would rather not do, " +
+                "anyone you need to be near — anything at all.",
+          control: el("textarea", {
+            oninput: (e) => { person.availability_note = e.target.value; },
+          }, person.availability_note || ""),
+        })),
+      el("div", { class: "btn-row" },
+        button(sheet.status === "submitted" ? "Save changes" : "Submit my registration",
+          { variant: "btn--primary", type: "submit", disabled: sheet.locked })));
+
+    host.append(form);
+  }
+
+  function choice(item) {
+    const blocked = !item.eligible_now;
+    const isSelected = selected.has(item.id);
+    return el("label", {
+      class: "choice" + (blocked ? " choice--blocked" : "") +
+             (isSelected ? " choice--selected" : ""),
+      for: `role-${item.id}`,
+    },
+      el("input", {
+        type: "checkbox", id: `role-${item.id}`,
+        checked: isSelected, disabled: blocked || sheet.locked,
+        onchange: (event) => {
+          if (event.target.checked) selected.add(item.id); else selected.delete(item.id);
+          render();
+        },
+      }),
+      el("span", {},
+        el("span", { class: "choice__name" }, item.name),
+        blocked ? el("span", { class: "choice__why" }, item.reason) : null));
+  }
+
+  /* Latin knowledge changed: re-gate locally with the rules already in hand. */
+  function regate() {
+    const rank = { none: 0, novice: 1, intermediate: 2, advanced: 3 };
+    for (const category of sheet.catalog) {
+      for (const item of category.items) {
+        const needed = item.min_latin_knowledge;
+        if (!needed) { item.eligible_now = true; item.reason = ""; continue; }
+        item.eligible_now = rank[knowledge] >= rank[needed];
+        item.reason = `Needs ${needed} Latin.`;
+        if (!item.eligible_now) selected.delete(item.id);
+      }
+    }
+    render();
+  }
+
+  async function save() {
+    errors = [];
+    warnings = [];
+    try {
+      const result = await api.put("/me/adult-sheet", {
+        email: person.email || null,
+        cell_phone: person.cell_phone || null,
+        adult_type: person.adult_type,
+        meal: person.meal || null,
+        latin_knowledge: knowledge,
+        availability_note: person.availability_note || null,
+        selected: [...selected],
+      }, { statusHost: host });
+
+      warnings = result.warnings || [];
+      saved = true;
+      sheet = await api.get("/me/adult-sheet");
+      person = { ...sheet.person };
+      selected = new Set(sheet.selected);
+      render();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (error) {
+      errors = error.errors && error.errors.length ? error.errors : [error.message];
+      saved = false;
+      render();
+    }
+  }
+}

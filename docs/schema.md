@@ -37,16 +37,19 @@ CREATE TABLE schools (
   id              INTEGER PRIMARY KEY,
   name            TEXT NOT NULL,
   level           TEXT NOT NULL CHECK (level IN ('MS','HS')),
+  kind            TEXT NOT NULL DEFAULT 'chapter' CHECK (kind IN ('chapter','organization')),
   city            TEXT,
   drive_folder_id TEXT,               -- packet scans; URL string only, visible only to scope '*'
   billing_exempt  INTEGER NOT NULL DEFAULT 0,   -- SCL, At Large: invoice computes to zero
+  discount_cents  INTEGER NOT NULL DEFAULT 0 CHECK (discount_cents >= 0),
+  discount_reason TEXT,               -- shown on the invoice in words
   status          TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','withdrawn')),
   notes           TEXT,               -- fellowship room, volunteer liaison, chair notes
   created_at      TEXT NOT NULL,
   updated_at      TEXT NOT NULL,
   UNIQUE (name, level)
 );
-CREATE INDEX idx_schools_status_level ON schools (status, level);
+CREATE INDEX idx_schools_kind_status_level ON schools (kind, status, level);
 ```
 
 ```sql
@@ -80,7 +83,8 @@ CREATE TABLE people (
   pepper_version   INTEGER NOT NULL DEFAULT 1,
   code_issued_at   TEXT NOT NULL,
 
-  status           TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','cancelled')),
+  status           TEXT NOT NULL DEFAULT 'active'
+                     CHECK (status IN ('active','cancelled','cancelled_paid')),
   cancelled_at     TEXT,
   forms_unlocked   INTEGER NOT NULL DEFAULT 0,  -- admin override past the lock date
 
@@ -99,6 +103,16 @@ CREATE INDEX        idx_people_sort       ON people (school_id, last_name, first
 ```
 
 `idx_people_school` is the index the sponsor roster and every chair count depend on. `idx_people_code_hmac` is what makes login O(1).
+
+`schools.kind` separates chapters — who send delegates and get invoiced — from organizations. The state board is an organization: admin accounts must hang off some school because `people.school_id` is `NOT NULL`, but the board is not a chapter and must never appear in the public school count, on the chair dashboard, or in any invoice. This is a flag, never a name check, for the same reason `billing_exempt` is.
+
+`people.status` has **three** values, not two, because **there are no refunds** — an event this size runs on pre-payment:
+
+- `active` — attending, billable.
+- `cancelled` — withdrew *before* the chapter's payment arrived. Not billable; the invoice falls.
+- `cancelled_paid` — withdrew *after* payment. Not attending and absent from every public statistic and completion count, but **still billable**, so the balance keeps reading zero instead of showing a credit nobody intends to refund.
+
+Which one applies is decided from the payment record at the moment of cancellation, not asked of the sponsor — a sponsor should not have to know the billing policy to remove a student.
 
 The last two `CHECK` constraints enforce the person-type split at the database level rather than trusting application code: delegates cannot acquire an email, and adults cannot acquire guardian fields. Assert both in tests as well, since a future migration could quietly drop them.
 
@@ -367,15 +381,19 @@ Payments are append-only. A correction is a new row, possibly negative, never an
 
 ```sql
 CREATE TABLE school_stats (
-  school_id               INTEGER PRIMARY KEY REFERENCES schools(id),
-  delegates_active        INTEGER NOT NULL DEFAULT 0,
-  delegates_cancelled     INTEGER NOT NULL DEFAULT 0,
-  adults_active           INTEGER NOT NULL DEFAULT 0,
-  delegates_complete      INTEGER NOT NULL DEFAULT 0,
-  adults_complete         INTEGER NOT NULL DEFAULT 0,
-  amount_owed_cents       INTEGER NOT NULL DEFAULT 0,
-  amount_paid_cents       INTEGER NOT NULL DEFAULT 0,
-  updated_at              TEXT NOT NULL
+  school_id                INTEGER PRIMARY KEY REFERENCES schools(id),
+  delegates_active         INTEGER NOT NULL DEFAULT 0,
+  delegates_cancelled      INTEGER NOT NULL DEFAULT 0,
+  delegates_cancelled_paid INTEGER NOT NULL DEFAULT 0,
+  adults_active            INTEGER NOT NULL DEFAULT 0,
+  adults_cancelled         INTEGER NOT NULL DEFAULT 0,
+  adults_cancelled_paid    INTEGER NOT NULL DEFAULT 0,
+  delegates_complete       INTEGER NOT NULL DEFAULT 0,
+  adults_complete          INTEGER NOT NULL DEFAULT 0,
+  discount_cents           INTEGER NOT NULL DEFAULT 0,
+  amount_owed_cents        INTEGER NOT NULL DEFAULT 0,
+  amount_paid_cents        INTEGER NOT NULL DEFAULT 0,
+  updated_at               TEXT NOT NULL
 );
 
 CREATE TABLE public_stats_cache (
@@ -393,15 +411,29 @@ Both are recomputed **inside the same transaction** as any mutation that could c
 Invoice, when `schools.billing_exempt = 0`:
 
 ```
-fee.delegate_cents × delegates_active
-  + max(0, fee.extra_adult_cents × (adults_active − ceil(delegates_active ÷ fee.adult_ratio)))
+max(0,
+    fee.delegate_cents × delegates_billable
+      + max(0, fee.extra_adult_cents × (adults_billable − ceil(delegates_billable ÷ fee.adult_ratio)))
+      − schools.discount_cents)
 ```
+
+where `delegates_billable = delegates_active + delegates_cancelled_paid` and likewise for adults. **Billable, not active** — see the three-valued `people.status` above.
+
+`discount_cents` is an ad-hoc reduction an admin sets by hand: a new-chapter discount, a hardship arrangement, or the way a fee change gets honoured after invoices have gone out. It is floored at zero — a discount larger than the bill produces nothing owed, **never a credit**.
+
+Note a consequence of the free-adult allowance that surprises people: because the allowance is `ceil(delegates ÷ 10)`, the 1st, 11th, and 21st delegate each carry a free adult with them. Cancelling one of those delegates removes that allowance, so the chapter's bill drops by $140 − $75 = $65 rather than by the full $140. The invoice page shows the free-adult line so the arithmetic is visible rather than magic.
 
 When `billing_exempt = 1` the total is zero and the invoice page says so in words. Exempt schools are excluded from the chair dashboard's outstanding-balance total. Never key exemption off a school's name.
 
 **Deadline storage is a trap.** `deadline.forms_lock` and `deadline.payment` are stored as UTC but mean "end of day in California." February 13, 2027 is during PST (UTC−8), so the correct stored value is `2027-02-14T07:59:59Z`. If a future commissioner moves a deadline into a DST month the offset changes to −7. Store a UTC instant, compute it from a wall-clock date entered in the dashboard plus `America/Los_Angeles`, and never let anyone hand-type the UTC string.
 
-> **TODO (undecided):** whether cancelled delegates still count toward the invoice, and what happens when a fee changes mid-cycle. Mark both explicitly in code.
+**Both former TODOs are now decided.**
+
+*Cancelled delegates and the invoice* — resolved by the three-valued `people.status` above. There are no refunds; a cancellation after payment stays billable.
+
+*A fee changing mid-cycle* — deliberately **not** modelled. There is no fee snapshot per school and no effective date on the fee setting, because the fee is not expected to change once registration opens. If it has to, it is handled by hand with machinery that already exists: if the fee goes **up**, give already-invoiced schools a discount equal to the increase; if it goes **down** and you want to honour it, the recomputed invoice falls on its own, and for schools that already paid the higher amount you send the difference back and record a **negative payment** for it. Both paths leave a readable trail in the payment history and the audit log, which is worth more than machinery that runs once a decade.
+
+There is also **no operation to move a person between schools**, and deliberately no query for one. Chapters are completely separate — a middle school and a high school at the same site register as two schools with two sponsors. If a sponsor enters someone under the wrong chapter, the fix is to cancel that row and enter them again under the right one. A move would have to revalidate the Latin level, every test eligibility, and both schools' invoices: machinery for an operation that should not happen.
 
 ---
 

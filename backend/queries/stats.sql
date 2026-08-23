@@ -1,0 +1,129 @@
+-- The counter caches.
+--
+-- Aggregates are NEVER computed live for a page view. These queries run inside
+-- the same transaction as any mutation that changes them, and pages read the
+-- cached row.
+--
+-- The arithmetic that makes this non-negotiable: COUNT(*) over `people` at full
+-- size costs ~1,150 row reads. The welcome page is unauthenticated and reachable
+-- by crawlers; 100,000 hits computed live is 115 million reads against a
+-- 500M/month quota, and exceeding it returns BLOCKED -- an outage you cannot buy
+-- your way out of during convention.
+
+-- name: stats.count_school
+-- Counts for ONE school. Indexed by idx_people_school, so this reads that
+-- school's ~35 rows, not the whole table. Safe to run on every mutation.
+--
+-- Completion is defined in docs/schema.md:
+--   Delegate: student_activity submitted + student_waiver + student_medical.
+--   Adult:    adult_registration submitted + adult_medical.
+--             SCL adults skip adult_registration entirely.
+-- `cancelled_paid` is counted separately from `cancelled` because there are no
+-- refunds: someone who withdrew after their chapter paid still counts toward
+-- the invoice, while someone who withdrew before payment does not.
+SELECT
+  SUM(CASE WHEN p.person_type = 'delegate' AND p.status = 'active'         THEN 1 ELSE 0 END) AS delegates_active,
+  SUM(CASE WHEN p.person_type = 'delegate' AND p.status = 'cancelled'      THEN 1 ELSE 0 END) AS delegates_cancelled,
+  SUM(CASE WHEN p.person_type = 'delegate' AND p.status = 'cancelled_paid' THEN 1 ELSE 0 END) AS delegates_cancelled_paid,
+  SUM(CASE WHEN p.person_type = 'adult'    AND p.status = 'active'         THEN 1 ELSE 0 END) AS adults_active,
+  SUM(CASE WHEN p.person_type = 'adult'    AND p.status = 'cancelled'      THEN 1 ELSE 0 END) AS adults_cancelled,
+  SUM(CASE WHEN p.person_type = 'adult'    AND p.status = 'cancelled_paid' THEN 1 ELSE 0 END) AS adults_cancelled_paid,
+
+  SUM(CASE WHEN p.person_type = 'delegate' AND p.status = 'active'
+            AND fs.status = 'submitted'
+            AND pf_w.received = 1
+            AND pf_m.received = 1
+           THEN 1 ELSE 0 END) AS delegates_complete,
+
+  SUM(CASE WHEN p.person_type = 'adult' AND p.status = 'active'
+            AND (fs.status = 'submitted' OR p.adult_type = 'scl')
+            AND pf_a.received = 1
+           THEN 1 ELSE 0 END) AS adults_complete
+FROM people p
+LEFT JOIN form_submissions fs
+       ON fs.person_id = p.id
+      AND fs.form_type = CASE WHEN p.person_type = 'delegate'
+                              THEN 'student_activity' ELSE 'adult_registration' END
+LEFT JOIN paper_forms pf_w ON pf_w.person_id = p.id AND pf_w.form_type = 'student_waiver'
+LEFT JOIN paper_forms pf_m ON pf_m.person_id = p.id AND pf_m.form_type = 'student_medical'
+LEFT JOIN paper_forms pf_a ON pf_a.person_id = p.id AND pf_a.form_type = 'adult_medical'
+WHERE p.school_id = ?;
+
+-- name: stats.paid_for_school
+-- Payments are append-only and a correction is a new row, possibly negative,
+-- so the balance is always the sum. Indexed by idx_payments_school.
+SELECT COALESCE(SUM(amount_cents), 0) AS amount_paid_cents
+FROM payments WHERE school_id = ?;
+
+-- name: stats.upsert_school
+-- The money is computed in Python (backend/lib/stats.py) rather than here,
+-- because the invoice rule -- billable counts, the free-adult ratio, and the
+-- discount floor -- is the piece a future commissioner is most likely to have
+-- to read and check by hand.
+INSERT INTO school_stats (
+  school_id, delegates_active, delegates_cancelled, delegates_cancelled_paid,
+  adults_active, adults_cancelled, adults_cancelled_paid,
+  delegates_complete, adults_complete,
+  discount_cents, amount_owed_cents, amount_paid_cents, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT (school_id) DO UPDATE SET
+  delegates_active         = excluded.delegates_active,
+  delegates_cancelled      = excluded.delegates_cancelled,
+  delegates_cancelled_paid = excluded.delegates_cancelled_paid,
+  adults_active            = excluded.adults_active,
+  adults_cancelled         = excluded.adults_cancelled,
+  adults_cancelled_paid    = excluded.adults_cancelled_paid,
+  delegates_complete       = excluded.delegates_complete,
+  adults_complete          = excluded.adults_complete,
+  discount_cents           = excluded.discount_cents,
+  amount_owed_cents        = excluded.amount_owed_cents,
+  amount_paid_cents        = excluded.amount_paid_cents,
+  updated_at               = excluded.updated_at;
+
+-- name: stats.recompute_public
+-- Site-wide totals for the welcome page, derived from school_stats rather than
+-- from `people`. This scans school_stats -- at most ~50 rows, well under the
+-- 200-row threshold the CI plan check enforces.
+--
+-- kind = 'chapter' excludes the state board, which is a school row only because
+-- people.school_id is NOT NULL. It is not a chapter and must never appear in a
+-- number shown to the public.
+INSERT INTO public_stats_cache (id, schools_ms, schools_hs, delegates, adults, updated_at)
+SELECT 1,
+       COALESCE(SUM(CASE WHEN s.level = 'MS' THEN 1 ELSE 0 END), 0),
+       COALESCE(SUM(CASE WHEN s.level = 'HS' THEN 1 ELSE 0 END), 0),
+       COALESCE(SUM(ss.delegates_active), 0),
+       COALESCE(SUM(ss.adults_active), 0),
+       ?
+FROM schools s
+JOIN school_stats ss ON ss.school_id = s.id
+WHERE s.kind = 'chapter' AND s.status = 'active'
+ON CONFLICT (id) DO UPDATE SET
+  schools_ms = excluded.schools_ms,
+  schools_hs = excluded.schools_hs,
+  delegates  = excluded.delegates,
+  adults     = excluded.adults,
+  updated_at = excluded.updated_at;
+
+-- name: stats.public
+-- What the welcome page actually serves. ONE row read per request.
+SELECT schools_ms, schools_hs, delegates, adults, updated_at
+FROM public_stats_cache WHERE id = 1;
+
+-- name: stats.for_school
+SELECT * FROM school_stats WHERE school_id = ?;
+
+-- name: stats.dashboard
+-- The registration chair dashboard: fifty schools, one query, no loop.
+-- Scans school_stats (~50 rows) joined to schools by primary key. Organizations
+-- are excluded -- the state board is not a chapter and has no roster to track.
+SELECT s.id, s.name, s.level, s.city, s.status, s.billing_exempt,
+       s.discount_cents, s.discount_reason, s.notes,
+       ss.delegates_active, ss.delegates_cancelled, ss.delegates_cancelled_paid,
+       ss.adults_active, ss.adults_cancelled, ss.adults_cancelled_paid,
+       ss.delegates_complete, ss.adults_complete,
+       ss.amount_owed_cents, ss.amount_paid_cents, ss.updated_at
+FROM schools s
+LEFT JOIN school_stats ss ON ss.school_id = s.id
+WHERE s.kind = 'chapter'
+ORDER BY s.name;

@@ -1,0 +1,324 @@
+"""The printed packet and invoice.
+
+ONE IMPLEMENTATION, NOT TWO. The same HTML is served to the browser as a print
+view and handed to WeasyPrint for the PDF, so anything asserted here holds for
+both. These tests guard the properties that would otherwise only be discovered
+by holding a bad printout at a board meeting.
+"""
+
+from __future__ import annotations
+
+import re
+
+import pytest
+
+from backend.lib import clock, printing, roster
+
+from .helpers import Fixture
+
+
+@pytest.fixture
+def fx(tmp_path):
+    with Fixture(tmp_path) as f:
+        yield f
+
+
+def packet_for(fx, school_id=None, **kw):
+    with fx.db.read() as tx:
+        school = dict(tx.one("schools.get", (school_id or fx.uni_id,)))
+        return printing.render_packet(tx, school, **kw)
+
+
+def invoice_for(fx, school_id=None):
+    with fx.db.read() as tx:
+        school = dict(tx.one("schools.get", (school_id or fx.uni_id,)))
+        return printing.render_invoice(tx, school)
+
+
+# ---------------------------------------------------------------------------
+# One layout, two renderers
+# ---------------------------------------------------------------------------
+
+def test_the_print_css_uses_no_css_grid():
+    """WeasyPrint does not support the full CSS grid.
+
+    If a print template reaches for `display: grid`, the browser print view and
+    the PDF disagree -- which defeats the entire point of one template. Flow,
+    tables and simple flex only.
+    """
+    import pathlib
+    source = pathlib.Path(printing.__file__).read_text(encoding="utf-8")
+    css = source[source.index("PRINT_CSS = "):source.index("def _document(")]
+    assert "display: grid" not in css
+    assert "grid-template" not in css
+
+
+def test_the_packet_is_self_contained():
+    """No external stylesheet, no CDN font, no remote image. It has to render
+    identically in a browser, in WeasyPrint, and on a school network that blocks
+    half the internet."""
+    import pathlib
+    source = pathlib.Path(printing.__file__).read_text(encoding="utf-8")
+    assert "http://" not in source.replace("http://www.w3.org", "")
+    assert "fonts.googleapis" not in source
+
+
+# ---------------------------------------------------------------------------
+# The credential sheet
+# ---------------------------------------------------------------------------
+
+def test_every_active_attendee_gets_a_sheet(fx):
+    html = packet_for(fx)
+    with fx.db.read() as tx:
+        active = [r for r in tx.all("roster.list", (fx.uni_id,))
+                  if r["status"] == "active"]
+    # A cover, one sheet each, and the paper-forms page.
+    assert html.count('class="sheet"') == len(active) + 2
+
+
+def test_each_sheet_carries_a_real_qr(fx):
+    html = packet_for(fx)
+    assert html.count("<svg") >= 1
+    assert "viewBox" in html          # scalable, not a fixed-size bitmap
+
+
+def test_the_sheet_says_it_is_a_credential(fx):
+    """Because the printed sheet IS a bearer credential, it says so."""
+    html = packet_for(fx)
+    assert "This sheet is your key" in html
+    assert "Anyone holding it can sign in" in html
+
+
+def test_the_sheet_shows_the_name_large(fx):
+    """So a sponsor cannot hand the wrong page to the wrong student."""
+    html = packet_for(fx)
+    assert 'class="tabula__name"' in html or 'class="name"' in html
+    assert re.search(r"\.tabula \.name \{[^}]*font-size: 19pt", html, re.DOTALL)
+
+
+def test_nobodys_credential_splits_across_two_pages(fx):
+    html = packet_for(fx)
+    assert "break-inside: avoid" in html
+    assert "break-after: page" in html
+
+
+def test_a_ninety_character_name_stays_inside_the_tabula(fx):
+    """The parser accepts a name of any length and the schema sets no limit, so
+    the layout has to cope rather than the data being trimmed to fit it."""
+    long_last = "Wolfeschlegelsteinhausenbergerdorff" * 2
+    with fx.db.tx() as tx:
+        tx.run("people.update_details", (
+            "Hubert", None, long_last, None, 10, "HS-2", "regular", None,
+            None, None, clock.now_iso(), fx.delegate_id))
+        tx.audit("person.update", "Test set a very long name.",
+                 school_id=fx.uni_id, entity_type="person",
+                 entity_id=fx.delegate_id, changed_fields=["last_name"])
+
+    html = packet_for(fx)
+    assert long_last in html
+    assert "overflow-wrap: anywhere" in html
+
+
+def test_a_single_attendee_reprint(fx):
+    """What the sponsor gets immediately after regenerating a code. Without it
+    they hold a packet page whose QR no longer works."""
+    html = packet_for(fx, only_person=fx.delegate_id)
+    assert html.count('class="sheet"') == 1
+    assert "Dana" in html
+    assert "Required paper forms" not in html      # one sheet, not the packet
+
+
+def test_the_packet_lists_the_paper_forms(fx):
+    html = packet_for(fx)
+    assert "Student Waiver" in html
+    assert "Student Medical Form" in html
+    assert "Adult Medical Form" in html
+
+
+def test_the_theme_appears_once_with_its_macrons(fx):
+    """Content, not decoration: one privileged placement per document. An
+    epigraph on thirty consecutive credential sheets would be ornament.
+
+    The macrons are asserted by codepoint rather than by literal, so this test
+    still means something in an editor that silently rewrites the file. This
+    theme uses four of them -- mementō, rēbus, arduīs, servāre -- and no ū; the
+    font subset covers all five anyway, because the 73rd convention will choose
+    a different line.
+    """
+    html = packet_for(fx)
+    assert html.count("aequam mement") == 1
+    for codepoint in (0x0101, 0x0113, 0x012B, 0x014D):   # ā ē ī ō
+        assert chr(codepoint) in html, \
+            f"U+{codepoint:04X} missing from the printed theme"
+
+
+def test_dates_are_roman_in_metadata_and_arabic_where_acted_on(fx):
+    """The entire budget for classical flourish. A parent reading a payment due
+    date should not have to decode it."""
+    packet = packet_for(fx)
+    assert "MARTII MMXXVII" in packet
+
+    invoice = invoice_for(fx)
+    assert re.search(r"(January|February|March|April|May|June|July|August|"
+                     r"September|October|November|December) \d{1,2}, \d{4}", invoice)
+
+
+# ---------------------------------------------------------------------------
+# The invoice
+# ---------------------------------------------------------------------------
+
+def test_the_invoice_shows_the_free_adult_line(fx):
+    """So the arithmetic is visible rather than magic. A sponsor who cancels a
+    delegate and sees the bill fall by $65 instead of $140 can find the reason
+    here instead of sending an email."""
+    html = invoice_for(fx)
+    assert "Adults included at no charge" in html
+    assert "one per 10 delegates" in html
+
+
+def test_the_invoice_totals_add_up(fx):
+    with fx.db.read() as tx:
+        school = dict(tx.one("schools.get", (fx.uni_id,)))
+        context = printing.invoice_context(tx, school)
+    lines = sum(line["amount_cents"] for line in context["lines"])
+    assert context["amount_owed_cents"] == max(0, lines - context["discount_cents"])
+    assert context["balance_cents"] == \
+        context["amount_owed_cents"] - context["amount_paid_cents"]
+
+
+def test_an_exempt_chapter_gets_words_not_a_blank_page(fx):
+    """A blank invoice reads as a bug."""
+    html = invoice_for(fx, fx.exempt_id)
+    assert "not billed" in html
+    assert "Nothing due" in html
+    assert "$" not in html.split("</style>")[1]     # no totals table at all
+
+
+def test_the_invoice_explains_a_cancelled_but_paid_attendee(fx):
+    """There are no refunds, and the invoice says so rather than leaving a
+    sponsor to work out why the number did not move."""
+    actor = fx.principal("chair")
+    with fx.db.tx() as tx:
+        tx.insert("payments.create", (fx.uni_id, 50000, "check", "1", None, None,
+                                      fx.chair_id, clock.now_iso()))
+        tx.audit("payment.record", "Chair recorded a payment.",
+                 school_id=fx.uni_id, value_detail={"amount_cents": 50000})
+    with fx.db.tx() as tx:
+        school = dict(tx.one("schools.get", (fx.uni_id,)))
+        person = dict(tx.one("people.get", (fx.delegate_id,)))
+        assert roster.cancel(tx, school, actor, person) == "cancelled_paid"
+
+    html = invoice_for(fx)
+    assert "withdrew after payment was received" in html
+    assert "no refunds" in html
+
+
+def test_the_invoice_shows_a_discount_with_its_reason(fx):
+    with fx.db.tx() as tx:
+        school = dict(tx.one("schools.get", (fx.uni_id,)))
+        tx.run("schools.update", (
+            school["name"], school["level"], school["city"], 0,
+            5000, "New chapter, first year at state", "active", None, None,
+            clock.now_iso(), fx.uni_id))
+        tx.audit("school.update", "Chair applied a discount.", school_id=fx.uni_id)
+        from backend.lib import settings, stats
+        stats.recompute(tx, fx.uni_id, settings=settings.fee_settings(tx))
+
+    html = invoice_for(fx)
+    assert "Discount" in html
+    assert "New chapter, first year at state" in html
+
+
+def test_the_footer_carries_the_contact_address_on_every_document(fx):
+    for html in (packet_for(fx), invoice_for(fx), invoice_for(fx, fx.exempt_id)):
+        assert "state@uhsjcl.org" in html
+        assert "University High School" in html
+
+
+def test_no_access_code_is_ever_rendered_into_the_packet(fx):
+    """Only the HMAC is stored, so the packet CANNOT print a live code -- and
+    that is the correct behaviour, not a limitation. A sponsor prints from the
+    code they were shown once at creation or regeneration."""
+    html = packet_for(fx)
+    from backend.lib import codes
+    assert codes.normalize(fx.codes["delegate"]) not in html
+
+
+# ---------------------------------------------------------------------------
+# Exports
+# ---------------------------------------------------------------------------
+
+def test_both_sql_exports_restore_into_a_working_database(fx, tmp_path):
+    """The anonymised file is the one handed to an outside helper, so it has to
+    LOAD, not merely exist.
+
+    An earlier version dropped the redacted columns instead of blanking them.
+    `audit_log.summary` is NOT NULL, so the dump failed on its first audit row,
+    and `people.code_hmac` is uniquely indexed, so a constant placeholder failed
+    on the second person. Both are now blanked per-row and constraint-aware.
+    """
+    import sqlite3
+
+    from backend.workers import export as exporter
+
+    conn = exporter.open_db(fx.path)
+    try:
+        for anonymized in (False, True):
+            path = exporter.export_sql(conn, tmp_path, anonymized)
+            restored = sqlite3.connect(":memory:")
+            restored.execute("PRAGMA foreign_keys = ON")
+            restored.executescript(path.read_text(encoding="utf-8"))
+
+            people = restored.execute("SELECT COUNT(*) FROM people").fetchone()[0]
+            assert people > 0, f"{path.name} restored no people"
+
+            name = restored.execute(
+                "SELECT last_name FROM people LIMIT 1").fetchone()[0]
+            if anonymized:
+                assert name == "[redacted]"
+            else:
+                assert name and name != "[redacted]"
+
+            # Unique indexes survive the redaction.
+            hashes = [r[0] for r in restored.execute("SELECT code_hmac FROM people")]
+            assert len(set(hashes)) == len(hashes)
+            restored.close()
+    finally:
+        conn.close()
+
+
+def test_the_anonymised_export_carries_no_attendee_data(fx, tmp_path):
+    """No attendee's identity survives into the anonymised export.
+
+    Matched on FULL names and on contact details, not on individual name parts.
+    The fixture's people are deliberately named after their roles -- Cleo Chair,
+    Sam Sponsor -- and `roles.name` legitimately contains "Registration Chair".
+    A per-word check flags that and teaches whoever sees it to ignore the test.
+    """
+    import re
+
+    from backend.workers import export as exporter
+
+    conn = exporter.open_db(fx.path)
+    try:
+        text = exporter.export_sql(conn, tmp_path, True).read_text(encoding="utf-8")
+        identities = set()
+        for row in conn.execute(
+                "SELECT first_name, last_name, guardian_name, guardian_phone, "
+                "email FROM people"):
+            first, last, guardian, phone, email = row
+            if first and last:
+                identities.add(f"{first} {last}")
+            for value in (guardian, phone, email):
+                if value:
+                    identities.add(str(value))
+    finally:
+        conn.close()
+
+    # Only the INSERT statements. The schema is dumped verbatim and its comments
+    # contain a fabricated example name, which is documentation, not data.
+    inserts = chr(10).join(
+        line for line in text.splitlines() if line.startswith("INSERT"))
+    leaked = sorted(v for v in identities
+                    if re.search(rf"{re.escape(v)}", inserts))
+    assert leaked == [], f"anonymised export leaked {leaked}"

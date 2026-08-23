@@ -1,0 +1,56 @@
+# Refresh the welcome page's baked statistics once a day.
+#
+# The numbers on the public page are baked into index.html at build time so a
+# visitor arriving while Modal is cold sees a complete page rather than a
+# spinner. That snapshot goes stale between deploys, and during registration
+# season the counts move every day -- so this republishes the site each morning
+# with current figures, without anyone pushing anything.
+#
+# It is only a nicety: the live values still replace the baked ones the moment
+# the API answers. If this workflow fails, the site shows slightly old numbers
+# and nothing else breaks.
+
+name: Refresh snapshot
+
+on:
+  schedule:
+    - cron: "0 14 * * *"     # 6am California in winter, 7am in summer
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r backend/requirements.txt
+
+      - name: Bake the current statistics into index.html
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: python scripts/build_snapshot.py
+
+      - name: Assemble the site
+        run: |
+          cp frontend/CNAME frontend/public/CNAME
+          touch frontend/public/.nojekyll
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend/public
+      - uses: actions/deploy-pages@v4
