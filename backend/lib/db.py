@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
 from contextlib import contextmanager
 from typing import Any, Iterator, Sequence
@@ -157,6 +158,47 @@ def _open_local(path: str) -> _Handle:
     return _Handle(conn, begin_sql="BEGIN IMMEDIATE")
 
 
+# Anything outside printable ASCII cannot go in an HTTP header. The driver
+# sends the auth token as `Authorization: Bearer <token>`, so a single stray
+# newline -- from a copy-paste of a line-wrapped token, or from a browser text
+# box -- makes the request unbuildable before it is ever sent.
+_HEADER_SAFE = re.compile(r"\A[ -~]*\Z")
+
+_NAMES = {chr(9): "a tab", chr(10): "a newline", chr(13): "a carriage return"}
+
+
+def _clean_credential(value: str | None, variable: str) -> str | None:
+    """Trim a credential, and refuse one that cannot be sent.
+
+    A trailing newline is the single most common way this configuration goes
+    wrong, and the driver's own report of it is
+    `Hrana: http error: http::Error(InvalidHeaderValue)` -- which names neither
+    the variable nor the character. Strip what is safely strippable, and be
+    specific about what is not.
+    """
+    if value is None:
+        return None
+
+    cleaned = value.strip()
+    if _HEADER_SAFE.match(cleaned):
+        return cleaned
+
+    bad = sorted({char for char in cleaned if not _HEADER_SAFE.match(char)})
+    described = ", ".join(_NAMES.get(char, f"U+{ord(char):04X}") for char in bad)
+    raise ValueError(
+        f"{variable} contains {described}, which cannot be sent in an HTTP "
+        f"header. The value is {len(cleaned)} characters long.\n\n"
+        f"This is almost always a copy-paste artefact: a long token wraps in "
+        f"the terminal, and the line break is copied along with it.\n\n"
+        f"Set it again without typing it out, so nothing can be introduced by "
+        f"hand:\n"
+        f'    TURSO_AUTH_TOKEN="$(turso db tokens create cajcl-2027)"\n'
+        f'    TURSO_DATABASE_URL="$(turso db show cajcl-2027 --url)"\n'
+        f"then re-create the Modal secret with --force. See docs/DEPLOY.md, "
+        f"step 2."
+    )
+
+
 def _open_remote(url: str, auth_token: str | None) -> _Handle:
     try:
         import libsql
@@ -182,6 +224,9 @@ def _open_remote(url: str, auth_token: str | None) -> _Handle:
     # BEGIN/COMMIT in Database.tx() is the only thing managing transactions.
     # Leaving it at the DB-API default would have the driver open its own
     # transaction as well, and the two would fight.
+    url = _clean_credential(url, "TURSO_DATABASE_URL")
+    auth_token = _clean_credential(auth_token, "TURSO_AUTH_TOKEN")
+
     conn = libsql.connect(url, auth_token=auth_token or "", isolation_level=None)
     conn.execute("PRAGMA foreign_keys = ON")
     # Plain BEGIN, not IMMEDIATE: a hosted database has a single writer already,
@@ -398,6 +443,12 @@ def connect(url: str | None = None, *, auth_token: str | None = None) -> Databas
     """
     url = url or os.environ.get("TURSO_DATABASE_URL") or "dev.db"
     auth_token = auth_token or os.environ.get("TURSO_AUTH_TOKEN")
+
+    # Checked here as well as at connection time, so a malformed secret is
+    # reported by whatever runs first rather than by whichever code path
+    # happens to open a transaction first.
+    url = _clean_credential(url, "TURSO_DATABASE_URL") or "dev.db"
+    auth_token = _clean_credential(auth_token, "TURSO_AUTH_TOKEN")
 
     if url.startswith(REMOTE_SCHEMES):
         return Database(url=url, auth_token=auth_token)

@@ -418,6 +418,24 @@ view will disagree — which defeats the entire point of having one template.
 Print stylesheets are written accordingly; verify by diffing the two outputs
 before convention.
 
+### A credential pasted by hand carries an invisible line break
+**MITIGATED.** A Turso auth token is several hundred characters long and wraps
+across several lines in a terminal. Copying it by hand brings the wrap along,
+and the token then travels in an `Authorization` header, where a newline is
+illegal. The driver reports this as
+`Hrana: http error: http::Error(InvalidHeaderValue)` — which names neither the
+setting nor the character, arrives before any SQL runs, and looks for all the
+world like a network fault. It cost an evening of the demo build.
+
+`db.py` now trims surrounding whitespace from `TURSO_DATABASE_URL` and
+`TURSO_AUTH_TOKEN` and refuses an interior control character by name, without
+echoing the value into the logs. `DEPLOY.md` sets both from command
+substitution rather than a paste, and `modal run backend/app.py::doctor`
+reports the shape of every setting and attempts the connection. The underlying
+hazard is not fixed and cannot be: a commissioner setting the secret through
+the Modal web dashboard can still introduce one, and will now at least be told
+which value and which character.
+
 ### A very long name overflowing the tabula on the printed sheet
 **OPEN.** Not yet tested against the 90-character fixture. The credential block
 uses `break-inside: avoid`, so an overflowing name would push rather than split,

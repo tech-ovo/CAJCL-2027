@@ -272,3 +272,68 @@ def test_audit_accepts_a_backdated_timestamp(tmp_path):
         newest = tx.all("audit.recent", (10 ** 9, 5))[0]
     assert newest["ts_utc"].startswith(clock.now_iso()[:13])
     db.close()
+
+
+# ---------------------------------------------------------------------------
+# Credentials that cannot be sent
+# ---------------------------------------------------------------------------
+
+def test_surrounding_whitespace_is_trimmed_from_credentials(monkeypatch):
+    """A trailing newline is what you get from `echo`, from a browser text box,
+    and from most ways of putting a token into a file. It must not be fatal."""
+    from backend.lib import db as db_module
+
+    monkeypatch.setenv("TURSO_DATABASE_URL", "  libsql://example.turso.io\n")
+    monkeypatch.setenv("TURSO_AUTH_TOKEN", "ey.J.token\n")
+
+    database = db_module.connect()
+    assert database._url == "libsql://example.turso.io"
+    assert database._auth_token == "ey.J.token"
+
+
+def test_a_credential_with_an_interior_newline_is_named_and_refused(monkeypatch):
+    """The driver's own report of this is
+
+        Hrana: `http error: `http::Error(InvalidHeaderValue)``
+
+    which names neither the setting nor the character, arrives only when a
+    transaction opens, and looks for all the world like a network problem. It
+    happens when a long token wraps in the terminal and the break is copied
+    with it.
+    """
+    from backend.lib import db as db_module
+
+    monkeypatch.setenv("TURSO_DATABASE_URL", "libsql://example.turso.io")
+    monkeypatch.setenv("TURSO_AUTH_TOKEN", "ey.J.first\nsecond.half")
+
+    with pytest.raises(ValueError) as caught:
+        db_module.connect()
+
+    message = str(caught.value)
+    assert "TURSO_AUTH_TOKEN" in message
+    assert "a newline" in message
+    # Never the token itself: this message ends up in Modal's logs.
+    assert "ey.J.first" not in message
+
+
+def test_a_non_ascii_credential_is_refused_by_codepoint(monkeypatch):
+    from backend.lib import db as db_module
+
+    monkeypatch.setenv("TURSO_DATABASE_URL", "libsql://example.turso.io")
+    monkeypatch.setenv("TURSO_AUTH_TOKEN", "ey.J\u00a0token")     # non-breaking space
+
+    with pytest.raises(ValueError, match=r"U\+00A0"):
+        db_module.connect()
+
+
+def test_a_local_path_is_left_alone(monkeypatch, tmp_path):
+    """The check is about HTTP headers. A local file has none, and a Windows
+    path or a directory with a space in it is perfectly legitimate."""
+    from backend.lib import db as db_module
+
+    monkeypatch.delenv("TURSO_DATABASE_URL", raising=False)
+    monkeypatch.delenv("TURSO_AUTH_TOKEN", raising=False)
+
+    path = tmp_path / "a folder with spaces" / "dev.db"
+    path.parent.mkdir()
+    assert db_module.connect(str(path))._path == str(path)

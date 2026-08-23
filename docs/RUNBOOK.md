@@ -220,6 +220,7 @@ full toolchain, takes about ten minutes, and often fails anyway.
 *hosted* database, and there is a better way to do that:
 
 ```bash
+modal run backend/app.py::doctor           # check the settings and connect
 modal run backend/app.py::setup            # migrate, then seed
 modal run backend/app.py::setup --reset    # wipe first, then rebuild
 modal run backend/app.py::setup --no-seed  # migrate only, leave data alone
@@ -506,10 +507,40 @@ baked into the page itself.
 
 ### Every page shows a database error
 
-Look at Turso.
+Start here, which reports the shape of every setting in the Modal secret
+without printing any of them in full, and then tries the connection for real:
+
+```bash
+modal run backend/app.py::doctor
+```
+
+If the settings look right, look at Turso.
 
 - If it says **BLOCKED**, a monthly limit is exhausted. See section 11.
 - If it cannot connect, `TURSO_AUTH_TOKEN` may have expired. Make a new one.
+
+### `Hrana: http error: http::Error(InvalidHeaderValue)`
+
+The authentication token contains a character that cannot be sent over the
+network. The token travels in an HTTP header, and a header may hold only
+ordinary printable characters — so a single line break inside the token makes
+the request impossible to build, which is why this appears before any SQL runs
+and looks nothing like a configuration problem.
+
+It happens when a token several hundred characters long wraps across two lines
+in the terminal and the wrap is copied along with it. Set the values without
+pasting anything, then replace the whole secret:
+
+```bash
+export TURSO_DATABASE_URL="$(turso db show cajcl-2027 --url)"
+export TURSO_AUTH_TOKEN="$(turso db tokens create cajcl-2027)"
+```
+
+Then re-create the Modal secret with `--force`, as in `docs/DEPLOY.md` step 2,
+and confirm with `modal run backend/app.py::doctor`.
+
+A newline at the *end* of a value is trimmed automatically and causes no
+trouble. Only one in the middle is fatal.
 
 ### `WSServerHandshakeError: 400` when connecting to Turso
 
