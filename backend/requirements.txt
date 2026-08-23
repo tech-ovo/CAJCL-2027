@@ -2,11 +2,28 @@
 # of seconds, so nothing heavy belongs here. Anything needing apt packages or
 # large wheels goes in requirements-worker.txt and runs as a spawned function.
 fastapi
+
 # The CURRENT Turso driver. Not `libsql-client`, which was archived in June 2025
 # and whose WebSocket handshake is rejected by present-day Turso endpoints --
 # see the comment in backend/lib/db.py.
-libsql
+#
+# THE MARKER IS DELIBERATE. libsql publishes wheels for x86_64 Linux, both macOS
+# architectures, and Windows -- but NOT for ARM64 Linux. On an ARM machine pip
+# would fall back to compiling it from Rust source, which needs cmake and a full
+# toolchain and usually fails.
+#
+# Nothing local needs this driver: a local .db file uses `sqlite3` from the
+# standard library. It is needed only to reach a hosted Turso database, and
+# Modal's image is x86_64, so production installs it normally. If you are on
+# ARM and want to reach Turso from your own machine, see docs/RUNBOOK.md --
+# the short answer is `modal run backend/app.py::setup`.
+#
+# macOS on Apple silicon reports `arm64`, not `aarch64`, so it still gets the
+# wheel. This marker excludes ARM *Linux* only.
+libsql; platform_machine != "aarch64"
+
 segno
+
 # Pure Python and adds nothing measurable to a cold start, so an export can be
 # produced inline rather than waiting for the fat image to boot.
 openpyxl

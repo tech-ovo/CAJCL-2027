@@ -115,6 +115,97 @@ def run_export(fmt: str = "xlsx", anonymized: bool = False) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Setting up the database, from Modal rather than from a laptop
+# ---------------------------------------------------------------------------
+#
+# WHY THESE EXIST
+#     Talking to Turso needs the `libsql` driver, which ships wheels for x86_64
+#     Linux, both macOS architectures, and Windows -- but NOT for ARM64 Linux.
+#     On an ARM machine (a Snapdragon laptop, a Mac running Linux in a VM) pip
+#     falls back to compiling it from Rust source, which needs cmake and a full
+#     toolchain and takes ten minutes when it works at all.
+#
+#     Modal's image is x86_64, so the wheel is simply there. Running migrations
+#     from inside Modal sidesteps the whole problem, and it is better practice
+#     regardless: the migration runs in the same environment as the code that
+#     will use it.
+#
+#     Local development never needs `libsql` -- a local .db file uses `sqlite3`
+#     from the standard library.
+#
+#         modal run backend/app.py::setup            # migrate, then seed
+#         modal run backend/app.py::setup --reset    # wipe first
+#         modal run backend/app.py::setup --no-seed  # migrate only
+
+@app.function(image=slim_image, secrets=secrets, timeout=900)
+def migrate_database() -> str:
+    import sys
+    sys.path.insert(0, "/root/cajcl")
+    from backend.lib import migrate
+    from backend.lib.db import connect
+
+    db = connect()
+    try:
+        applied = migrate.run(db, verbose=True)
+    finally:
+        db.close()
+    return (f"{applied} migration(s) applied" if applied
+            else "database already up to date")
+
+
+@app.function(image=slim_image, secrets=secrets, timeout=1800)
+def seed_database(reset: bool = False) -> dict:
+    """Load the demonstration data. Returns the access codes.
+
+    The codes come back to the caller rather than being written to a file,
+    because a file written inside a Modal container disappears with it.
+    """
+    import sys
+    sys.path.insert(0, "/root/cajcl")
+    import scripts.seed as seed_script
+    from backend.lib import catalog, settings
+    from backend.lib.db import connect
+
+    db = connect()
+    try:
+        if reset:
+            print("dropping all tables")
+            seed_script.wipe(db)
+        seed_script.migrate(db)
+        settings.invalidate()
+        catalog.invalidate()
+        print("seeding demonstration data")
+        return seed_script.Seeder(db).run()
+    finally:
+        db.close()
+
+
+@app.local_entrypoint()
+def setup(reset: bool = False, seed: bool = True):
+    """Prepare the production database without installing anything locally."""
+    import pathlib
+
+    print(migrate_database.remote())
+    if not seed:
+        return
+
+    codes = seed_database.remote(reset=reset)
+
+    lines = [f"{label}\n    {code}" for label, code in codes.items()]
+    pathlib.Path("demo-codes.txt").write_text(
+        "Demonstration access codes - fabricated data, safe to lose.\n"
+        "Regenerated every time the seed runs.\n\n" + "\n".join(lines) + "\n",
+        encoding="utf-8")
+
+    print()
+    print("ACCESS CODES FOR THE DEMO (also written to demo-codes.txt)")
+    print("Freshly generated: a reproducible credential is not a credential.")
+    print()
+    for line in lines:
+        print("  " + line.replace("\n    ", "\n      "))
+
+
+# ---------------------------------------------------------------------------
 # Crons
 # ---------------------------------------------------------------------------
 

@@ -15,6 +15,7 @@ something is genuinely hard, it says so.
 1. [What this system is, in plain terms](#1-what-this-system-is-in-plain-terms)
 2. [How the repository is laid out](#2-how-the-repository-is-laid-out)
 3. [Setting up your computer](#3-setting-up-your-computer)
+   - [Working with the real database from an ARM machine](#working-with-the-real-database-from-an-arm-machine)
 4. [Running it on your own machine](#4-running-it-on-your-own-machine)
 5. [The everyday jobs](#5-the-everyday-jobs)
 6. [Deploying a change](#6-deploying-a-change)
@@ -202,6 +203,39 @@ command suddenly reports that a package is missing, that is almost always the
 reason.
 
 `.venv` is already in `.gitignore`, so it will not be committed.
+
+### Working with the real database from an ARM machine
+
+Skip this unless `pip install` fails with a wall of Rust output ending in
+**`is cmake not installed?`**
+
+The driver that talks to hosted Turso is called `libsql`. It ships ready-built
+for x86_64 Linux, both kinds of Mac, and Windows — but **not for ARM64 Linux**.
+If your laptop has a Snapdragon or similar ARM chip, WSL is ARM64 Linux, so pip
+tries to compile the driver from Rust source instead. That needs cmake and a
+full toolchain, takes about ten minutes, and often fails anyway.
+
+**You almost certainly do not need it.** Local work uses a plain file and the
+`sqlite3` module that comes with Python. The driver is only needed to reach the
+*hosted* database, and there is a better way to do that:
+
+```bash
+modal run backend/app.py::setup            # migrate, then seed
+modal run backend/app.py::setup --reset    # wipe first, then rebuild
+modal run backend/app.py::setup --no-seed  # migrate only, leave data alone
+```
+
+That runs on Modal, whose machines are x86_64, so the driver is simply there.
+The access codes come back to your terminal and are written to
+`demo-codes.txt` on your own machine, exactly as if you had run it locally.
+
+This is better practice anyway: the migration runs in the same environment as
+the code that will use it.
+
+`backend/requirements.txt` already skips the driver on ARM64 Linux, so a plain
+`pip install -r backend/requirements.txt` works there. If you genuinely want
+direct access from an ARM machine, `sudo apt install cmake build-essential`
+then `pip install libsql` — but try the Modal route first.
 
 ---
 

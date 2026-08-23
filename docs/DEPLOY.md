@@ -140,39 +140,61 @@ separate companies; the names do not have to match and usually do not.
 
 ---
 
-## 3. Migrate and seed — 5 minutes
+## 3. Deploy, then migrate and seed — 10 minutes
 
-```bash
-source .venv/bin/activate
-export CODE_PEPPER="..." TURSO_DATABASE_URL="..." TURSO_AUTH_TOKEN="..."
-
-python -m backend.lib.migrate
-python scripts/seed.py --reset
-```
-
-The seed prints every access code you need and writes them to `demo-codes.txt`.
-**Print that page.** Codes are regenerated on every seed, so a copy from an
-earlier rehearsal will not work.
-
-> **If you see `WSServerHandshakeError: 400`** you have the old database driver.
-> The correct package is `libsql`; `libsql-client` was archived in June 2025 and
-> current Turso servers reject its handshake — before running any SQL, and while
-> the Turso CLI connects to the same database perfectly happily.
->
-> ```bash
-> pip uninstall -y libsql-client
-> pip install -r backend/requirements.txt
-> ```
-
----
-
-## 4. Deploy the API — 5 minutes
+Deploy first, because the database setup runs **on Modal**:
 
 ```bash
 modal deploy backend/app.py
 ```
 
-Note the URL it prints, then check it:
+Then:
+
+```bash
+modal run backend/app.py::setup --reset
+```
+
+That applies the migrations and loads the demonstration data, printing every
+access code and writing them to `demo-codes.txt` on your own machine.
+**Print that page.** Codes are regenerated on every seed, so a copy from an
+earlier rehearsal will not work.
+
+Later on, to update the structure without touching the data:
+
+```bash
+modal run backend/app.py::setup --no-seed
+```
+
+### Why this runs on Modal and not on your laptop
+
+The driver that talks to hosted Turso is `libsql`. It ships ready-built for
+x86_64 Linux, both kinds of Mac, and Windows — but **not for ARM64 Linux**. On
+a Snapdragon laptop, WSL is ARM64 Linux, so pip tries to compile it from Rust
+source, needs cmake and a full toolchain, and usually fails with:
+
+```
+is `cmake` not installed?
+```
+
+Modal's machines are x86_64, so the driver is simply there. Running the setup
+on Modal sidesteps the problem entirely, and is better practice regardless: the
+migration runs in the same environment as the code that will use it.
+
+`backend/requirements.txt` already skips the driver on ARM64 Linux, so a plain
+`pip install -r backend/requirements.txt` works there.
+
+> **If you see `WSServerHandshakeError: 400`** you have the *old* driver
+> installed from an earlier attempt. `libsql-client` was archived in June 2025
+> and current Turso servers reject its handshake — before running any SQL, and
+> while the Turso CLI connects to the same database perfectly happily.
+>
+> ```bash
+> pip uninstall -y libsql-client
+> ```
+
+---
+
+## 4. Check it answers — 2 minutes
 
 ```bash
 curl https://<org>--cajcl-2027-web.modal.run/health
@@ -180,7 +202,12 @@ curl https://<org>--cajcl-2027-web.modal.run/public/stats
 ```
 
 `/health` touches no database, so it answers even if the database is
-misconfigured. `/public/stats` is the one that proves the whole chain works.
+misconfigured — which makes it the useful first test. `/public/stats` is the
+one that proves the whole chain works: Modal is up, the credentials are right,
+and the data is there.
+
+The URL is printed by `modal deploy`, and is on the Modal dashboard under the
+`cajcl-2027` app.
 
 ---
 

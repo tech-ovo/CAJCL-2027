@@ -158,7 +158,25 @@ def _open_local(path: str) -> _Handle:
 
 
 def _open_remote(url: str, auth_token: str | None) -> _Handle:
-    import libsql
+    try:
+        import libsql
+    except ImportError:
+        # The most likely reason by far is ARM64 Linux, where libsql publishes
+        # no wheel and pip tries to compile it from Rust source. Say so, because
+        # "No module named libsql" sends people to `pip install libsql`, which
+        # is exactly the thing that just failed.
+        raise RuntimeError(
+            "The `libsql` driver is not installed, so this cannot reach a "
+            "hosted Turso database.\n\n"
+            "If you are on ARM64 Linux (a Snapdragon laptop, or Linux in a VM "
+            "on Apple silicon) there is no wheel for your platform and building "
+            "it from source needs cmake and a Rust toolchain.\n\n"
+            "You almost certainly do not need it. Either:\n"
+            "  - work against a local file:  --db dev.db\n"
+            "  - or run this on Modal:       modal run backend/app.py::setup\n\n"
+            "See docs/RUNBOOK.md, 'Working with the real database from an ARM "
+            "machine'."
+        ) from None
 
     # isolation_level=None puts the driver in autocommit, so the explicit
     # BEGIN/COMMIT in Database.tx() is the only thing managing transactions.
@@ -310,6 +328,7 @@ class Database:
     def _open(self) -> _Handle:
         if self._url is not None:
             return _open_remote(self._url, self._auth_token)
+        assert self._path is not None, "a Database has either a path or a url"
         return _open_local(self._path)
 
     @contextmanager
