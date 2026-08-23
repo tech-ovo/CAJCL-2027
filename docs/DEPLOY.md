@@ -7,66 +7,164 @@ Budget about **90 minutes** the first time, then rehearse twice.
 
 ---
 
+## 0. Your terminal, before anything else
+
+Use **WSL** or the VS Code terminal pointed at WSL. Either is fine; pick one.
+WSL matches the Linux environment Modal runs on, and it is also the only one of
+the two where the PDF tools install at all.
+
+Modern Ubuntu will not let `pip` install into the system Python. That is a
+safety feature, not a mistake. Make a virtual environment **inside the project**
+so it is obvious what it belongs to:
+
+```bash
+cd ~/CAJCL-2027
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r backend/requirements.txt
+pip install modal
+```
+
+You must run `source .venv/bin/activate` in **every new terminal**. Your prompt
+gains a `(.venv)` prefix when it has worked. If a command suddenly says a
+package is missing, that is nearly always why.
+
+`.venv/` is gitignored.
+
+---
+
 ## 1. Turso — 15 minutes
 
 ```bash
 curl -sSfL https://get.tur.so/install.sh | bash
 turso auth signup
 turso db create cajcl-2027
-turso db show cajcl-2027 --url          # -> libsql://cajcl-2027-<org>.turso.io
-turso db tokens create cajcl-2027       # -> the auth token
+turso db show cajcl-2027 --url
+turso db tokens create cajcl-2027
 ```
 
-Create a second database now, while you are thinking about it:
+### About the region
+
+Turso will put you in a group like `aws-us-east-1`. **Leave it there.**
+
+The instinct is to move it near California, but nobody in California ever talks
+to Turso. Only Modal does — the browser never touches the database. Modal's
+default region is US East, so an East Coast database is *already* the right
+choice: it puts the two things that actually talk to each other next to each
+other. Moving Turso west would put a continent between Modal and its database
+and make every page slower.
+
+### The URL will not look like the example
+
+Yours will be something like:
+
+```
+libsql://cajcl-2027-cajcl-2027.aws-us-east-1.turso.io
+         └─ database ─┘ └─ org ─┘ └── region ──┘
+```
+
+The doubled name is normal — Turso names your first organisation after you. The
+second half is your **organisation slug**, which you need later for
+`TURSO_ORG`. Confirm it with `turso org list`.
+
+Create a staging database too, while you are here. The free tier allows 100, and
+it means you never test a migration against the database the board is about to
+look at:
 
 ```bash
 turso db create cajcl-2027-staging
 ```
 
-The free tier allows 100 databases. Having a staging one costs nothing and means
-you never test a migration against the database the board is about to look at.
+---
 
-## 2. Modal — 10 minutes
+## 2. Modal, and generating the pepper — 15 minutes
 
 ```bash
 pip install modal
 modal setup                              # opens a browser
 ```
 
-Create the secret. **These are the only secrets the demo needs.**
+**Generate the pepper so you can see it.** Do not pipe it straight into the
+secret — you need a copy, and a value you never saw is a value you cannot put in
+a password manager.
+
+```bash
+export CODE_PEPPER="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+export TURSO_DATABASE_URL="libsql://cajcl-2027-<org>.aws-us-east-1.turso.io"
+export TURSO_AUTH_TOKEN="<the token from step 1>"
+
+echo "$CODE_PEPPER"        # <- put this in a password manager NOW
+```
+
+Then create the secret from those variables:
 
 ```bash
 modal secret create cajcl-2027 \
-  CODE_PEPPER="$(python -c 'import secrets;print(secrets.token_urlsafe(48))')" \
-  TURSO_DATABASE_URL="libsql://cajcl-2027-<org>.turso.io" \
-  TURSO_AUTH_TOKEN="<the token from step 1>" \
+  CODE_PEPPER="$CODE_PEPPER" \
+  TURSO_DATABASE_URL="$TURSO_DATABASE_URL" \
+  TURSO_AUTH_TOKEN="$TURSO_AUTH_TOKEN" \
   CAJCL_ENV="production"
 ```
 
-**Save the `CODE_PEPPER` somewhere you will not lose it.** Every access code in
-the database is hashed with it. Lose it and nobody can ever sign in again; there
-is no recovery, by design.
+**Why the pepper matters this much.** Every access code is stored scrambled with
+it, and the plain codes are stored nowhere. Lose the pepper and nobody can ever
+sign in again — there is no recovery, which is exactly what makes a stolen copy
+of the database useless on its own.
 
-Optional, for the usage page — it degrades gracefully without them:
+You *can* read a Modal secret back later from the Modal dashboard under Secrets.
+Do not let that be your only copy.
 
+### Adding or changing keys afterwards
+
+`modal secret create` refuses if the secret already exists. Use `--force`, which
+**replaces the whole secret** — so you must pass every key again, not only the
+new ones:
+
+```bash
+modal secret create cajcl-2027 \
+  CODE_PEPPER="$CODE_PEPPER" \
+  TURSO_DATABASE_URL="$TURSO_DATABASE_URL" \
+  TURSO_AUTH_TOKEN="$TURSO_AUTH_TOKEN" \
+  CAJCL_ENV="production" \
+  TURSO_PLATFORM_TOKEN="$(turso auth api-tokens create cajcl-usage | tail -1)" \
+  TURSO_ORG="<your org slug from turso org list>" \
+  TURSO_DB_NAME="cajcl-2027" \
+  --force
 ```
-TURSO_PLATFORM_TOKEN=...   TURSO_ORG=...   TURSO_DB_NAME=cajcl-2027
-```
+
+The last three are optional and only power the usage page. Without them it shows
+a message pointing at the Turso dashboard rather than misleading zeros.
+
+**Your Modal organisation and your Turso organisation are unrelated.** They are
+separate companies; the names do not have to match and usually do not.
+
+---
 
 ## 3. Migrate and seed — 5 minutes
 
 ```bash
-export TURSO_DATABASE_URL="libsql://cajcl-2027-<org>.turso.io"
-export TURSO_AUTH_TOKEN="..."
-export CODE_PEPPER="<the same pepper you put in Modal>"
+source .venv/bin/activate
+export CODE_PEPPER="..." TURSO_DATABASE_URL="..." TURSO_AUTH_TOKEN="..."
 
 python -m backend.lib.migrate
 python scripts/seed.py --reset
 ```
 
-The seed prints every access code you need and writes them to
-`demo-codes.txt`. **Print that page.** The codes are regenerated on every seed,
-so a stale copy from a rehearsal will not work.
+The seed prints every access code you need and writes them to `demo-codes.txt`.
+**Print that page.** Codes are regenerated on every seed, so a copy from an
+earlier rehearsal will not work.
+
+> **If you see `WSServerHandshakeError: 400`** you have the old database driver.
+> The correct package is `libsql`; `libsql-client` was archived in June 2025 and
+> current Turso servers reject its handshake — before running any SQL, and while
+> the Turso CLI connects to the same database perfectly happily.
+>
+> ```bash
+> pip uninstall -y libsql-client
+> pip install -r backend/requirements.txt
+> ```
+
+---
 
 ## 4. Deploy the API — 5 minutes
 
@@ -74,19 +172,23 @@ so a stale copy from a rehearsal will not work.
 modal deploy backend/app.py
 ```
 
-Note the URL it prints — something like
-`https://<org>--cajcl-2027-web.modal.run`. Check it:
+Note the URL it prints, then check it:
 
 ```bash
 curl https://<org>--cajcl-2027-web.modal.run/health
 curl https://<org>--cajcl-2027-web.modal.run/public/stats
 ```
 
+`/health` touches no database, so it answers even if the database is
+misconfigured. `/public/stats` is the one that proves the whole chain works.
+
+---
+
 ## 5. Point the frontend at it — 5 minutes
 
 **Two files, and both matter.**
 
-`frontend/public/config.js` — replace the placeholder:
+`frontend/public/config.js` — replace the placeholder URL:
 
 ```js
 : "https://<org>--cajcl-2027-web.modal.run",
@@ -98,67 +200,79 @@ curl https://<org>--cajcl-2027-web.modal.run/public/stats
 "https://<your-github-username>.github.io",
 ```
 
-CORS will block every request from the published site until that origin is
-listed, and the browser console is the only place it says so. Redeploy Modal
-after changing it.
+Until that origin is listed, every request from the published site is blocked,
+and the *only* place that says so is the browser's developer console. Redeploy
+Modal after changing it.
+
+---
 
 ## 6. Publish the site — 10 minutes
 
 ```bash
-python scripts/build_fonts.py            # writes the woff2 subsets
+python scripts/build_fonts.py            # writes the font subsets
 python scripts/build_snapshot.py         # bakes the numbers into index.html
 ```
 
-Repository → Settings → Pages → Source: **GitHub Actions**. Then push to
-`main`; `.github/workflows/deploy.yml` does the rest.
+Repository → Settings → Pages → Source: **GitHub Actions**.
 
-Add these repository secrets first (Settings → Secrets → Actions):
-`MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET`, `TURSO_DATABASE_URL`,
-`TURSO_AUTH_TOKEN`.
+Add these repository secrets first (Settings → Secrets and variables → Actions),
+or the deploy workflow fails within seconds — which is exactly what happens if
+you push before setting them:
+
+`MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET`, `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`
+
+Modal tokens come from `~/.modal.toml` after `modal setup`, or from the Modal
+dashboard under Settings → API Tokens.
 
 If the custom domain is not ready, delete `frontend/CNAME` and use the
-`github.io` URL — remember it has to be in `ALLOWED_ORIGINS` either way.
+`github.io` address — it still has to be in `ALLOWED_ORIGINS` either way.
+
+---
 
 ## 7. Warm it — 1 minute, and do not skip this
 
 Sign in as an admin → **Settings → Operations → Keep warm for 6 hours**, on the
 morning of the meeting.
 
-Modal scales to zero. The first request after an idle period takes several
-seconds, and the very first thing the board sees should not be a loading
-message — even a well-designed one.
+Modal sleeps when idle. The first request after a quiet spell takes several
+seconds, and the first thing the board sees should not be a loading message —
+even a well-designed one.
+
+---
 
 ## 8. Rehearse — twice
 
-Against production, start to finish, with the projector if you can get it.
-Time it. Then have someone else drive it while you watch, because you will
-click past the thing that is broken.
+Against production, start to finish, with the projector if you can get it. Time
+it. Then have someone else drive while you watch, because you will click past
+the thing that is broken.
 
 ---
 
 ## Pre-flight checklist
 
 - [ ] `curl .../health` returns `{"ok": true}`
-- [ ] The published site loads and shows real statistics, not dashes
-- [ ] The **Demonstration data** banner is visible on every page
+- [ ] `curl .../public/stats` returns real numbers
+- [ ] The published site loads and shows statistics, not dashes
+- [ ] The **Demonstration data** banner is on every page
 - [ ] Every code in `demo-codes.txt` signs in
 - [ ] A QR from a printed sheet scans and signs in on a **phone**
-- [ ] The roster prints; the invoice prints; the exempt invoice says why
+- [ ] The packet prints; the invoice prints; the exempt invoice explains itself
 - [ ] Warm is set past the end of the meeting
 - [ ] `demo-codes.txt` is printed on paper
-- [ ] A screen recording of the full flow exists as a fallback
-- [ ] A local `dev.db` copy runs offline, in case the venue Wi-Fi fails
+- [ ] A screen recording of the full flow exists
+- [ ] A local copy runs offline, in case the venue Wi-Fi fails
 
 ---
 
 ## Known gaps, so nothing surprises you live
 
 - **PDF generation is untested end to end.** The print view works and is the
-  same document. The first `/sponsor/packet.pdf` request cold-starts the fat
-  image and takes 30+ seconds. **Demo the print view, not the PDF.**
+  same document. The first PDF request cold-starts a second, heavier container
+  and takes 30+ seconds. **Demo the print view, not the PDF.**
 - **`/admin/usage` shows a message, not numbers**, unless the three optional
-  Turso platform variables are set.
-- **The catalog editor is read-only.** Seeded correctly; the editing UI was cut.
+  Turso platform values are set.
+- **The catalog editor is read-only.** Seeded correctly; the editing screen was
+  cut for time.
 - **Exports download from the browser.** Writing them to Drive needs Apps
   Script, which is not set up and is not needed for this.
 
@@ -172,7 +286,7 @@ Do not debug in front of the board.
    `python -m http.server 8080 --directory frontend/public`, with `config.js`
    pointed at `127.0.0.1:8000`. Everything works offline against `dev.db`.
 2. **Switch to the recording.**
-3. Fix it afterwards. `docs/RUNBOOK.md` has the diagnosis paths.
+3. Fix it afterwards. `docs/RUNBOOK.md` section 12 has the diagnosis paths.
 
-Having the local copy already running on the machine, in a second browser
-window, costs nothing and turns a disaster into a shrug.
+Having the local copy already running in a second browser window costs nothing
+and turns a disaster into a shrug.

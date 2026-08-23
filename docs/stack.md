@@ -48,7 +48,9 @@ Exceeding a quota does not produce an overage charge — it produces a `BLOCKED`
 
 ## Modal: two images, one writer
 
-The web server is a FastAPI app on a **slim image**: `fastapi`, `libsql-client`, `argon2-cffi`, `segno`, `openpyxl`. It must cold-start in a couple of seconds.
+The web server is a FastAPI app on a **slim image**: `fastapi`, `libsql`, `segno`, `openpyxl`. It must cold-start in a couple of seconds.
+
+The driver is **`libsql`**, not `libsql-client`. The latter was archived in June 2025; it speaks the WebSocket (hrana) protocol, and current Turso endpoints reject that handshake with a `400` before any SQL runs — while the Turso CLI connects to the same database perfectly happily, which makes the failure look like anything but a driver problem. `argon2-cffi` was listed here and is not used: there is no password anywhere in this system, and a slow KDF would turn the code lookup from an indexed query into a full scan.
 
 Anything CPU-heavy or dependency-heavy runs as a **separate function with its own fat image** — PDF generation with WeasyPrint needs Pango and Cairo apt-installed, and later work (optical mark recognition, awards generation) will need more. The web container `.spawn()`s these and the worker reports completion back to the web endpoint over the network. The fat image only ever cold-starts when someone actually asks for a PDF, so the interactive path never pays for it.
 

@@ -81,36 +81,55 @@ class AuditRequired(RuntimeError):
 #     transaction" -- and the natural fix (silently joining the outer one) makes
 #     rollback boundaries invisible.
 #
-# Opening a SQLite connection costs microseconds, and the Turso client is HTTP,
-# so a handle per transaction is cheap in both directions.
+# Opening a connection costs microseconds locally and one HTTP round trip
+# remotely, so a handle per transaction is cheap in both directions.
+#
+# ONE HANDLE CLASS SERVES BOTH BACKENDS.
+#   `sqlite3` (standard library) drives a local file. `libsql` (the current
+#   Turso driver) drives a remote database. Both are DB-API 2.0 with qmark
+#   parameters, so the code below does not care which it is holding -- only the
+#   two statements that genuinely differ are parameterised.
+#
+#   The previous version used `libsql-client`, which was archived in June 2025.
+#   It spoke the WebSocket (hrana) protocol, and current Turso endpoints reject
+#   that handshake with `WSServerHandshakeError: 400` before any SQL runs. The
+#   symptom is confusing because the CLI connects to the same database happily.
+#   If you see that error again, check the driver before checking anything else.
 
-class _SqliteHandle:
-    """One connection to a local file. Used by tests, dev, and every worker."""
 
-    def __init__(self, path: str):
-        self._conn = sqlite3.connect(path, isolation_level=None)
-        # Without this every foreign key in the schema is decorative. SQLite
-        # defaults it OFF and the failure is completely silent.
-        self._conn.execute("PRAGMA foreign_keys = ON")
-        # WAL lets a reader -- an export, a Colab session -- run while the app
-        # writes. Ignored harmlessly on :memory:.
-        if path != ":memory:":
-            self._conn.execute("PRAGMA journal_mode = WAL")
-            # Rather than failing instantly when another writer holds the lock.
-            self._conn.execute("PRAGMA busy_timeout = 5000")
-        self._conn.row_factory = sqlite3.Row
+class _Handle:
+    """One connection, local or remote. The only place a driver is touched."""
+
+    def __init__(self, conn, *, begin_sql: str):
+        self._conn = conn
+        self._begin_sql = begin_sql
         self.last_insert_id = None
         self.rows_changed = 0
 
     def execute(self, sql: str, params: Sequence[Any]) -> list[Row]:
         cursor = self._conn.execute(sql, tuple(params))
-        rows = [Row(zip(r.keys(), tuple(r))) for r in cursor.fetchall()]
+
+        # The two drivers disagree about how to say "this returned no rows",
+        # and they disagree in opposite directions:
+        #
+        #   sqlite3   description = None   fetchall() = []
+        #   libsql    description = []     fetchall() = None
+        #
+        # Treating either signal alone as authoritative crashes on the other
+        # driver, so both are checked. This is the only place in the codebase
+        # that has to know the difference.
+        columns = [column[0] for column in (cursor.description or ())]
+        rows: list[Row] = []
+        if columns:
+            records = cursor.fetchall() or ()
+            rows = [Row(zip(columns, record)) for record in records]
+
         self.last_insert_id = cursor.lastrowid
         self.rows_changed = cursor.rowcount
         return rows
 
     def begin(self) -> None:
-        self._conn.execute("BEGIN IMMEDIATE")
+        self._conn.execute(self._begin_sql)
 
     def commit(self) -> None:
         self._conn.execute("COMMIT")
@@ -122,38 +141,34 @@ class _SqliteHandle:
         self._conn.close()
 
 
-class _TursoHandle:
-    """One libSQL transaction over the shared HTTP client."""
+def _open_local(path: str) -> _Handle:
+    conn = sqlite3.connect(path, isolation_level=None)
+    # Without this every foreign key in the schema is decorative. SQLite
+    # defaults it OFF and the failure is completely silent.
+    conn.execute("PRAGMA foreign_keys = ON")
+    if path != ":memory:":
+        # WAL lets a reader -- an export, a Colab session -- run while the app
+        # writes.
+        conn.execute("PRAGMA journal_mode = WAL")
+        # Wait for another writer rather than failing instantly.
+        conn.execute("PRAGMA busy_timeout = 5000")
+    # BEGIN IMMEDIATE takes the write lock up front, so two local writers fail
+    # fast instead of deadlocking halfway through a transaction.
+    return _Handle(conn, begin_sql="BEGIN IMMEDIATE")
 
-    def __init__(self, client):
-        self._client = client
-        self._tx = None
-        self.last_insert_id = None
-        self.rows_changed = 0
 
-    def execute(self, sql: str, params: Sequence[Any]) -> list[Row]:
-        target = self._tx if self._tx is not None else self._client
-        result = target.execute(sql, list(params))
-        self.last_insert_id = result.last_insert_rowid
-        self.rows_changed = result.rows_affected
-        return [Row(zip(result.columns, tuple(r))) for r in result.rows]
+def _open_remote(url: str, auth_token: str | None) -> _Handle:
+    import libsql
 
-    def begin(self) -> None:
-        self._tx = self._client.transaction()
-
-    def commit(self) -> None:
-        self._tx.commit()
-        self._tx = None
-
-    def rollback(self) -> None:
-        if self._tx is not None:
-            self._tx.rollback()
-            self._tx = None
-
-    def close(self) -> None:
-        # The client is shared and outlives this handle; only the transaction
-        # belonged to us, and commit/rollback has already disposed of it.
-        self._tx = None
+    # isolation_level=None puts the driver in autocommit, so the explicit
+    # BEGIN/COMMIT in Database.tx() is the only thing managing transactions.
+    # Leaving it at the DB-API default would have the driver open its own
+    # transaction as well, and the two would fight.
+    conn = libsql.connect(url, auth_token=auth_token or "", isolation_level=None)
+    conn.execute("PRAGMA foreign_keys = ON")
+    # Plain BEGIN, not IMMEDIATE: a hosted database has a single writer already,
+    # and IMMEDIATE is a local-file locking concern that remote need not honour.
+    return _Handle(conn, begin_sql="BEGIN")
 
 
 # ---------------------------------------------------------------------------
@@ -232,7 +247,7 @@ class Tx:
 
         `ts` overrides the timestamp. Request paths never pass it -- it exists
         so the demo seed can lay down a log that spans the weeks it claims to,
-        rather than several months of registration all stamped one Tuesday.
+        rather than months of registration all stamped one Tuesday.
         """
         if value_detail is not None and action != "payment.record":
             raise ValueError(
@@ -286,14 +301,16 @@ class Tx:
 class Database:
     """A connection factory. Every transaction gets its own handle."""
 
-    def __init__(self, *, path: str | None = None, client=None):
+    def __init__(self, *, path: str | None = None,
+                 url: str | None = None, auth_token: str | None = None):
         self._path = path
-        self._client = client
+        self._url = url
+        self._auth_token = auth_token
 
-    def _open(self):
-        if self._client is not None:
-            return _TursoHandle(self._client)
-        return _SqliteHandle(self._path)
+    def _open(self) -> _Handle:
+        if self._url is not None:
+            return _open_remote(self._url, self._auth_token)
+        return _open_local(self._path)
 
     @contextmanager
     def tx(self, *, request_id: str | None = None) -> Iterator[Tx]:
@@ -340,9 +357,16 @@ class Database:
         handle.close()
 
     def close(self) -> None:
-        if self._client is not None:
-            self._client.close()
-            self._client = None
+        """Nothing to release.
+
+        Connections are opened and closed per transaction, so a Database holds
+        no resources of its own. This exists because callers reasonably expect
+        it to.
+        """
+        return None
+
+
+REMOTE_SCHEMES = ("libsql://", "https://", "http://", "wss://", "ws://")
 
 
 def connect(url: str | None = None, *, auth_token: str | None = None) -> Database:
@@ -356,10 +380,8 @@ def connect(url: str | None = None, *, auth_token: str | None = None) -> Databas
     url = url or os.environ.get("TURSO_DATABASE_URL") or "dev.db"
     auth_token = auth_token or os.environ.get("TURSO_AUTH_TOKEN")
 
-    if url.startswith(("libsql://", "https://", "http://", "wss://", "ws://")):
-        import libsql_client
-
-        return Database(client=libsql_client.create_client_sync(url, auth_token=auth_token))
+    if url.startswith(REMOTE_SCHEMES):
+        return Database(url=url, auth_token=auth_token)
 
     if url.startswith("file:"):
         url = url[5:]

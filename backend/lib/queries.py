@@ -33,7 +33,23 @@ QUERIES_DIR = pathlib.Path(__file__).resolve().parent.parent / "queries"
 _NAME_RE = re.compile(r"^--\s*name:\s*([A-Za-z0-9_.]+)\s*$")
 
 # A statement that changes data. Used to enforce the audit-log rule in db.py.
+#
+# The comment lines have to come off FIRST. Every query in this registry is
+# documented, so the keyword is almost never on the first physical line -- and
+# an earlier version matched against the raw text, which quietly classified 14
+# of 91 queries as read-only. Among them were `payments.create`,
+# `people.cancel`, and `stats.upsert_school`: the audit invariant that db.py
+# advertises as unbreakable simply did not apply to them, and a read-only
+# transaction would have run them without complaint.
+#
+# The bug was invisible precisely because it hit the queries that were best
+# explained. test_queries.py now checks every flag.
 _MUTATING = re.compile(r"^\s*(INSERT|UPDATE|DELETE|REPLACE)\b", re.IGNORECASE)
+_LEADING_COMMENTS = re.compile(r"\A(?:\s*--[^\n]*\n)+")
+
+
+def _strip_leading_comments(sql: str) -> str:
+    return _LEADING_COMMENTS.sub("", sql).lstrip()
 
 
 class Query:
@@ -45,7 +61,7 @@ class Query:
         self.name = name
         self.sql = sql.strip()
         self.source = source
-        self.mutating = bool(_MUTATING.match(self.sql))
+        self.mutating = bool(_MUTATING.match(_strip_leading_comments(self.sql)))
 
     def __repr__(self) -> str:
         return f"<Query {self.name} from {self.source}>"

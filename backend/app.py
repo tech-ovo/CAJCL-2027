@@ -5,7 +5,7 @@ is what lets the whole API be exercised by the test suite and run locally with
 `uvicorn backend.api:app`.
 
 TWO IMAGES, ONE WRITER
-    The web server is a SLIM image -- fastapi, libsql-client, segno -- and must
+    The web server is a SLIM image -- fastapi, libsql, segno, openpyxl -- and must
     cold-start in a couple of seconds, because a delegate on a phone is waiting
     for it. Anything CPU-heavy or dependency-heavy runs as a separate function
     on its own FAT image and is `.spawn()`ed. WeasyPrint needs Pango and Cairo
@@ -38,7 +38,7 @@ slim_image = (
     # having it here means an export downloads immediately instead of waiting
     # for the fat image to boot. WeasyPrint is the only thing heavy enough to
     # justify the split.
-    .pip_install("fastapi[standard]", "libsql-client", "segno", "openpyxl")
+    .pip_install("fastapi[standard]", "libsql", "segno", "openpyxl")
     .add_local_dir(".", remote_path="/root/cajcl", ignore=[
         "**/.git/**", "**/__pycache__/**", "**/.pytest_cache/**",
         "*.db", "*.db-wal", "*.db-shm", "demo-codes.txt",
@@ -54,7 +54,7 @@ fat_image = (
         "libpango-1.0-0", "libpangoft2-1.0-0", "libcairo2",
         "libgdk-pixbuf-2.0-0", "libffi-dev", "shared-mime-info", "fonts-dejavu-core",
     )
-    .pip_install("weasyprint", "openpyxl", "libsql-client", "segno")
+    .pip_install("weasyprint", "openpyxl", "libsql", "segno")
     .add_local_dir(".", remote_path="/root/cajcl", ignore=[
         "**/.git/**", "**/__pycache__/**", "**/.pytest_cache/**",
         "*.db", "*.db-wal", "*.db-shm", "demo-codes.txt",

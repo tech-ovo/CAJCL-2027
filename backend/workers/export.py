@@ -288,11 +288,12 @@ def mirror_turso_to_file(out_dir: str) -> str:
     loads into a Colab -- which is the property every fallback plan depends on.
     """
     import os
-    import libsql_client
+
+    import libsql
 
     url = os.environ["TURSO_DATABASE_URL"]
     token = os.environ.get("TURSO_AUTH_TOKEN")
-    client = libsql_client.create_client_sync(url, auth_token=token)
+    client = libsql.connect(url, auth_token=token or "", isolation_level=None)
 
     pathlib.Path(out_dir).mkdir(parents=True, exist_ok=True)
     local = str(pathlib.Path(out_dir) / "mirror.db")
@@ -301,24 +302,26 @@ def mirror_turso_to_file(out_dir: str) -> str:
 
     target = sqlite3.connect(local)
     try:
-        schema = client.execute(
-            "SELECT sql FROM sqlite_master WHERE sql IS NOT NULL "
-            "AND name NOT LIKE 'sqlite_%'")
-        for row in schema.rows:
-            target.execute(row[0])
+        for (statement,) in client.execute(
+                "SELECT sql FROM sqlite_master WHERE sql IS NOT NULL "
+                "AND name NOT LIKE 'sqlite_%'").fetchall():
+            target.execute(statement)
 
-        tables = client.execute(
+        tables = [row[0] for row in client.execute(
             "SELECT name FROM sqlite_master WHERE type='table' "
-            "AND name NOT LIKE 'sqlite_%'")
-        for (table,) in [tuple(r) for r in tables.rows]:
-            result = client.execute(f'SELECT * FROM "{table}"')
-            if not result.rows:
+            "AND name NOT LIKE 'sqlite_%'").fetchall()]
+
+        for table in tables:
+            cursor = client.execute(f'SELECT * FROM "{table}"')
+            rows = cursor.fetchall()
+            if not rows:
                 continue
-            marks = ", ".join("?" * len(result.columns))
-            names = ", ".join(f'"{c}"' for c in result.columns)
+            columns = [column[0] for column in cursor.description]
+            marks = ", ".join("?" * len(columns))
+            names = ", ".join(f'"{c}"' for c in columns)
             target.executemany(
                 f'INSERT INTO "{table}" ({names}) VALUES ({marks})',
-                [tuple(r) for r in result.rows])
+                [tuple(row) for row in rows])
         target.commit()
     finally:
         target.close()

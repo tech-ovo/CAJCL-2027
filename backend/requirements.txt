@@ -2,5 +2,11 @@
 # of seconds, so nothing heavy belongs here. Anything needing apt packages or
 # large wheels goes in requirements-worker.txt and runs as a spawned function.
 fastapi
-libsql-client
+# The CURRENT Turso driver. Not `libsql-client`, which was archived in June 2025
+# and whose WebSocket handshake is rejected by present-day Turso endpoints --
+# see the comment in backend/lib/db.py.
+libsql
 segno
+# Pure Python and adds nothing measurable to a cold start, so an export can be
+# produced inline rather than waiting for the fat image to boot.
+openpyxl
