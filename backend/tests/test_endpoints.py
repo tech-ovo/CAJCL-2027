@@ -112,6 +112,8 @@ ROUTES = [
      {"key": "x", "name": "X", "scopes": ["awards"]}),
     ("admin.people.roles", "POST", "/admin/people/{person}/roles",
      {"role_key": "delegate"}),
+    ("admin.announcements.set_active", "POST",
+     "/admin/announcements/1/active", {"active": False}),
     ("sponsor.people.regenerate_many", "POST", "/sponsor/regenerate-codes",
      {"person_ids": ["{person}"]}),
     ("admin.board.list", "GET", "/admin/board", None),
@@ -206,6 +208,7 @@ def test_no_route_is_accidentally_public():
                        .replace("{school_id}", "{school}") \
                        .replace("{entry_id}", "{entry}") \
                        .replace("{item_id}", "1") \
+                       .replace("{announcement_id}", "1") \
                        .replace("{key}", "welcome_body")
         assert template in guarded_paths, f"{path} has no declared guard"
 

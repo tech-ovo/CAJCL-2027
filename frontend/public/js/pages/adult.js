@@ -14,7 +14,7 @@
 
 import * as api from "../api.js";
 import { add, el, clear, tabula, field, input, select, button, errorSummary,
-         renderMarkdown, personNumber, guardUnsaved } from "../ui.js";
+         renderMarkdown, personNumber, guardUnsaved, draft } from "../ui.js";
 
 const MEALS = [["", "Choose one"], ["regular", "Regular"],
                ["vegetarian", "Vegetarian"], ["gluten_free", "Gluten free"]];
@@ -24,9 +24,9 @@ const MEALS = [["", "Choose one"], ["regular", "Regular"],
  * intermediate Latin from the dashboard without a schema change. */
 const LATIN = [
   ["none", "None"],
-  ["novice", "Novice — I know a little"],
-  ["intermediate", "Intermediate — I can read with a dictionary"],
-  ["advanced", "Advanced — I teach it, or could"],
+  ["novice", "Novice"],
+  ["intermediate", "Intermediate"],
+  ["advanced", "Advanced"],
 ];
 
 /* Two labels each. The long one is for the menu, where somebody is deciding
@@ -59,8 +59,45 @@ export async function adultSheetPage(host) {
   let original = snapshot();
   let dirty = false;
 
+  // Same safety net as the activity sheet: an adult filling this in on a phone
+  // between classes should not lose it to a closed tab.
+  const held = draft(`adult.${sheet.person.id}`);
+  let restored = false;
+  let submitButton = null;
+  let unsavedNote = null;
+
+  restoreDraft();
   render();
   guardUnsaved(() => dirty, "unsaved changes to your registration form");
+
+  function restoreDraft() {
+    const stored = held.read();
+    if (!stored || !stored.value) return;
+    if (stored.value.snapshot === original) { held.clear(); return; }
+
+    const value = stored.value;
+    person = { ...person, ...(value.person || {}) };
+    knowledge = value.knowledge || knowledge;
+    selected = new Set(value.selected || []);
+    restored = true;
+    dirty = true;
+  }
+
+  function refreshSubmit() {
+    if (!submitButton) return;
+    submitButton.disabled = sheet.locked || !dirty;
+
+    clear(unsavedNote);
+    unsavedNote.className = "form-note";
+    if (sheet.locked) {
+      add(unsavedNote, "Forms are closed.");
+    } else if (dirty) {
+      unsavedNote.className = "form-note form-note--unsaved";
+      add(unsavedNote, "Unsaved changes — press Save my answers.");
+    } else if (sheet.status === "submitted") {
+      add(unsavedNote, "Saved. You can change any of this until the deadline.");
+    }
+  }
 
   function snapshot() {
     return JSON.stringify({
@@ -76,6 +113,13 @@ export async function adultSheetPage(host) {
 
   function touch() {
     dirty = snapshot() !== original;
+    refreshSubmit();
+    if (dirty) {
+      held.save({ snapshot: snapshot(), person, knowledge,
+                  selected: [...selected] });
+    } else {
+      held.clear();
+    }
   }
 
   function render() {
@@ -87,6 +131,15 @@ export async function adultSheetPage(host) {
       left: shortType(person.adult_type),
       right: personNumber(person.id),
     }));
+
+    if (restored) {
+      add(host, el("div", { class: "banner banner--info",
+                            style: "margin-bottom:1.5rem" },
+        el("span", { class: "banner__label" }, "Restored"),
+        el("span", {}, "These are the answers you had open last time on this "
+                     + "device, which were never saved. Check them over and "
+                     + "press Save my answers.")));
+    }
 
     if (sheet.locked) {
       add(host, el("div", { class: "waking waking--failed" },
@@ -183,11 +236,20 @@ export async function adultSheetPage(host) {
             oninput: (e) => { person.availability_note = e.target.value; touch(); },
           }, person.availability_note || ""),
         })),
-      el("div", { class: "btn-row" },
-        button(sheet.status === "submitted" ? "Save changes" : "Submit my registration",
-          { variant: "btn--primary", type: "submit", disabled: sheet.locked })));
+      el("div", { class: "btn-row" }, buttonRow()));
 
     add(host, form);
+    refreshSubmit();
+  }
+
+  /* "Submit my registration" read as one-and-final, which is how an adult ends
+   * up holding a half-finished form until the deadline. It has always been a
+   * save. */
+  function buttonRow() {
+    submitButton = button("Save my answers",
+                          { variant: "btn--primary", type: "submit" });
+    unsavedNote = el("p", { class: "form-note", "aria-live": "polite" });
+    return [submitButton, unsavedNote];
   }
 
   function choice(item) {
@@ -247,9 +309,12 @@ export async function adultSheetPage(host) {
       person = { ...sheet.person };
       selected = new Set(sheet.selected);
       knowledge = person.latin_knowledge || "none";
-      // What is now on the server becomes the new baseline.
+      // What is now on the server becomes the new baseline, and the local
+      // copy is only a way to get confused.
       original = snapshot();
       dirty = false;
+      restored = false;
+      held.clear();
       render();
       window.scrollTo({ top: 0 });
     } catch (error) {

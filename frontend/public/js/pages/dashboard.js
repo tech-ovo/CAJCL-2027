@@ -218,7 +218,9 @@ export async function dashboardPage(host) {
           el("div", { class: "span-5" },
             field({ id: "school-name", label: "Name", required: true, control: name })),
           el("div", { class: "span-4" },
-            field({ id: "school-city", label: "City", control: city })),
+            field({ id: "school-city", label: "City", required: true,
+                    help: "Shown beside the chapter name everywhere.",
+                    control: city })),
           el("div", { class: "span-3" },
             field({ id: "school-level", label: "Level", required: true, control: level })),
           el("div", { class: "span-4" },
@@ -241,7 +243,7 @@ export async function dashboardPage(host) {
                 const dollars = Number(String(discount.value || 0)
                   .replace(/[$,\s]/g, "")) || 0;
                 await api.post("/admin/schools", {
-                  name: name.value.trim(), city: city.value.trim() || null,
+                  name: name.value.trim(), city: city.value.trim(),
                   level: level.value,
                   billing_exempt: exempt.checked,
                   discount_cents: Math.round(dollars * 100),

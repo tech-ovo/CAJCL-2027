@@ -28,8 +28,10 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import re
 import sqlite3
+import time
 from contextlib import contextmanager
 from typing import Any, Iterator, Sequence
 
@@ -51,6 +53,41 @@ SILENT_ACTIONS = frozenset({
     # already audited, and logging both would double every entry.
     "stats.recompute",
 })
+
+
+# ---------------------------------------------------------------------------
+# Waiting for the write lock
+# ---------------------------------------------------------------------------
+#
+# libSQL, like SQLite, has ONE writer. Two requests that both want to write --
+# a sponsor ticking a paper form while a delegate saves an activity sheet --
+# and the loser gets SQLITE_BUSY. Left alone that surfaces as a 500 to somebody
+# who did nothing wrong and whose obvious next move is to click again.
+#
+# A busy error means the statement DID NOT RUN. Nothing was half-applied, so
+# running it again is safe -- which is what makes retrying at this level
+# correct rather than merely convenient. Anything else is re-raised untouched.
+#
+# Five attempts over roughly a second and a half. Long enough to ride out the
+# contention a fifty-chapter convention actually produces, short enough that a
+# genuinely stuck lock still fails while somebody is looking at the screen
+# rather than after they have given up.
+BUSY_ATTEMPTS = 5
+BUSY_BASE_DELAY = 0.05      # seconds; doubles each time, plus jitter
+
+_BUSY_MARKERS = ("database is locked", "database is busy",
+                 "sqlite_busy", "sqlite_locked")
+
+
+def _is_busy(error: BaseException) -> bool:
+    """Is this the single-writer lock, or a real failure?
+
+    Matched on the message because the two drivers raise different types for
+    it -- sqlite3.OperationalError locally, a plain ValueError wrapping Hrana's
+    text remotely -- and neither exposes the SQLite result code.
+    """
+    text = str(error).lower()
+    return any(marker in text for marker in _BUSY_MARKERS)
 
 
 class Row(dict):
@@ -108,7 +145,7 @@ class _Handle:
         self.rows_changed = 0
 
     def execute(self, sql: str, params: Sequence[Any]) -> list[Row]:
-        cursor = self._conn.execute(sql, tuple(params))
+        cursor = self._run_with_retry(sql, tuple(params))
 
         # The two drivers disagree about how to say "this returned no rows",
         # and they disagree in opposite directions:
@@ -129,8 +166,27 @@ class _Handle:
         self.rows_changed = cursor.rowcount
         return rows
 
+    def _run_with_retry(self, sql: str, params: tuple):
+        """Execute, waiting out the write lock rather than failing on it.
+
+        See BUSY_ATTEMPTS above for why retrying here is safe: a busy error
+        means the statement never ran.
+        """
+        for attempt in range(BUSY_ATTEMPTS):
+            try:
+                return self._conn.execute(sql, params)
+            except Exception as error:
+                last = attempt == BUSY_ATTEMPTS - 1
+                if last or not _is_busy(error):
+                    raise
+                # Jittered, so two containers that collided do not wake up
+                # together and collide again.
+                delay = BUSY_BASE_DELAY * (2 ** attempt)
+                time.sleep(delay + random.uniform(0, delay))
+        raise AssertionError("unreachable")
+
     def begin(self) -> None:
-        self._conn.execute(self._begin_sql)
+        self._run_with_retry(self._begin_sql, ())
 
     def commit(self) -> None:
         self._conn.execute("COMMIT")
@@ -229,6 +285,10 @@ def _open_remote(url: str, auth_token: str | None) -> _Handle:
 
     conn = libsql.connect(url, auth_token=auth_token or "", isolation_level=None)
     conn.execute("PRAGMA foreign_keys = ON")
+    # The local handle has always had this and the remote one had not, which is
+    # backwards: contention is a HOSTED database's problem, not a laptop's.
+    # It is the driver's own wait, underneath the retry loop above.
+    conn.execute("PRAGMA busy_timeout = 5000")
     # Plain BEGIN, not IMMEDIATE: a hosted database has a single writer already,
     # and IMMEDIATE is a local-file locking concern that remote need not honour.
     return _Handle(conn, begin_sql="BEGIN")

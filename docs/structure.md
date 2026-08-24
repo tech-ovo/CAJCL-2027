@@ -16,7 +16,7 @@ The welcome page carries the masthead, the convention theme, the dates and venue
 
 # **Account**
 
-Each attendee receives one secret code, generated at registration, in the format `PPP-XXXXX-XXXXX` — a three-letter prefix (`SPO` sponsor, `DEL` delegate, `VOL` adult volunteer or chaperone, `ADM` admin), nine random Crockford Base32 characters, and a check symbol. A person holds exactly one code no matter how many roles they have. Additional permissions come from **roles granted to the account**, and roles carry scopes; a scope is never attached to a person directly, and there is never a second code.
+Each attendee receives one secret code, generated at registration, in the format `PPP-XXXXX-XXXXX` — a three-letter prefix (`SPO` sponsor, `DEL` delegate, `VOL` adult volunteer or chaperone — the prefix says what a person *is*, never what they may do), nine random Crockford Base32 characters, and a check symbol. A person holds exactly one code no matter how many roles they have. Additional permissions come from **roles granted to the account**, and roles carry scopes; a scope is never attached to a person directly, and there is never a second code.
 
 They enter it once, or scan the QR code on their printed sheet, and `localStorage` keeps a session token so they never log in again on that device. The raw code is never stored on the device.
 

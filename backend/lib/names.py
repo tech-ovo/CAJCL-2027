@@ -181,6 +181,11 @@ def _strip_noise(line: str) -> tuple[str, bool]:
     return line, had_invisible
 
 
+# Tab, newline and carriage return. Unicode classes all three as control
+# characters; in a pasted roster they are simply the delimiters.
+_BENIGN_CONTROLS = '\t\n\r'
+
+
 def _has_unexpected_characters(line: str) -> bool:
     """Control characters, or brackets that do not close.
 
@@ -188,7 +193,14 @@ def _has_unexpected_characters(line: str) -> bool:
     `Nguyễn Thị Minh Anh` are ordinary names, and warning about them would be
     both insulting and the kind of noise that trains people to ignore warnings.
     """
-    if any(unicodedata.category(ch) == "Cc" for ch in line):
+    # A TAB IS NOT SUSPICIOUS. Unicode calls it a control character, and it is
+    # also the single most common thing in a real paste: it is what a
+    # spreadsheet column boundary looks like, and the delimiter this parser
+    # chooses first. Flagging it warned on every row of every pasted
+    # spreadsheet, which is exactly the noise that teaches a sponsor to ignore
+    # warnings before they meet a real one.
+    if any(unicodedata.category(ch) == "Cc" and ch not in _BENIGN_CONTROLS
+           for ch in line):
         return True
     stack = []
     closers = {v: k for k, v in _BRACKETS.items()}
@@ -357,11 +369,28 @@ def _title_case_tokens(tokens: list[str]) -> list[str]:
 # Particles and suffixes
 # ---------------------------------------------------------------------------
 
+def _is_suffix(text: str) -> bool:
+    """Is this whole field just a generational suffix?
+
+    Used to tell `Volkov, Jr.` (one person, suffixed) from `Volkov, Dmitri`
+    (last name, then first).
+    """
+    return text.strip().rstrip(",.").lower().replace(".", "") in {
+        key.rstrip(".") for key in SUFFIXES
+    }
+
+
 def _pop_suffix(tokens: list[str]) -> tuple[list[str], str]:
     if len(tokens) >= 2:
         candidate = tokens[-1].strip().rstrip(",").lower()
         if candidate in SUFFIXES:
-            return tokens[:-1], SUFFIXES[candidate]
+            # Strip the comma from the token BEFORE the suffix too. "Dmitri
+            # Volkov, Jr." otherwise leaves a last name of "Volkov," -- correct
+            # enough to survive the preview and wrong on the printed sheet.
+            kept = tokens[:-1]
+            if kept and kept[-1].endswith(","):
+                kept = kept[:-1] + [kept[-1].rstrip(",")]
+            return kept, SUFFIXES[candidate]
     return tokens, ""
 
 
@@ -461,13 +490,21 @@ def _parse_line(line_number: int, raw: str, school_level: str,
         # corrected in the preview.
         if len(name_fields) == 1 and "," in name_fields[0]:
             inner = [f.strip() for f in name_fields[0].split(",") if f.strip()]
-            if len(inner) == 2:
+            if len(inner) == 2 and not _is_suffix(inner[1]):
                 name_fields = inner
         from_delimited = True
     elif "," in cleaned:
         fields = [f.strip() for f in cleaned.split(",") if f.strip()]
         name_fields = _extract_fields(fields, row, school_level)
-        from_delimited = True
+        # `Dmitri Volkov, Jr.` is one name with a suffix, not `Last, First`.
+        # Read the other way it produced a delegate called Jr. Dmitri Volkov,
+        # which is wrong in a way that looks deliberate on a preview screen and
+        # so gets committed.
+        if len(name_fields) == 2 and _is_suffix(name_fields[1]):
+            name_fields = [" ".join(name_fields)]
+            from_delimited = False
+        else:
+            from_delimited = True
     else:
         cleaned = _extract_embedded(cleaned, row)
         name_fields = _extract_fields(cleaned.split(), row, school_level)
@@ -489,7 +526,7 @@ def _parse_line(line_number: int, raw: str, school_level: str,
     if from_delimited and len(name_fields) == 2:
         last_part, first_part = name_fields[0], name_fields[1]
         tokens = first_part.split() + last_part.split()
-        uniform = _is_uniform_case(cleaned)
+        uniform = _is_uniform_case(" ".join(name_fields))
         if uniform:
             tokens = _title_case_tokens(tokens)
         tokens, row.suffix = _pop_suffix(tokens)
@@ -507,7 +544,7 @@ def _parse_line(line_number: int, raw: str, school_level: str,
         if from_delimited and len(name_fields) > 2:
             row.warn("ambiguous_delimiter")
         tokens = " ".join(name_fields).split()
-        uniform = _is_uniform_case(cleaned)
+        uniform = _is_uniform_case(" ".join(name_fields))
         if uniform:
             tokens = _title_case_tokens(tokens)
         tokens, row.suffix = _pop_suffix(tokens)

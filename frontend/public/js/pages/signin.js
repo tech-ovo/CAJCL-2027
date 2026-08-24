@@ -22,8 +22,9 @@ export async function signInPage(host) {
       autocomplete: "one-time-code",
       spellcheck: "false",
       autocapitalize: "characters",
-      // Not "DEL-XXXXX-XXXXX": a sponsor or a chair whose code starts SPO or
-      // ADM should not be left wondering whether they are on the right screen.
+      // Not "DEL-XXXXX-XXXXX": a sponsor whose code starts SPO, or a
+      // volunteer whose code starts VOL, should not be left wondering whether
+      // they are on the right screen.
       placeholder: "XXX-XXXXX-XXXXX",
       maxlength: 15,
       oninput: (event) => {
@@ -93,12 +94,18 @@ export async function signInPage(host) {
         // Everyone signs in the same way, but "ask your sponsor" is wrong
         // advice for the sponsor, and worse advice for a convention chair.
         // Say who issues a code to whom, once, plainly.
+        // A two-column list put the term and the answer in the same small
+        // capitals, so neither led — and squeezed the answers into a column
+        // narrow enough to wrap three words onto two lines. A heading with a
+        // line under it has the hierarchy the content already had.
         el("p", { class: "label" }, "Where codes come from"),
-        el("dl", { class: "detail small" },
-          el("dt", {}, "Delegates"), el("dd", {}, "Your sponsor"),
-          el("dt", {}, "Chaperones"), el("dd", {}, "The chapter's sponsor"),
-          el("dt", {}, "Sponsors"), el("dd", {}, "A convention chair"),
-          el("dt", {}, "Board"), el("dd", {}, "A convention president"))),
+        el("div", { class: "rail-list" },
+          ...[["Delegates", "Your sponsor"],
+              ["Chaperones", "Your chapter's sponsor"],
+              ["Sponsors", "A convention chair"],
+              ["Board", "A convention president"]].map(([who, source]) =>
+            el("p", { class: "small" },
+              el("strong", {}, who), el("br"), source)))),
       el("div", {},
         el("h1", {}, "Sign in"),
         el("p", { class: "lede" },

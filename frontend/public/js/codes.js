@@ -22,7 +22,9 @@ const CHECK_MODULUS = 31;
 /* I and L read as 1, O reads as 0. Someone typing what they see must get in. */
 const CONFUSABLES = { I: "1", L: "1", O: "0" };
 
-const PREFIXES = ["SPO", "DEL", "VOL", "ADM"];
+// Must match VALID_PREFIXES in backend/lib/codes.py. `ADM` was retired --
+// a prefix says what someone is, never what they may do.
+const PREFIXES = ["SPO", "DEL", "VOL"];
 const DATA_LENGTH = 9;
 
 /** Fold a typed code into the exact string the server hashes, or null. */

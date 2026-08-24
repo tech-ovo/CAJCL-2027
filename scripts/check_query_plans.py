@@ -70,6 +70,13 @@ EXEMPT: dict[str, str] = {
         "few thousand rows at convention peak. An index on attempted_at would "
         "cost a write on every login attempt to save one scan a day."
     ),
+    "people.with_prefix": (
+        "A one-off migration query, run by hand when a code prefix is retired. "
+        "It scans people once, ever, and is on no request path. An index on "
+        "code_prefix would cost a write every time a code is issued -- which "
+        "is every delegate at registration -- to save a single scan that "
+        "happens roughly never."
+    ),
 }
 
 _SCAN_RE = re.compile(r"\bSCAN\s+(?:TABLE\s+)?([A-Za-z_][A-Za-z0-9_]*)")

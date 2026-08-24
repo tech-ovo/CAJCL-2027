@@ -4,18 +4,26 @@
     "last": "Lovelace",
     "title": "Sponsor",
     "school": "University High School",
-    "roles": ["sponsor", "admin"]
+    "roles": [
+      "sponsor",
+      "admin"
+    ],
+    "city": "Irvine"
   },
   {
     "first": "Grace",
     "last": "Hopper",
     "title": "Convention President",
-    "roles": ["admin"]
+    "roles": [
+      "admin"
+    ]
   },
   {
     "first": "Katherine",
     "last": "Johnson",
     "title": "Registration Chair",
-    "roles": ["registration_chair"]
+    "roles": [
+      "registration_chair"
+    ]
   }
 ]

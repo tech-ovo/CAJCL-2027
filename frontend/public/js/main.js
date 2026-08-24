@@ -68,9 +68,19 @@ const appNode = () => document.getElementById("app");
 let snapshotTemplate = null;
 
 function captureSnapshot() {
+  // COPIES, and leaves the markup on screen.
+  //
+  // This used to move the children into the fragment, which emptied #app the
+  // instant this module ran -- so a visitor saw the finished welcome page
+  // painted, then watched it vanish and be replaced by "Waking up the
+  // server…". The page they already had was the one they wanted.
+  //
+  // Leaving it in place means the only thing that ever replaces it is the
+  // router, synchronously, with a clone of the same markup.
   snapshotTemplate = document.createDocumentFragment();
-  const app = appNode();
-  while (app.firstChild) add(snapshotTemplate, app.firstChild);
+  for (const child of Array.from(appNode().childNodes)) {
+    add(snapshotTemplate, child.cloneNode(true));
+  }
 }
 
 export function snapshotMarkup() {
@@ -144,7 +154,11 @@ async function route() {
         return;
       }
     } else if (api.token.get() && !state.me) {
-      await ensureSession();
+      // No statusHost: this is a PUBLIC page and it is already readable. The
+      // cold-start ladder clears whatever it is given before drawing itself,
+      // so passing #app here blanked a finished welcome page to show a spinner
+      // for a request the visitor did not ask for and does not need.
+      await ensureSession({ quiet: true });
     }
 
     renderNav();
@@ -161,10 +175,11 @@ async function route() {
   location.hash = "#/";
 }
 
-async function ensureSession() {
+async function ensureSession({ quiet = false } = {}) {
   if (state.me || !api.token.get()) return;
   try {
-    state.me = await api.get("/auth/me", { statusHost: appNode() });
+    state.me = await api.get("/auth/me",
+                             quiet ? {} : { statusHost: appNode() });
     state.demoMode = !!state.me.demo_mode;
   } catch (ignored) {
     state.me = null;
@@ -232,9 +247,9 @@ function renderNav() {
       add(nav, link("#/roster", "Roster"), link("#/invoice", "Invoice"));
     }
     if (state.me.person_type === "delegate") {
-      add(nav, link("#/activity-sheet", "Activities"));
+      add(nav, link("#/activity-sheet", "Registration"));
     } else if (state.me.person_type === "adult" && !hasScope("*")) {
-      add(nav, link("#/adult-sheet", "My form"));
+      add(nav, link("#/adult-sheet", "Registration"));
     }
     if (hasScope("registration")) add(nav, link("#/dashboard", "Chapters"));
     if (hasScope("*")) add(nav, link("#/admin", "Settings"), link("#/audit", "Log"));

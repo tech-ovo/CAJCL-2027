@@ -13,7 +13,8 @@
 
 import * as api from "../api.js";
 import { add, el, clear, tabula, field, select, button, errorSummary,
-         renderMarkdown, localDate, personNumber, guardUnsaved } from "../ui.js";
+         renderMarkdown, localDate, personNumber, guardUnsaved,
+         draft } from "../ui.js";
 
 const MEALS = [["", "Choose one"], ["regular", "Regular"],
                ["vegetarian", "Vegetarian"], ["gluten_free", "Gluten free"]];
@@ -39,13 +40,43 @@ export async function activitySheetPage(host) {
   let submitButton = null;
   let unsavedNote = null;
 
+  // A safety net for the school Chromebook whose lesson ends mid-form. Never
+  // the record -- see the note on draft() in ui.js.
+  const held = draft(`activity.${sheet.person.id}`);
+  let restored = false;
+
   const levels = sheet.school_level === "MS"
     ? ["MS-1", "MS-2", "MS-3"]
     : ["HS-1", "HS-2", "HS-3", "HS-Adv"];
   const grades = sheet.school_level === "MS" ? [6, 7, 8] : [9, 10, 11, 12];
 
+  restoreDraft();
   render();
   guardUnsaved(() => dirty, "unsaved changes to your activity sheet");
+
+  /* Anything typed and not saved before the tab closed. Applied silently and
+   * said so on screen -- a delegate should not have to accept a dialog to get
+   * their own answers back, but they do need to know why the form is not the
+   * one the server has. */
+  function restoreDraft() {
+    const stored = held.read();
+    if (!stored || !stored.value) return;
+    if (stored.value.snapshot === original) {
+      // The server already has it. Nothing to restore, and nothing to warn
+      // about.
+      held.clear();
+      return;
+    }
+
+    const value = stored.value;
+    grade = value.grade || grade;
+    level = value.level || level;
+    meal = value.meal || meal;
+    selected = new Set(value.selected || []);
+    options = { ...(value.options || {}) };
+    restored = true;
+    dirty = true;
+  }
 
   function render() {
     // A full rebuild throws away the scroll position. This runs rarely now --
@@ -83,8 +114,18 @@ export async function activitySheetPage(host) {
       renderMarkdown(
         "Choose the events you would like to enter. **None of these choices " +
         "are binding** — they exist so the Academics, Activities, and Athletics " +
-        "chairs know how many students to prepare for."),
+        "chairs know how many students to prepare for.\n\n" +
+        "**Save whenever you like.** This is not a one-time submission: save " +
+        "what you have decided so far and come back as often as you want " +
+        "before the deadline."),
       deadlineNote(),
+      restored
+        ? el("div", { class: "banner banner--info", style: "margin-bottom:1.5rem" },
+            el("span", { class: "banner__label" }, "Restored"),
+            el("span", {}, "These are the answers you had open last time on "
+                         + "this device, which were never saved. Check them "
+                         + "over and press Save my answers."))
+        : null,
       errors.length ? errorSummary(errors) : null);
 
     const form = el("form", {
@@ -131,10 +172,13 @@ export async function activitySheetPage(host) {
           el("li", {}, `${entry.item_name} — team ${entry.team_label}`)))));
     }
 
-    submitButton = button(
-      sheet.status === "submitted" ? "Save changes" : "Submit my sheet",
-      { variant: "btn--primary", type: "submit" });
-    unsavedNote = el("p", { class: "small muted", "aria-live": "polite" });
+    // "Submit my sheet" read as final, and a delegate who thinks a form can be
+    // submitted once waits until they have decided everything -- which for a
+    // convention in March means waiting until March, and losing the lot when
+    // the tab closes. It has always been a save. Say so.
+    submitButton = button("Save my answers",
+                          { variant: "btn--primary", type: "submit" });
+    unsavedNote = el("p", { class: "form-note", "aria-live": "polite" });
 
     add(form, el("div", { class: "btn-row" }, submitButton, unsavedNote));
     add(host, form);
@@ -146,12 +190,20 @@ export async function activitySheetPage(host) {
    * always clickable teaches people that clicking it means nothing. */
   function refreshSubmit() {
     if (!submitButton) return;
-    const blocked = sheet.locked || !dirty;
-    submitButton.disabled = blocked;
+    submitButton.disabled = sheet.locked || !dirty;
+
     clear(unsavedNote);
-    if (sheet.locked) add(unsavedNote, "Forms are closed.");
-    else if (dirty) add(unsavedNote, "You have unsaved changes.");
-    else if (sheet.status === "submitted") add(unsavedNote, "Everything is saved.");
+    unsavedNote.className = "form-note";
+    if (sheet.locked) {
+      add(unsavedNote, "Forms are closed.");
+    } else if (dirty) {
+      // Red, because it is the one state on this page that costs something to
+      // ignore. Everything else here is deliberately quiet.
+      unsavedNote.className = "form-note form-note--unsaved";
+      add(unsavedNote, "Unsaved changes — press Save my answers.");
+    } else if (sheet.status === "submitted") {
+      add(unsavedNote, "Saved. You can change any of this until the deadline.");
+    }
   }
 
   /* Something changed. Compare against what the server sent, so that undoing a
@@ -159,6 +211,16 @@ export async function activitySheetPage(host) {
   function touch() {
     dirty = snapshot() !== original;
     refreshSubmit();
+    // Written on every change, not on a timer: the whole point is to survive a
+    // close that gives no warning.
+    if (dirty) {
+      held.save({
+        snapshot: snapshot(), grade, level, meal,
+        selected: [...selected], options,
+      });
+    } else {
+      held.clear();
+    }
   }
 
   function snapshot() {
@@ -337,6 +399,9 @@ export async function activitySheetPage(host) {
       // clean again and the leave-warning goes quiet.
       original = snapshot();
       dirty = false;
+      restored = false;
+      // The server has it now, so the local copy is only a way to get confused.
+      held.clear();
       render();
       window.scrollTo({ top: 0 });
     } catch (error) {

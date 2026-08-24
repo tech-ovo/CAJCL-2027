@@ -471,6 +471,67 @@ looks right in a list and holds nobody.
 Every new person's code is printed and written to `board-codes.txt`, which is
 gitignored. **Codes are shown once.** Hand each person theirs directly.
 
+### If anyone is still holding an `ADM-` code
+
+`ADM` was a fourth prefix, given to anyone with full powers. It was retired,
+because a prefix should say what somebody **is** — a delegate, a sponsor, a
+volunteer — and never what they are allowed to do. Two sponsors doing the same
+job for their two chapters were getting different prefixes because one of them
+also sat on the board.
+
+Those codes no longer work, and they cannot be converted: the prefix is part of
+the string that gets hashed, so there is no way to rewrite one in place. Anyone
+who held an `ADM-` code needs a new one:
+
+```powershell
+modal run backend/app.py::retire_adm_codes
+```
+
+It reissues, revokes the old sessions, prints each new code once, and writes
+them to `board-codes.txt`. **Everyone in that list needs a new sheet.** If it
+says nobody is holding one, there is nothing to do.
+
+`setup --reset` followed by `::board` also clears this, because everything is
+minted fresh under the current rule.
+
+### The first person, and the chicken-and-egg
+
+Roles are granted by somebody who already holds `admin`. In a brand new
+database nobody does, so there is nobody to grant the first one.
+
+`board.json` is how that knot is cut. It is read by a command you run from your
+own machine with the Modal credentials, so it does not need anybody to be
+signed in — and it is the ONLY way into the system that does not.
+
+**Next year's commissioners should start with one entry**: themselves, as the
+sponsor of the host chapter, holding `admin`.
+
+```json
+[
+  {
+    "first": "Your", "last": "Name", "title": "Technology Commissioner",
+    "school": "Your High School", "city": "Your City",
+    "roles": ["sponsor", "admin"]
+  }
+]
+```
+
+```powershell
+modal run backend/app.py::board --create-schools
+```
+
+That prints one code. Sign in with it, and everybody else can be added from
+**Settings → Roles** in the browser — which is the intended path, and the one
+that leaves an audit entry naming who granted what.
+
+Add the rest to `board.json` too if you would rather do it in one pass. Both
+work; the file is simply the door that opens from outside.
+
+**Nobody ever gets a second account for their powers.** A sponsor who joins the
+board keeps the code they already had; they gain a role, not a login. This is
+the same mechanism that promotes a delegate to chapter leader, and it is why
+an access code says what somebody *is* rather than what they may do.
+
 ### Running it again
 
 Safe, and expected — this is how you add someone in October. A person already

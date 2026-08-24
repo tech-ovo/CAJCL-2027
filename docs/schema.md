@@ -80,6 +80,10 @@ CREATE TABLE people (
 
   code_hmac        TEXT NOT NULL,         -- HMAC-SHA256(pepper, normalized_code)
   code_prefix      TEXT NOT NULL CHECK (code_prefix IN ('SPO','DEL','VOL','ADM')),
+                   -- 'ADM' is retired and no longer minted or accepted at
+                   -- sign-in; see backend/lib/codes.py. It stays in the CHECK
+                   -- because a constraint cannot be narrowed while rows still
+                   -- hold the old value. The application is the narrower gate.
   pepper_version   INTEGER NOT NULL DEFAULT 1,
   code_issued_at   TEXT NOT NULL,
 

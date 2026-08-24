@@ -214,16 +214,26 @@ export async function adminPage(host) {
       el("option", { value: "info" }, "Notice"),
       el("option", { value: "warning" }, "Important"),
       el("option", { value: "critical" }, "Urgent"));
+    const until = input({ type: "date" });
 
     add(host, 
       el("section", { class: "panel" },
         el("h2", {}, "Put a banner on every page"),
         el("p", { class: "muted" },
-          "For a schedule change, a room change, or anything that cannot wait. " +
-          "It appears at the top of every page within a minute."),
+          "For a schedule change, a room change, or anything that cannot wait. "
+          + "It appears at the top of every page, for everybody, the next time "
+          + "they load or move between pages — so within seconds for "
+          + "anyone using the site, and immediately for anyone arriving."),
         field({ id: "ann-body", label: "What it should say", wide: true,
                 required: true, control: body }),
-        field({ id: "ann-level", label: "How urgent", control: level }),
+        el("div", { class: "grid" },
+          el("div", { class: "span-6" },
+            field({ id: "ann-level", label: "How urgent", control: level })),
+          el("div", { class: "span-6" },
+            field({ id: "ann-until", label: "Take it down after",
+                    help: "Optional. A California date; it disappears at the "
+                        + "end of that day whether or not anyone remembers.",
+                    control: until }))),
         el("div", { class: "btn-row" },
           button("Publish announcement", {
             variant: "btn--primary",
@@ -231,8 +241,11 @@ export async function adminPage(host) {
               if (!body.value.trim()) { errors = ["Write the announcement first."]; render(); return; }
               try {
                 await api.post("/admin/announcements", {
-                  body_md: body.value, level: level.value, active: true });
-                message = "Announcement published.";
+                  body_md: body.value, level: level.value, active: true,
+                  ends_at: until.value || null });
+                message = until.value
+                  ? `Published. It comes down after ${until.value}.`
+                  : "Published. It stays up until you take it down.";
                 render();
               } catch (error) { errors = [error.message]; render(); }
             },
@@ -253,34 +266,90 @@ export async function adminPage(host) {
           { key: "body_md", label: "Message" },
           { key: "level", label: "Level" },
           { key: "active", label: "Live",
-            render: (row) => row.active ? "Yes" : "No" },
+            render: (row) => row.active
+              ? el("span", { class: "pill pill--done" }, "On screen")
+              : el("span", { class: "pill" }, "Down") },
+          { key: "ends_at", label: "Comes down",
+            render: (row) => row.ends_at ? localDate(row.ends_at) : "—" },
           { key: "created_at", label: "Created",
             render: (row) => localDate(row.created_at) },
+          { key: "actions", label: "Actions",
+            render: (row) => button(row.active ? "Take down" : "Put back up", {
+              variant: row.active ? "btn--small btn--danger" : "btn--small",
+              onclick: async (event) => {
+                event.target.disabled = true;
+                try {
+                  await api.post(`/admin/announcements/${row.id}/active`,
+                                 { active: !row.active });
+                  message = row.active
+                    ? "Taken down. It is gone from every page."
+                    : "Back up on every page.";
+                  render();
+                } catch (error) {
+                  event.target.disabled = false;
+                  errors = [error.message];
+                  render();
+                }
+              },
+            }) },
         ], existing.announcements, { caption: "Announcements" }));
     }
   }
 
   /* -------------------------------------------------------------------- */
 
+  /* One cell per person per field, kept so a single change can repaint a
+   * single cell.
+   *
+   * Renaming used to call render(), which threw away the whole Settings page
+   * and fetched every section again -- so correcting one surname looked like a
+   * page load and, for a second, like nothing had happened at all. */
+  const cells = new Map();
+
+  function cell(row, field, text) {
+    const node = el("span", {}, text);
+    cells.set(`${row.id}.${field}`, node);
+    return node;
+  }
+
+  function repaint(personId, field, text) {
+    const node = cells.get(`${personId}.${field}`);
+    if (!node) return false;
+    clear(node);
+    add(node, text);
+    // Brief, and only on the thing that changed. Long enough to be seen,
+    // short enough not to be a feature.
+    node.classList.add("just-changed");
+    setTimeout(() => node.classList.remove("just-changed"), 1200);
+    return true;
+  }
+
   async function renderRoles() {
     const roles = await api.get("/admin/roles");
     const board = await api.get("/admin/board");
+    cells.clear();
 
     add(host,
       el("h2", {}, "Who holds what"),
       el("p", { class: "muted" },
-        "Everyone with a role beyond delegate or chapter leader. Change a "
-        + "person's roles here and it takes effect the next time they load a "
-        + "page — there is no second code and nothing to reissue."),
+        "Everyone with a role beyond delegate or chapter leader. Changes take "
+        + "effect the next time that person loads a page — there is no "
+        + "second code and nothing to reissue. To retire somebody from the "
+        + "board, remove their roles: they keep the account and the code they "
+        + "still need as a sponsor or a delegate."),
       board.people.length
         ? table([
             { key: "name", label: "Name",
-              render: (row) => `${row.first_name} ${row.last_name}` },
+              render: (row) => cell(row, "name",
+                `${row.first_name} ${row.last_name}`) },
             { key: "adult_type_other", label: "Position",
-              render: (row) => row.adult_type_other || "—" },
+              render: (row) => cell(row, "position",
+                row.adult_type_other || "—") },
             { key: "school_name", label: "Chapter" },
             { key: "role_names", label: "Roles",
-              render: (row) => (row.role_names || "").split(",").join(", ") },
+              render: (row) => cell(row, "roles",
+                (row.role_names || "").split(",").filter(Boolean).join(", ")
+                  || "—") },
             { key: "actions", label: "Actions",
               render: (row) => el("span",
                 { style: "display:flex;gap:.5rem;flex-wrap:wrap" },
@@ -366,6 +435,15 @@ export async function adminPage(host) {
             await api.post(`/admin/people/${person.id}/roles`, {
               role_key: role.key, granted: event.target.checked });
             event.target.disabled = false;
+            if (event.target.checked) held.add(role.key);
+            else held.delete(role.key);
+            // Keep the row behind the dialog honest, so closing it does not
+            // reveal a stale list.
+            const names = allRoles
+              .filter((r) => held.has(r.key)).map((r) => r.name);
+            person.role_keys = [...held].join(",");
+            person.role_names = names.join(",");
+            repaint(person.id, "roles", names.join(", ") || "—");
           } catch (error) {
             event.target.checked = !event.target.checked;
             event.target.disabled = false;
@@ -377,17 +455,42 @@ export async function adminPage(host) {
         el("span", { class: "choice__name" }, role.name),
         el("span", { class: "choice__why" }, role.description || role.key))));
 
-    const dialog = el("section", { class: "panel", role: "dialog",
-                                   "aria-label": `Roles for ${name}` },
+    const panel = el("form", { method: "dialog" },
       el("h2", {}, `Roles for ${name}`),
       el("p", { class: "muted" },
         "Each change is saved as you make it, and each one is logged."),
       el("div", { class: "choices choices--two" }, ...boxes),
+      el("p", { class: "small muted" },
+        "Somebody who has left the board keeps their account and their code "
+        + "— they are a real person who may still be a sponsor or a "
+        + "delegate. Take away the roles and you have taken away the powers."),
       el("div", { class: "btn-row" },
-        button("Done", { variant: "btn--primary", onclick: () => render() })));
+        button("Remove every role", {
+          variant: "btn--quiet btn--danger",
+          onclick: async () => {
+            if (!held.size) return;
+            if (!confirm(
+              `Remove every role from ${name}?
 
-    clear(host);
-    add(host, dialog);
+`
+              + "Their account and their code keep working. They simply lose "
+              + "the powers those roles carried.")) return;
+            for (const box of boxes) {
+              const input_ = box.querySelector("input");
+              if (input_.checked) {
+                input_.checked = false;
+                input_.dispatchEvent(new Event("change"));
+              }
+            }
+          },
+        }),
+        button("Done", { variant: "btn--primary",
+                         onclick: () => dialog.close() })));
+
+    const dialog = el("dialog", { class: "dialog" }, panel);
+    dialog.addEventListener("close", () => dialog.remove());
+    add(document.body, dialog);
+    dialog.showModal();
   }
 
   /* One dialog with three fields, not three prompts in a row. Chained prompts
@@ -417,13 +520,27 @@ export async function adminPage(host) {
     dialog.addEventListener("close", async () => {
       dialog.remove();
       if (!save) return;
+
+      const name = `${first.value.trim()} ${last.value.trim()}`;
+      const position = title.value.trim();
+
+      // Show it immediately. One field changed, so one field is repainted --
+      // the request goes out behind it and only the failure is disruptive.
+      const painted = repaint(person.id, "name", name)
+                    & repaint(person.id, "position", position || "—");
+
       try {
         await api.patch(`/admin/people/${person.id}/name`, {
           first_name: first.value, last_name: last.value,
           adult_type_other: title.value });
-        message = `Saved ${first.value} ${last.value}.`;
-        render();
+        person.first_name = first.value.trim();
+        person.last_name = last.value.trim();
+        person.adult_type_other = position;
+        if (!painted) render();          // the row was not on screen after all
       } catch (error) {
+        // Put back what the server still believes, then say why.
+        repaint(person.id, "name", `${person.first_name} ${person.last_name}`);
+        repaint(person.id, "position", person.adult_type_other || "—");
         errors = error.errors && error.errors.length
           ? error.errors : [error.message];
         render();

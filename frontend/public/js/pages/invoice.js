@@ -43,8 +43,7 @@ export async function invoicePage(host) {
       el("div", { class: "span-7" },
         el("h1", {}, "Invoice"),
         el("p", { class: "lede" },
-          "This updates as your roster changes. Work from this page rather " +
-          "than a printed copy."),
+          "This invoice will update as your roster changes."),
 
         el("div", { class: "totals" },
           ...invoice.lines

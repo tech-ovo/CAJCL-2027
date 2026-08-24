@@ -389,3 +389,58 @@ export function ask({ title, body, label, confirmLabel = "Continue",
     input.focus();
   });
 }
+
+/* --------------------------------------------------------------------------
+ * A draft kept in the browser
+ * ----------------------------------------------------------------------- */
+
+/**
+ * Remember unsaved form state on this device. A safety net, never the record.
+ *
+ * WHAT THIS IS FOR
+ *   A delegate fills in half an activity sheet on a school Chromebook, the
+ *   lesson ends, and the tab closes. The server has nothing, because they had
+ *   not pressed save. This gets their answers back.
+ *
+ * WHAT IT IS NOT
+ *   Storage. It is per-browser and per-device, invisible to the sponsor, to
+ *   the chairs, and to every report. The saved sheet on the server is the only
+ *   thing that counts, and the draft is cleared the moment one exists.
+ *
+ * Every call is wrapped: localStorage throws outright in a private window, in
+ * an iframe with site data blocked, and on a browser with storage disabled.
+ * None of those should take a form down, so a failure here does nothing at all.
+ */
+export function draft(key) {
+  const name = `cajcl.draft.${key}`;
+
+  return {
+    save(value) {
+      try {
+        localStorage.setItem(name, JSON.stringify(
+          { at: new Date().toISOString(), value }));
+      } catch (ignored) { /* a draft is a nicety; never fail a form over it */ }
+    },
+
+    read() {
+      try {
+        const raw = localStorage.getItem(name);
+        if (!raw) return null;
+        const held = JSON.parse(raw);
+        // A draft older than the convention is noise, not help.
+        const age = Date.now() - new Date(held.at).getTime();
+        if (!Number.isFinite(age) || age > 1000 * 60 * 60 * 24 * 30) {
+          this.clear();
+          return null;
+        }
+        return held;
+      } catch (ignored) {
+        return null;
+      }
+    },
+
+    clear() {
+      try { localStorage.removeItem(name); } catch (ignored) { /* nothing */ }
+    },
+  };
+}

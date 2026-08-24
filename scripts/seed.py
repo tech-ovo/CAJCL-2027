@@ -154,8 +154,7 @@ class Seeder:
             role_row = tx.one("roles.by_key", (role,))
             tx.run("people.grant_role", (person_id, role_row["id"], None, created))
 
-        scopes = {r["scope"] for r in tx.all("auth.scopes_for_person", (person_id,))}
-        prefix = auth.code_prefix_for(person_type, adult_type, scopes)
+        prefix = auth.code_prefix_for(person_type, adult_type)
         code = auth.issue_code(tx, person_id, prefix)
         return person_id, code
 

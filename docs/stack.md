@@ -68,7 +68,9 @@ This shape is required because deploying the app **resets the autoscaler to the 
 
 ## Authentication
 
-Each person receives one code, and only one, regardless of how many roles they hold. Format is a three-letter prefix, nine random Crockford Base32 characters, and a Crockford check symbol, displayed as `PPP-XXXXX-XXXXX`. Prefixes are `SPO` sponsor, `DEL` delegate, `VOL` adult volunteer or chaperone, `ADM` admin. The prefix is display and disambiguation only; it is not a namespace, and codes are globally unique across prefixes.
+Each person receives one code, and only one, regardless of how many roles they hold. Format is a three-letter prefix, nine random Crockford Base32 characters, and a Crockford check symbol, displayed as `PPP-XXXXX-XXXXX`. Prefixes are `SPO` sponsor, `DEL` delegate, `VOL` adult volunteer or chaperone. The prefix is display and disambiguation only; it is not a namespace, and codes are globally unique across prefixes.
+
+**A prefix describes what somebody is, never what they may do.** There was a fourth, `ADM`, given to anyone holding scope `*`. It was retired: two sponsors doing the same job for their two chapters were getting different prefixes because one of them also sat on the board, which made a stack of printed sheets harder to sort rather than easier. Worse, it implied that granting a role should change somebody's code — and since the prefix is part of the string that gets hashed, it silently would have.
 
 The check symbol is validated in the browser before any request is sent, so a mistyped code produces an immediate "check that code again" rather than a failed login attempt against the rate limiter.
 

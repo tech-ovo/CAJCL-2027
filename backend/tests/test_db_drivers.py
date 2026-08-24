@@ -24,6 +24,7 @@ WHY IT MATTERS
 from __future__ import annotations
 
 import pathlib
+import sqlite3
 
 import pytest
 
@@ -337,3 +338,96 @@ def test_a_local_path_is_left_alone(monkeypatch, tmp_path):
     path = tmp_path / "a folder with spaces" / "dev.db"
     path.parent.mkdir()
     assert db_module.connect(str(path))._path == str(path)
+
+
+# ---------------------------------------------------------------------------
+# The single write lock
+# ---------------------------------------------------------------------------
+
+def test_a_busy_database_is_waited_out_not_reported(tmp_path, monkeypatch):
+    """libSQL has one writer. Two people writing at once and the loser gets
+    SQLITE_BUSY, which reached a delegate as a 500 for doing nothing wrong.
+
+    A busy error means the statement never ran, so re-running it is safe. That
+    is what makes retrying here correct rather than merely convenient.
+    """
+    from backend.lib import db as db_module
+
+    monkeypatch.setattr(db_module, "BUSY_BASE_DELAY", 0.001)
+    calls = {"n": 0}
+
+    handle = db_module._open_local(str(tmp_path / "busy.db"))
+
+    class Flaky:
+        """Fails the way each driver reports a lock, then succeeds."""
+
+        def __init__(self, conn):
+            self._conn = conn
+
+        def execute(self, sql, params):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise sqlite3.OperationalError("database is locked")
+            if calls["n"] == 2:
+                raise ValueError(
+                    'Hrana: `stream error: `Error { message: "SQLite error: '
+                    'database is locked", code: "SQLITE_BUSY" }``')
+            return self._conn.execute(sql, params)
+
+        def close(self):
+            self._conn.close()
+
+    handle._conn = Flaky(handle._conn)
+    rows = handle.execute("SELECT 1 AS n", ())
+    handle.close()
+
+    assert rows[0]["n"] == 1
+    assert calls["n"] == 3, "it should have retried past both busy errors"
+
+
+def test_a_real_error_is_not_retried(tmp_path, monkeypatch):
+    """Only the lock is waited out. A constraint violation is the answer, not
+    a temporary condition, and retrying it five times would turn one clear
+    failure into a slow one."""
+    from backend.lib import db as db_module
+
+    monkeypatch.setattr(db_module, "BUSY_BASE_DELAY", 0.001)
+    calls = {"n": 0}
+
+    handle = db_module._open_local(str(tmp_path / "real.db"))
+
+    class Broken:
+        def __init__(self, conn):
+            self._conn = conn
+
+        def execute(self, sql, params):
+            calls["n"] += 1
+            raise sqlite3.IntegrityError("UNIQUE constraint failed: people.code_hmac")
+
+        def close(self):
+            self._conn.close()
+
+    handle._conn = Broken(handle._conn)
+    with pytest.raises(sqlite3.IntegrityError):
+        handle.execute("SELECT 1", ())
+    assert calls["n"] == 1, "a constraint failure must not be retried"
+
+
+def test_busy_detection_reads_both_drivers_wording():
+    from backend.lib.db import _is_busy
+
+    assert _is_busy(sqlite3.OperationalError("database is locked"))
+    assert _is_busy(ValueError(
+        'Hrana: `stream error: `Error { message: "SQLite error: database is '
+        'locked", code: "SQLITE_BUSY" }``'))
+    assert not _is_busy(sqlite3.IntegrityError("UNIQUE constraint failed"))
+    assert not _is_busy(ValueError("no such table: people"))
+
+
+def test_the_remote_handle_also_waits_for_the_lock():
+    """Contention is a hosted database's problem, not a laptop's -- and the
+    pragma was on the laptop only."""
+    source = (pathlib.Path(__file__).resolve().parents[1]
+              / "lib" / "db.py").read_text(encoding="utf-8")
+    remote = source[source.index("def _open_remote"):source.index("# ---", source.index("def _open_remote"))]
+    assert "busy_timeout" in remote

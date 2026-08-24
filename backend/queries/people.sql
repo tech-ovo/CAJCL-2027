@@ -103,3 +103,13 @@ UPDATE people
 SET first_name = ?, middle_name = ?, last_name = ?,
     adult_type_other = ?, updated_at = ?
 WHERE id = ?;
+
+-- name: people.with_prefix
+-- Everyone still holding a code with a given prefix, for the one-off reissue
+-- that retired `ADM`. Not on any request path; runs once and reports.
+SELECT p.id, p.first_name, p.last_name, p.person_type, p.adult_type,
+       p.code_prefix, p.school_id, s.name AS school_name
+FROM people p
+JOIN schools s ON s.id = p.school_id
+WHERE p.code_prefix = ?
+ORDER BY s.name, p.last_name, p.first_name;

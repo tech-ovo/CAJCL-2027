@@ -139,3 +139,68 @@ def test_generated_codes_do_not_repeat():
     guards against a generator that is accidentally deterministic."""
     minted = {codes.generate("DEL")[1] for _ in range(5000)}
     assert len(minted) == 5000
+
+
+# ---------------------------------------------------------------------------
+# The prefix says what someone is, not what they can do
+# ---------------------------------------------------------------------------
+
+def test_a_prefix_never_depends_on_privileges():
+    """Two sponsors doing the same job get the same prefix, whether or not one
+    of them also sits on the board.
+
+    The old rule returned ADM for anyone holding scope `*`, which made a stack
+    of printed sheets harder to sort rather than easier -- and, far worse,
+    implied that granting a role should change someone's code. The prefix is
+    part of the string that gets hashed, so it silently would have.
+    """
+    from backend.lib import auth
+
+    assert auth.code_prefix_for("adult", "sponsor") == "SPO"
+    assert auth.code_prefix_for("adult", "chaperone") == "VOL"
+    assert auth.code_prefix_for("adult", "other") == "VOL"
+    assert auth.code_prefix_for("delegate", None) == "DEL"
+
+    # And there is no way to ask for a different answer.
+    import inspect
+    signature = inspect.signature(auth.code_prefix_for)
+    assert "scopes" not in signature.parameters, (
+        "code_prefix_for should not be able to see privileges at all")
+
+
+def test_nothing_mints_an_ADM_code_any_more():
+    from backend.lib import auth
+
+    for person_type, adult_type in [("delegate", None), ("adult", "sponsor"),
+                                    ("adult", "chaperone"), ("adult", "scl"),
+                                    ("adult", "other"), ("adult", None)]:
+        assert auth.code_prefix_for(person_type, adult_type) != "ADM"
+
+
+def test_an_ADM_code_no_longer_signs_anybody_in():
+    """`ADM` is retired outright, not merely unminted.
+
+    Leaving it accepted would have meant board members quietly keeping a code
+    that says something the system no longer believes. Removing it means they
+    each need a new code and a new sheet, which is the honest cost and is what
+    `modal run backend/app.py::retire_adm_codes` pays.
+    """
+    from backend.lib import codes
+
+    assert "ADM" not in codes.VALID_PREFIXES
+    with pytest.raises(ValueError):
+        codes.generate("ADM")
+    with pytest.raises(ValueError):
+        codes.normalize("ADM-K7M2N-9PQ4Z")
+    assert not codes.is_well_formed("ADM-K7M2N-9PQ4Z")
+
+
+def test_the_database_still_permits_an_ADM_row():
+    """It has to. Those rows exist until the reissue has run, and a CHECK
+    constraint cannot be added that rejects data already in the table. The
+    application is the narrower gate."""
+    import pathlib as _pathlib
+
+    schema = (_pathlib.Path(__file__).resolve().parents[1]
+              / "migrations" / "001_core.sql").read_text(encoding="utf-8")
+    assert "code_prefix IN ('SPO','DEL','VOL','ADM')" in schema

@@ -380,7 +380,12 @@ def authenticate(tx: Tx, token: str | None, *, touch: bool = True) -> Principal:
         raise AuthError("That session has expired. Sign in again.")
 
     if touch:
-        tx.run("auth.session_touch", (clock.now_iso(), session["session_id"]))
+        # Only when it has actually gone stale. See the comment on the query:
+        # touching on every request made a write out of every page load, and a
+        # single-writer database eventually says no.
+        now = clock.now_iso()
+        tx.run("auth.session_touch",
+               (now, session["session_id"], clock.plus_minutes(-SESSION_TOUCH_MINUTES)))
         tx.mark_silent("session.touch")
 
     impersonator = None
@@ -555,16 +560,40 @@ def issue_code(tx: Tx, person_id: int, prefix: str) -> str:
     raise RuntimeError("could not mint a unique code after five attempts")
 
 
-def code_prefix_for(person_type: str, adult_type: str | None,
-                    scopes: frozenset[str] | set[str] = frozenset()) -> str:
-    """Which of the four prefixes a person gets.
+# How stale a session's last_seen_at may get before a request bothers to update
+# it. Anything above zero turns "a write on every request" into "a write every
+# few minutes per device", which is the difference between contending for the
+# single write lock constantly and almost never.
+SESSION_TOUCH_MINUTES = 5
+
+
+def code_prefix_for(person_type: str, adult_type: str | None) -> str:
+    """Which prefix a person's code carries.
 
     The prefix is display and disambiguation only -- it is NOT a namespace, and
     codes are globally unique across prefixes. It exists so that a sponsor
     holding a stack of printed sheets can tell at a glance which is which.
+
+    IT DESCRIBES WHAT SOMEONE IS, NOT WHAT THEY CAN DO.
+        There used to be an `ADM` prefix, returned whenever a person held scope
+        `*`. It was wrong twice over.
+
+        It conflated two unrelated things. Two sponsors doing exactly the same
+        job for their two chapters got different prefixes because one of them
+        also sat on the board, which made a stack of printed sheets harder to
+        sort rather than easier.
+
+        And it implied a second account. Powers are granted by ROLE, on the one
+        account a person already has -- the same way a delegate becomes a
+        chapter leader without being issued a second code. A prefix that
+        changes when a role is granted contradicts that, and the contradiction
+        is not cosmetic: the prefix is part of the string that gets hashed, so
+        "promote this person" would have silently invalidated their code.
+
+    `ADM` is gone from codes.VALID_PREFIXES entirely, so an old one no longer
+    signs anybody in. `modal run backend/app.py::retire_adm_codes` reissues for
+    everyone who held one.
     """
-    if "*" in scopes:
-        return "ADM"
     if person_type == "delegate":
         return "DEL"
     if adult_type == "sponsor":

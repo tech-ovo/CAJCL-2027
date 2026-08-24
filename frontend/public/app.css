@@ -236,6 +236,13 @@ hr.accent { border: 0; border-top: 2px solid var(--accent); width: var(--space-7
           border-bottom: var(--border); padding-bottom: var(--space-3); }
 }
 
+/* An optical nudge, not a computed one. The rail's first label is 11px small
+ * capitals and the content beside it starts at 40px italic, so their line
+ * boxes have nothing in common and "aligned" can only mean "looks aligned".
+ * If it looks off on a future theme, this is the one number to change. */
+.with-rail > .rail { padding-top: 0.45rem; }
+@media (max-width: 60rem) { .with-rail > .rail { padding-top: 0; } }
+
 .rail > * + * { margin-top: var(--space-4); }
 @media (max-width: 60rem) { .rail > * + * { margin-top: 0; } }
 
@@ -286,7 +293,12 @@ hr.accent { border: 0; border-top: 2px solid var(--accent); width: var(--space-7
 .epigraph__latin {
   font-family: var(--font-serif); font-style: italic;
   font-size: var(--size-2xl); line-height: 1.15;
-  margin: 0 0 var(--space-3); max-width: 18ch;
+  /* 18ch was about half the content column at this size, which read as a
+   * layout fault rather than a measure. 34ch sets this year's theme as two
+   * balanced lines that fill the column, and still keeps a longer one from
+   * running the full width at 40px, where a long line is genuinely hard to
+   * track back from. */
+  margin: 0 0 var(--space-3); max-width: 34ch;
   text-wrap: balance;
 }
 .epigraph__english {
@@ -550,12 +562,21 @@ legend { padding: 0; }
   vertical-align: baseline;
 }
 .table tbody tr.is-flagged { background: var(--tint); }
-.table tbody tr.is-inactive td { color: var(--text-muted); }
 
-/* A roster is two lists printed as one. The wash separates them at a glance
- * without turning the table into a chart; the Type column still says which is
- * which, so nothing depends on seeing it. */
-.table tbody tr.is-adult { background: var(--tint-adult); }
+/* A roster is two lists printed as one, and adults are the shorter list.
+ *
+ * This was a background wash, but table cells have no horizontal padding at
+ * the row edges, so the tint ran to the very edge of the text and looked like
+ * a rendering artefact rather than a grouping. Weight does the same job
+ * without needing a box: the name is what the eye lands on anyway. */
+.table tbody tr.is-adult { font-weight: var(--weight-semi); }
+
+/* Cancelled rows were greyed out, which on a hairline table is a very small
+ * difference to ask someone to notice -- and grey also reads as "disabled"
+ * rather than "withdrawn". Italic is unmistakable at a glance and survives
+ * being printed in black and white. The row also carries the word
+ * "Cancelled", so nothing depends on the styling. */
+.table tbody tr.is-inactive td { font-style: italic; }
 
 /* A right-aligned column must keep its right padding. Without it the heading
  * of the NEXT column starts at the exact pixel this one ends, and "Grade"
@@ -753,3 +774,37 @@ th[aria-sort] { color: var(--text); }
 .dialog::backdrop { background: rgb(16 42 86 / 0.45); }
 .dialog h2 { margin-top: 0; }
 .dialog .field { margin-bottom: var(--space-4); }
+
+/* A short list of term-and-answer pairs in the rail. Not a <dl>: at rail width
+ * the value column wraps three words onto two lines, and small capitals for
+ * both halves leaves neither leading the other. */
+.rail-list p { margin: 0 0 var(--space-3); max-width: none; }
+.rail-list p:last-child { margin-bottom: 0; }
+.rail-list strong { font-family: var(--font-sans); font-weight: var(--weight-semi); }
+
+/* The note beside a form's save button. Quiet by default, because "saved" is
+ * the expected state and does not need announcing. */
+.form-note {
+  font-family: var(--font-sans); font-size: var(--size-sm);
+  color: var(--text-muted); margin: 0; align-self: center;
+}
+
+/* Unsaved is the one state on a form that costs something to ignore, so it is
+ * the one that gets the destructive colour. It is never colour alone: the text
+ * says "Unsaved changes" and the save button beside it is live. */
+.form-note--unsaved {
+  color: var(--danger); font-weight: var(--weight-semi);
+}
+
+/* A cell that has just been updated in place. Brief, and only on the thing
+ * that changed — the point is to show that a change landed without redrawing
+ * the page around it. Suppressed for anyone who has asked for less motion. */
+.just-changed {
+  background: var(--tint);
+  box-shadow: 0 0 0 3px var(--tint);
+  border-radius: 2px;
+  transition: background var(--transition), box-shadow var(--transition);
+}
+@media (prefers-reduced-motion: reduce) {
+  .just-changed { transition: none; }
+}

@@ -370,3 +370,95 @@ def test_school_level_must_be_valid():
 def test_particles_constant_is_frozen():
     assert isinstance(PARTICLES, frozenset)
     assert "de la" in PARTICLES and "de los" in PARTICLES
+
+
+# ---------------------------------------------------------------------------
+# What a real spreadsheet paste looks like
+# ---------------------------------------------------------------------------
+
+def rows_for(paste, level="HS"):
+    result = parse_roster(paste, school_level=level)
+    return result["rows"] if isinstance(result, dict) else result
+
+
+def test_a_tab_is_not_a_suspicious_character():
+    """Unicode classes tab as a control character. It is also the delimiter
+    this parser reaches for first, so flagging it warned on EVERY ROW of every
+    pasted spreadsheet -- which is precisely the noise that teaches a sponsor
+    to click past warnings before they meet a real one.
+    """
+    rows = rows_for("Aurelia Vance\t9\tHS-1\nMarcus DeLuca\t10\tHS-2")
+    assert len(rows) == 2
+    for row in rows:
+        assert "unexpected_character" not in (row.warnings or []), row.raw
+
+
+def test_a_real_control_character_still_warns():
+    rows = rows_for("Aurelia\x00Vance\t9\tHS-1")
+    assert "unexpected_character" in rows[0].warnings
+
+
+def test_a_suffix_after_a_comma_is_not_a_first_name():
+    """`Dmitri Volkov, Jr.` read as `Last, First` produced a delegate called
+    Jr. Dmitri Volkov -- wrong in a way that looks deliberate on the preview
+    screen, and therefore committed."""
+    row = rows_for("Dmitri Volkov, Jr.\t12\tHS-Adv")[0]
+    assert (row.first_name, row.last_name, row.suffix) == ("Dmitri", "Volkov", "Jr.")
+
+    # The genuine inverted form still works.
+    row = rows_for("Chen, Wei-Lin\t9\tHS-1")[0]
+    assert (row.first_name, row.last_name) == ("Wei-Lin", "Chen")
+
+
+def test_the_comma_does_not_survive_into_the_last_name():
+    """"Volkov," is correct enough to pass a preview and wrong on the sheet."""
+    for paste in ("Dmitri Volkov, Jr.", "Dmitri Volkov, Jr.\t12\tHS-Adv"):
+        row = rows_for(paste)[0]
+        assert not row.last_name.endswith(","), row.last_name
+
+
+def test_case_is_judged_from_the_name_not_the_whole_row():
+    """`theodore huang<TAB>10<TAB>HS-2` is a lower-case NAME beside two fields
+    that are not, so the row read as mixed case and the name was left as
+    typed."""
+    rows = rows_for("theodore huang\t10\tHS-2\nMIRANDA OYELARAN\t12\tHS-Adv")
+    assert (rows[0].first_name, rows[0].last_name) == ("Theodore", "Huang")
+    assert (rows[1].first_name, rows[1].last_name) == ("Miranda", "Oyelaran")
+
+
+def test_the_demonstration_paste_comes_through_clean():
+    """The exact roster in docs/DEMO.md. If this stops being clean, the demo
+    stops being a demonstration of anything."""
+    paste = "\n".join([
+        "Aurelia Vance\t9\tHS-1",
+        "Marcus DeLuca\t10\tHS-2",
+        "Priya Raghunathan\t11\tHS-3",
+        "Chen, Wei-Lin\t9\tHS-1",
+        "Okonkwo, Ngozi A.\t12\tHS-Adv",
+        "Sofia van der Berg\t10\tHS-2",
+        "Jamal Washington III\t11\tHS-3",
+        "Elena Marie Castellanos\t9\tHS-1",
+        "theodore huang\t10\tHS-2",
+        "MIRANDA OYELARAN\t12\tHS-Adv",
+        "Rafael Ortiz-Mendoza\t11\tHS-3",
+        "Yuki Tanaka\t9\tHS-1",
+        "1. Amara Nwosu\t10\tHS-2",
+        "2. Dmitri Volkov, Jr.\t12\tHS-Adv",
+        "3. Isabella Rossi\t11\tHS-3",
+        "Aurelia Vance\t9\tHS-1",
+    ])
+    rows = rows_for(paste)
+    assert len(rows) == 16
+
+    # Exactly one problem, and it is the one the demo is meant to show.
+    flagged = {r.line_number: r.warnings for r in rows if r.warnings}
+    assert set(flagged) == {1, 16}, flagged
+    for warnings in flagged.values():
+        assert warnings == ["duplicate_in_paste"], warnings
+
+    # And every name landed in the right field.
+    assert (rows[5].first_name, rows[5].last_name) == ("Sofia", "van der Berg")
+    assert rows[6].suffix == "III"
+    assert (rows[13].first_name, rows[13].last_name, rows[13].suffix) \
+        == ("Dmitri", "Volkov", "Jr.")
+    assert all(r.grade and r.latin_level for r in rows)

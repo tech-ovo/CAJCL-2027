@@ -317,6 +317,55 @@ def board(file: str = "board.json", new_codes: bool = False,
         print(f"{len(issued)} code(s) also written to board-codes.txt")
 
 
+@app.function(image=slim_image, secrets=secrets, timeout=900)
+def reissue_retired_prefix(old_prefix: str = "ADM") -> dict:
+    import sys
+    sys.path.insert(0, "/root/cajcl")
+    import scripts.add_board as add_board
+    from backend.lib.db import connect
+
+    db = connect()
+    try:
+        return add_board.retire_prefix(db, old_prefix)
+    finally:
+        db.close()
+
+
+@app.local_entrypoint()
+def retire_adm_codes():
+    """Reissue for everyone still holding an ADM code.
+
+        modal run backend/app.py::retire_adm_codes
+
+    `ADM` no longer exists, so those codes no longer sign anybody in. The
+    prefix is part of the hashed string, so there is no way to convert one --
+    each person gets a new code and needs a new sheet.
+    """
+    import pathlib
+    import sys
+
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+    import scripts.add_board as add_board
+
+    result = reissue_retired_prefix.remote("ADM")
+    if not result["people"]:
+        print("Nobody is holding an ADM code. Nothing to do.")
+        return
+
+    text = add_board.report(result)
+    print(text)
+    pathlib.Path("board-codes.txt").write_text(
+        "Access codes reissued when the ADM prefix was retired.
+"
+        "REAL PEOPLE. Do not commit this file; it is gitignored.
+"
+        "Each code is shown once. Everyone here needs a new sheet.
+
+" + text,
+        encoding="utf-8")
+    print(f"{len(result['people'])} code(s) also written to board-codes.txt")
+
+
 @app.local_entrypoint()
 def doctor():
     """Check the Modal secret before running anything that depends on it.

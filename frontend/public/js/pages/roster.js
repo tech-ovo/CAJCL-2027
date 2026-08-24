@@ -96,7 +96,7 @@ export async function rosterPage(host, params = []) {
               onclick: () => impersonateSponsor(),
             })
           : null,
-        button("Print packet", {
+        button("Preview packet", {
           onclick: () => openPrintView(asChair
             ? `/sponsor/packet?school_id=${schoolId}`
             : "/sponsor/packet"),
@@ -117,6 +117,14 @@ export async function rosterPage(host, params = []) {
               onclick: () => { showCancelled = !showCancelled; render(); },
             })
           : null),
+
+      el("p", { class: "small muted" },
+        el("strong", {}, "Preview only — do not hand these out. "),
+        "Access codes are stored scrambled and cannot be read back, so the "
+        + "sheets show blocks where the codes would be. To give somebody a "
+        + "working sheet, use ",
+        el("strong", {}, "Issue new codes"),
+        " and print from the screen that follows."),
 
       selecting ? reissueBar(people) : null,
 
@@ -272,6 +280,8 @@ export async function rosterPage(host, params = []) {
               ? el("span", { class: "pill pill--done", style: "margin-left:.5rem" },
                   "Chapter leader")
               : null) },
+        { key: "id", label: "No.", sortable: true,
+          render: (row) => el("span", { class: "mono" }, personNumber(row.id)) },
         { key: "position", label: "Position", sortable: true,
           render: (row) => position(row) },
         { key: "actions", label: "Actions", render: (row) => actions(row) },
@@ -291,6 +301,10 @@ export async function rosterPage(host, params = []) {
             ? el("span", { class: "pill pill--done", style: "margin-left:.5rem" },
                 "Chapter leader")
             : null) },
+      // The same number printed on their sheet and shown on their account, so
+      // a sponsor reading one out over the phone is reading the same thing.
+      { key: "id", label: "No.", sortable: true,
+        render: (row) => el("span", { class: "mono" }, personNumber(row.id)) },
       { key: "person_type", label: "Type", sortable: true,
         render: (row) => row.person_type === "delegate"
           ? "Delegate"
@@ -330,12 +344,19 @@ export async function rosterPage(host, params = []) {
              && p.status === "active") || null;
   }
 
-  async function impersonateSponsor() {
+  const impersonateSponsor = () => {
     const sponsor = sponsorOf(data.people);
-    if (!sponsor) return;
+    if (sponsor) impersonate(sponsor);
+  };
 
+  /* Sign in as anybody on this roster, not only the sponsor.
+   *
+   * A chair debugging "my activity sheet will not save" needs to see the
+   * delegate's screen, not their sponsor's. The server has always allowed
+   * this; only the button was missing. */
+  async function impersonate(person) {
     const code = await ask({
-      title: `Sign in as ${fullName(sponsor)}`,
+      title: `Sign in as ${fullName(person)}`,
       body: "You will see exactly what they see, read-only, for thirty "
           + "minutes. Both names appear in a banner on every page, and this is "
           + "recorded in the log.",
@@ -347,12 +368,16 @@ export async function rosterPage(host, params = []) {
 
     try {
       const result = await api.post("/auth/impersonate", {
-        target_person_id: sponsor.id, admin_code: code.trim() });
+        target_person_id: person.id, admin_code: code.trim() });
       // Keep the admin's own token so the banner's Stop button can restore it.
       api.adminToken.set(api.token.get());
       api.token.set(result.token);
       state.me = null;
-      location.hash = "#/roster";
+      // Where they land has to be a page THEY can open. A delegate has no
+      // roster, and sending them to one bounces straight to "no access".
+      location.hash = person.person_type === "delegate"
+        ? "#/activity-sheet"
+        : "#/roster";
       await route();
     } catch (error) {
       alert(error.message);
@@ -369,6 +394,10 @@ export async function rosterPage(host, params = []) {
       ...forms.map(([formType, label, received]) => {
         const box = el("input", {
           type: "checkbox", checked: !!received,
+          // A cancelled person is not attending, so whether their waiver
+          // arrived is not a question anyone needs to answer. Leaving it
+          // clickable invited a sponsor to tidy up a row that no longer counts.
+          disabled: row.status !== "active",
           id: `paper-${row.id}-${formType}`,
           onchange: async (event) => {
             event.target.disabled = true;
@@ -392,6 +421,15 @@ export async function rosterPage(host, params = []) {
 
   function actions(row) {
     const wrap = el("span", { style: "display:flex; gap:.5rem; flex-wrap:wrap" });
+
+    // Only scope '*' may impersonate, and only somebody who can actually sign
+    // in. It is the fastest way to answer "what does this person see?".
+    if (hasScope("*") && row.status === "active") {
+      add(wrap, button("View as", {
+        variant: "btn--small btn--quiet",
+        onclick: () => impersonate(row),
+      }));
+    }
 
     if (row.status === "active") {
       add(wrap, button("New code", {
@@ -468,9 +506,14 @@ export async function rosterPage(host, params = []) {
       const value = row[sort.key];
       return value === null || value === undefined ? "" : String(value).toLowerCase();
     };
-    // Adults and delegates stay grouped whichever column is sorted, because a
-    // sponsor reads the roster as two lists.
-    if (a.person_type !== b.person_type) return a.person_type < b.person_type ? -1 : 1;
+    // Adults and delegates stay grouped, because a sponsor reads the roster as
+    // two lists -- EXCEPT when the chosen column is the one that says which is
+    // which. Grouping first there means clicking "Position" appears to do
+    // nothing at all, since the grouping has already decided the order.
+    const groupingWouldWin = sort.key !== "position" && sort.key !== "person_type";
+    if (groupingWouldWin && a.person_type !== b.person_type) {
+      return a.person_type < b.person_type ? -1 : 1;
+    }
     return pick(a) < pick(b) ? -direction : pick(a) > pick(b) ? direction : 0;
   }
 }

@@ -782,14 +782,26 @@ def create_school(request: Request, payload: dict = Body(...),
                                                     school_rule="any", writes=True)):
     name = (payload.get("name") or "").strip()
     level = payload.get("level")
-    if not name or level not in ("MS", "HS"):
-        raise catalog.ValidationError(
-            ["Give the chapter a name and say whether it is middle or high school."])
+    # The city is not optional. It appears on the tabula beside every chapter
+    # name, and a blank one renders as a stray separator -- and at a fifty-
+    # chapter convention "Lincoln High School" is genuinely ambiguous without
+    # it. Cheap to ask for once; awkward to backfill for everyone later.
+    city = (payload.get("city") or "").strip()
+
+    problems = []
+    if not name:
+        problems.append("Give the chapter a name.")
+    if level not in ("MS", "HS"):
+        problems.append("Say whether it is a middle school or a high school.")
+    if not city:
+        problems.append("Give the chapter's city.")
+    if problems:
+        raise catalog.ValidationError(problems)
 
     now = clock.now_iso()
     with database().tx(request_id=request_id(request)) as tx:
         school_id = tx.insert("schools.create", (
-            name, level, "chapter", payload.get("city"),
+            name, level, "chapter", city,
             1 if payload.get("billing_exempt") else 0,
             int(payload.get("discount_cents") or 0),
             payload.get("discount_reason"),
@@ -1126,15 +1138,29 @@ def create_announcement(request: Request, payload: dict = Body(...),
                         principal: auth.Principal = guard("admin.announcements.create",
                                                           "*", school_rule="any",
                                                           writes=True)):
-    """A banner on every page in under a minute, without touching code."""
+    """A banner on every page, without touching code.
+
+    `ends_at` arrives as a plain California date and becomes the end of that
+    day, the same as every other deadline here -- nobody hand-types a UTC
+    instant. See clock.py for why that matters.
+    """
     body = (payload.get("body_md") or "").strip()
     if not body:
         raise catalog.ValidationError(["Write the announcement first."])
+
+    ends_at = payload.get("ends_at") or None
+    if ends_at:
+        try:
+            ends_at = clock.end_of_day_utc(ends_at)
+        except Exception:
+            raise catalog.ValidationError(
+                ["That is not a date the announcement can end on."])
+
     with database().tx(request_id=request_id(request)) as tx:
         announcement_id = tx.insert("announcements.create", (
             body, payload.get("level") or "info",
             1 if payload.get("active", True) else 0,
-            payload.get("starts_at"), payload.get("ends_at"),
+            payload.get("starts_at"), ends_at,
             principal.person_id, clock.now_iso()))
         tx.audit("announcement.update",
                  f"{principal.display_name} published an announcement.",
@@ -1142,6 +1168,34 @@ def create_announcement(request: Request, payload: dict = Body(...),
                  impersonator_person_id=principal.impersonator_person_id,
                  entity_type="announcement", entity_id=announcement_id)
     return {"ok": True, "id": announcement_id}
+
+
+@app.post("/admin/announcements/{announcement_id}/active")
+def set_announcement_active(announcement_id: int, request: Request,
+                            payload: dict = Body(...),
+                            principal: auth.Principal = guard(
+                                "admin.announcements.set_active", "*",
+                                school_rule="any", writes=True)):
+    """Take a banner down, or put one back up.
+
+    Not a delete. An announcement is a thing that was shown to everybody at the
+    convention, and the audit log refers to it by id; removing the row would
+    leave entries pointing at nothing. Taking it down is the action people
+    actually want, and it is reversible -- which matters at 8am on a Saturday
+    when somebody pulls the wrong one.
+    """
+    active = 1 if payload.get("active") else 0
+    with database().tx(request_id=request_id(request)) as tx:
+        changed = tx.run("announcements.set_active", (active, announcement_id))
+        if not changed:
+            raise auth.ForbiddenError("no such announcement")
+        tx.audit("announcement.update",
+                 f"{principal.display_name} "
+                 f"{'put an announcement back up' if active else 'took an announcement down'}.",
+                 actor_person_id=principal.person_id,
+                 impersonator_person_id=principal.impersonator_person_id,
+                 entity_type="announcement", entity_id=announcement_id)
+    return {"ok": True, "active": bool(active)}
 
 
 @app.get("/admin/roles")

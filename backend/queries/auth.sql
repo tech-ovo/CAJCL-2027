@@ -61,7 +61,22 @@ WHERE sess.token_hash = ?;
 -- name: auth.session_touch
 -- Bumps last_seen_at so a person can recognise their own sessions on the
 -- account page. Deliberately NOT audited -- see SILENT_ACTIONS in db.py.
-UPDATE sessions SET last_seen_at = ? WHERE id = ?;
+--
+-- THE `last_seen_at <` CLAUSE IS LOAD-BEARING, NOT AN OPTIMISATION.
+--     Without it this is a WRITE ON EVERY AUTHENTICATED REQUEST. libSQL has a
+--     single writer, so a sponsor loading a thirty-person roster while two
+--     delegates save their forms produced three transactions all wanting the
+--     write lock for a column nobody reads in real time -- and one of them came
+--     back SQLITE_BUSY, which surfaced to the delegate as a 500.
+--
+--     The caller passes a cutoff a few minutes in the past. A session already
+--     touched since then matches nothing and the statement takes no lock at
+--     all, which turns the common case from a write into a no-op.
+--
+--     The account page shows this to the minute at best, so a few minutes of
+--     staleness costs nothing a person would notice.
+UPDATE sessions SET last_seen_at = ?
+WHERE id = ? AND (last_seen_at IS NULL OR last_seen_at < ?);
 
 -- name: auth.session_revoke
 UPDATE sessions SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL;

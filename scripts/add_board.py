@@ -94,7 +94,8 @@ def _school_id(tx, name: str, entry: dict, *, create: bool) -> int:
 
     now = clock.now_iso()
     school_id = tx.insert("schools.create", (
-        name, entry.get("level", "HS"), "chapter", entry.get("city", ""),
+        name, entry.get("level", "HS"), "chapter",
+        entry.get("city") or "Irvine",
         0, 0, None, None, now, now))
     tx.run("schools.stats_init", (school_id, now))
     return school_id
@@ -179,9 +180,7 @@ def run(db, people: list[dict], *,
 
             code = None
             if not existing or new_codes:
-                scopes = {r["scope"]
-                          for r in tx.all("auth.scopes_for_person", (person_id,))}
-                prefix = auth.code_prefix_for("adult", adult_type, scopes)
+                prefix = auth.code_prefix_for("adult", adult_type)
                 if existing:
                     tx.run("auth.session_revoke_all_for_person", (now, person_id))
                 code = auth.issue_code(tx, person_id, prefix)
@@ -201,6 +200,52 @@ def run(db, people: list[dict], *,
         })
 
     return {"people": results}
+
+
+def retire_prefix(db, old_prefix: str = "ADM") -> dict:
+    """Give everyone still holding an `old_prefix` code a correct one.
+
+    A prefix is part of the string that gets hashed, so it cannot be rewritten
+    in place: the stored HMAC was computed over `ADM...`, and changing the
+    column alone would leave a person whose code no longer matches their row --
+    which fails at sign-in with no explanation.
+
+    So each of them gets a genuinely new code, their sessions are revoked, and
+    the new code comes back ONCE. Whoever runs this has to hand out new sheets.
+    There is no cheaper version of this, which is the argument for having
+    retired the prefix before any codes went out rather than after.
+    """
+    from backend.lib import auth, clock
+
+    issued = []
+    with db.tx() as tx:
+        people = [dict(r) for r in tx.all("people.with_prefix", (old_prefix,))]
+
+    for person in people:
+        with db.tx() as tx:
+            now = clock.now_iso()
+            prefix = auth.code_prefix_for(person["person_type"],
+                                          person["adult_type"])
+            tx.run("auth.session_revoke_all_for_person", (now, person["id"]))
+            code = auth.issue_code(tx, person["id"], prefix)
+            name = f"{person['first_name']} {person['last_name']}"
+            tx.audit(
+                "person.code_regenerate",
+                f"{name}'s access code was reissued as {prefix} when the "
+                f"{old_prefix} prefix was retired. The previous code and every "
+                f"device signed in with it stopped working.",
+                school_id=person["school_id"],
+                entity_type="person", entity_id=person["id"],
+                changed_fields=["code_hmac", "code_prefix"])
+
+        issued.append({
+            "name": name, "title": person["adult_type"] or person["person_type"],
+            "school": person["school_name"], "action": "reissued",
+            "roles": [], "role_changes": [], "code": code,
+            "person_id": person["id"],
+        })
+
+    return {"people": issued}
 
 
 def report(result: dict) -> str:

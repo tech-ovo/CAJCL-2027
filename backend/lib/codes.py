@@ -7,7 +7,7 @@ FORMAT
     PPP-XXXXX-XXXXX
 
     PPP   a three-letter prefix: SPO sponsor, DEL delegate, VOL adult
-          volunteer or chaperone, ADM admin. The prefix is display and
+          volunteer or chaperone. The prefix is display and
           disambiguation only -- it is NOT a namespace. Codes are globally
           unique across prefixes, and the prefix is part of what gets hashed.
 
@@ -65,7 +65,19 @@ CHECK_MODULUS = 31     # prime, so transpositions are always caught
 # What a human might type instead of what we printed. I and L read as 1, O as 0.
 CONFUSABLES = {"I": "1", "L": "1", "O": "0"}
 
-VALID_PREFIXES = ("SPO", "DEL", "VOL", "ADM")
+# THREE, not four. `ADM` was retired: see auth.code_prefix_for for why a
+# prefix must describe what somebody IS and never what they can do.
+#
+# It is gone from here rather than merely unminted, which means an old ADM code
+# no longer normalizes and no longer signs anybody in. That is deliberate and it
+# is not free -- everyone who held one needs a new code and a new sheet, which
+# `modal run backend/app.py::retire_adm_codes` does in one pass.
+#
+# The database CHECK still permits 'ADM'. It has to: the rows exist until that
+# command has run, and a constraint that rejects data already in the table
+# cannot be added. The application is the narrower gate, and it is the one that
+# matters.
+VALID_PREFIXES = ("SPO", "DEL", "VOL")
 
 DATA_LENGTH = 9        # random characters: 9 * log2(31) = 44.6 bits
 

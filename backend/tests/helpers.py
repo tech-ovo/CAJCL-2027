@@ -76,8 +76,7 @@ class Fixture:
             tx.run("people.grant_role",
                    (person_id, role_row["id"], None, clock.now_iso()))
 
-        scopes = {r["scope"] for r in tx.all("auth.scopes_for_person", (person_id,))}
-        prefix = auth.code_prefix_for(person_type, adult_type, scopes)
+        prefix = auth.code_prefix_for(person_type, adult_type)
         self.codes[key] = auth.issue_code(tx, person_id, prefix)
         self._principals[key] = person_id
         return person_id
