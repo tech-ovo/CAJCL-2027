@@ -27,6 +27,22 @@ libsql; platform_machine != "aarch64" and (sys_platform != "win32" or platform_m
 
 segno
 
+# The IANA time-zone database, as a Python package.
+#
+# `zoneinfo` reads the operating system's copy. Linux and macOS ship one;
+# WINDOWS DOES NOT, and neither does every slim container base. Without this,
+# `ZoneInfo("America/Los_Angeles")` in clock.py raises ZoneInfoNotFoundError at
+# import time -- so the whole application, the test suite, and every script fail
+# before doing anything, on a fresh Windows checkout.
+#
+# It is declared unconditionally rather than with a `sys_platform == "win32"`
+# marker on purpose. A marker would leave the Linux side depending on whatever
+# the base image happens to ship, which is exactly the kind of thing that works
+# for a year and then does not. 350 KB buys the same behaviour everywhere.
+#
+# Every deadline in this system is "end of day in California". See clock.py.
+tzdata
+
 # Pure Python and adds nothing measurable to a cold start, so an export can be
 # produced inline rather than waiting for the fat image to boot.
 openpyxl

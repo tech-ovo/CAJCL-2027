@@ -1,0 +1,21 @@
+-- An index on person_roles(role_id), so "who holds this role" is a seek.
+--
+-- WHY IT IS NOT IN 001_core.sql WHERE IT BELONGS
+--     Because migrations are forward-only, and 001 has already run everywhere.
+--     The rule that every index is declared in its table's migration is about
+--     keeping them findable, so: person_roles is created in 001_core.sql, and
+--     this is its second index. The first, idx_person_roles_person, answers
+--     "what does this person hold" and is on the authentication path.
+--
+-- WHAT IT IS FOR
+--     Settings > Roles lists the board -- everyone holding a role other than
+--     delegate or chapter leader. Without this index that question has to scan
+--     person_roles, which carries one row for every delegate at the convention,
+--     to find about twenty adults. In Turso a scan is billed per row scanned,
+--     so it is a thousand row reads to render a page listing twenty people.
+--
+-- WHAT IT COSTS
+--     One index write when a role is granted or revoked. That happens once per
+--     person at provisioning and almost never afterwards.
+
+CREATE INDEX IF NOT EXISTS idx_person_roles_role ON person_roles (role_id);

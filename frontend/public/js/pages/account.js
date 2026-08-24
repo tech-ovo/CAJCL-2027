@@ -6,7 +6,7 @@
  */
 
 import * as api from "../api.js";
-import { el, clear, tabula, button, table, localDate, emptyState } from "../ui.js";
+import { add, el, clear, tabula, button, table, localDate, emptyState, personNumber } from "../ui.js";
 import { state } from "../main.js";
 
 export async function accountPage(host) {
@@ -16,12 +16,12 @@ export async function accountPage(host) {
     state.me = me;
     const sessions = me.sessions || [];
 
-    host.append(
+    add(host, 
       tabula({
         label: me.person_type === "delegate" ? "Delegate" : "Adult",
         name: `${me.first_name} ${me.last_name}`,
         left: me.school.name,
-        right: `№  ${String(me.person_id).padStart(4, "0")}`,
+        right: personNumber(me.person_id),
       }),
 
       el("section", { class: "grid" },
@@ -53,7 +53,10 @@ export async function accountPage(host) {
           el("dl", { class: "detail" },
             el("dt", {}, "Chapter"), el("dd", {}, me.school.name),
             el("dt", {}, "Roles"),
-            el("dd", {}, (me.roles || []).join(", ") || "—")),
+            // Roles are stored as slugs -- "delegate", "sponsor". The chapter
+            // beside them is a proper name, and a lowercase word next to it
+            // reads as a mistake.
+            el("dd", {}, (me.roles || []).map(titleCase).join(", ") || "—")),
           el("hr", { class: "hair" }),
           el("p", { class: "small muted" },
             "Your name and chapter are set by your sponsor. If either is wrong, " +
@@ -61,6 +64,12 @@ export async function accountPage(host) {
   }
 
   await render();
+}
+
+/** "chapter_leader" -> "Chapter leader". */
+export function titleCase(slug) {
+  const words = String(slug || "").replace(/[_-]+/g, " ").trim();
+  return words ? words[0].toUpperCase() + words.slice(1) : "";
 }
 
 function describeDevice(userAgent) {

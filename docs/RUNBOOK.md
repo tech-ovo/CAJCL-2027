@@ -164,6 +164,8 @@ would be worse than stopping.
 | `build_snapshot.py` | Bakes the current numbers into the welcome page. |
 | `check_query_plans.py` | Checks no database question is accidentally slow. |
 | `measure_usage.py` | Estimates how much of the free tier is being used. |
+| `build_favicon.py` | Rebuilds the browser-tab icons from `img/logo.webp`. Run it when the logo changes. Needs Pillow. |
+| `add_board.py` | Gives real board members accounts. Reads `board.json`, which is gitignored so no real name reaches the repository. |
 
 ---
 
@@ -237,11 +239,23 @@ know it worked because your prompt gains a `(.venv)` prefix. If a command
 suddenly reports that a package is missing, that is almost always the reason.
 
 If PowerShell refuses to run the activate script and mentions an execution
-policy, allow local scripts once, for your account only:
+policy, allow local scripts once, for your account only. It changes nothing for
+other users and turns off no other protection:
 
 ```powershell
 Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 ```
+
+On a school-managed machine you may not be allowed to. You do not need to be:
+skip activation and call the environment's Python by path instead, which needs
+no permission at all.
+
+```powershell
+.venv\Scripts\python.exe -m pytest backend/tests
+```
+
+Watch the folder in your prompt, too. A `.venv` created before you `cd` into
+the project lands in your home folder and belongs to nothing.
 
 `.venv` is already in `.gitignore`, so it will not be committed.
 
@@ -604,6 +618,22 @@ Turso command-line tool connects to the same database perfectly happily.
 pip uninstall libsql-client
 pip install libsql
 ```
+
+### `ZoneInfoNotFoundError: No time zone found with key America/Los_Angeles`
+
+The time-zone database is missing. `zoneinfo` reads the operating system's
+copy; Linux and macOS ship one and **Windows does not**.
+
+```powershell
+pip install -r backend/requirements.txt
+```
+
+`tzdata` is declared there, so a correct install fixes it. If it persists, you
+are running a different Python from the one you installed into — check that
+your prompt shows `(.venv)`.
+
+Every deadline in this system means "end of day in California", so this is not
+a cosmetic dependency: it is loaded at import time and nothing runs without it.
 
 ### `is cmake not installed?` while running `pip install`
 

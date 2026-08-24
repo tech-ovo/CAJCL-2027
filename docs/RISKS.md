@@ -42,12 +42,19 @@ hash of the pasted text but not of the roster state. Worth adding: reject a
 commit whose preview is older than the school's `updated_at`.
 
 ### Someone pastes 5,000 lines into the roster textarea
-**PARTIAL.** The parser is linear and handles 300 lines in single-digit
-milliseconds; 5,000 is not a performance problem. The real risks are the request
-body size and 5,000 rows landing in one transaction.
-**Still open:** cap the paste at a configurable number of lines (suggest 500,
-as a setting), reject with a clear message above that, and cap the request body
-at the FastAPI layer. Currently unbounded.
+**MITIGATED.** The parser is linear and handles 300 lines in single-digit
+milliseconds, so this was never a parsing problem. It was two other things.
+
+`roster.MAX_PASTE_LINES` caps a paste at 500 with a message naming the number
+of lines sent, which covers the transaction size. That check ran *after*
+FastAPI had read and parsed the whole body, though, so the body itself was
+still unbounded — a middleware now refuses anything over 1 MB on the declared
+`Content-Length`, before parsing. 1 MB is roughly forty times the largest
+legitimate paste.
+
+**Accepted:** a request that lies about its `Content-Length` is not caught. The
+platform terminates the connection well before anything reaches this process,
+and reading the stream to check would defeat the purpose.
 
 ---
 
@@ -73,6 +80,23 @@ them.
 timeout on a school Chromebook would mostly punish the honest delegate filling
 in a long form. The shared-device risk is real but the blast radius is one
 activity sheet, and the delegate cannot change their own name.
+
+### A packet reprinted later has blocks where the codes should be
+**MITIGATED, and it was a real hole.** A code is stored only as an HMAC, which
+is what makes a stolen database useless — and it also means a code that was
+never written down cannot be recovered. Reprinting a packet produced `███` in
+place of every code and `XXXXX` in every QR, so the sheets were not credentials
+at all. The failure was silent: the pages looked finished.
+
+The way out is to mint new codes, and the safeguard is that the sponsor names
+who gets one. The roster has a reissue mode: tick the people whose sheet was
+lost, confirm, and every new code is shown once with a print link for exactly
+those sheets. There is deliberately no "reissue for everyone" button — a
+whole-chapter reissue signs out every delegate already using the site, most of
+whom have their sheet and are fine.
+
+**Still true:** the codes on that screen are shown once and are gone when the
+page is left. That is the design, not a defect, and the screen says so.
 
 ### The printed sheet is a bearer credential
 **ACCEPTED, with mitigations.** Anyone holding the sheet can sign in as that
@@ -463,3 +487,66 @@ thirty-person roster costs about thirty-four. Nothing scans.
 The margin is not the reason this is safe, though — the CI plan check is. A
 single unindexed list view would put a five-figure multiplier on one of those
 rows, and 288× headroom disappears quickly at 100,000 reads a page.
+
+### `node.append(x)` renders the word "null" when x is null
+**MITIGATED.** The DOM's own `append` stringifies whatever it is handed, so the
+ordinary way to write a conditional child —
+
+```js
+host.append(error ? errorSummary(error) : null, field({...}))
+```
+
+— puts a text node reading `null` on the page whenever there is no error. It
+survives every review that reads the markup, because the markup is correct;
+only the rendered page is wrong. It shipped above roughly half the headings on
+the site and above the sign-in field, and was found by a person looking at the
+live site rather than by any test.
+
+`ui.js` now exports `add(node, ...children)`, which filters null, undefined and
+false exactly as `el()` always did, and `test_frontend.py` fails on any
+`.append(` outside `ui.js`.
+
+### The welcome page went blank the moment JavaScript loaded
+**FIXED.** Two files disagreed about who owned the markup. `index.html` carries
+the welcome page so a cold visitor sees a finished page with no request made;
+`welcome.js` was written on the assumption that the router left it alone, and
+said so in a comment. The router cleared `#app` before every render, including
+that one. `welcomePage` then found no `#stats`, returned early, and left an
+empty page — while the local file:// preview, where the module never loaded at
+all, looked perfect.
+
+`main.js` now lifts those children into a fragment at boot, before anything can
+clear them, and hands `welcomePage` a clone. `index.html` stays the one source
+of truth.
+
+The general lesson is the one worth keeping: a comment asserting what another
+file does is not a mechanism. It was accurate when written.
+
+### A dependency that is only present by accident
+**MITIGATED.** `zoneinfo` reads the operating system's time-zone database.
+Linux and macOS ship one; Windows does not. Nothing in this project declared
+`tzdata`, and the whole test suite passed on a Windows machine for weeks —
+because pandas, installed for something unrelated, had pulled it in. The first
+clean virtual environment failed at `import clock`, before a line of the
+application ran, with twenty frames of importlib naming neither cause nor fix.
+
+`tzdata` is now declared in `backend/requirements.txt` and in both Modal
+images, deliberately **without** a platform marker: a marker would leave the
+Linux side depending on whatever the base image happens to ship, which is the
+same bug wearing a different hat. `clock.py` raises a RuntimeError naming the
+fix. A test asserts the dependency is declared and unmarked.
+
+The general shape is worth remembering: **a green test suite proves the code
+works in the environment it ran in.** Anything the environment supplies by
+accident is invisible until somebody starts clean.
+
+### The local half of a Modal entrypoint needed the whole backend
+**MITIGATED.** `modal run backend/app.py::board` reads `board.json` on your own
+machine and does the database work in the container. `scripts/add_board.py`
+imported `backend.lib` at module level, so the local half needed a working
+backend environment — time-zone data, the Turso driver — to read a JSON file.
+On Windows it failed before opening it.
+
+The backend imports now live inside the functions that use them. `load()` and
+`report()` are pure text handling and import nothing, which is checked by a
+test that runs a subprocess and asserts no `backend.*` module was loaded.

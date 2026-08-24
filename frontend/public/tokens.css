@@ -34,6 +34,16 @@
   --mist:      #B9BEC6;  /* hairlines and borders ONLY — never text     1.72:1 on ivory */
   --white:     #FFFFFF;  /* panels, inputs, print */
 
+  /* The one colour outside the CAJCL palette, and it earns its place: it marks
+   * the actions that take something away -- cancelling a delegate, revoking a
+   * code. Navy for "cancel" read as just another button, and sponsors clicked
+   * it by accident. Measured at 6.93:1 on ivory and 7.54:1 on white, so it
+   * clears 4.5:1 as text in both places it is used.
+   *
+   * It is never the ONLY signal. Every use sits on a button whose label already
+   * says what it does. */
+  --crimson:   #A02334;  /* destructive actions ONLY                    6.93:1 on ivory */
+
   /* Semantic aliases. Prefer these in components: they say what a colour is
    * FOR, so a future commissioner can re-skin by editing the block above
    * without hunting for which --purple was a link and which was a heading. */
@@ -46,6 +56,13 @@
   --rule-strong:    var(--ink);
   --accent:         var(--gold);
   --tint:           var(--lavender);
+  --danger:         var(--crimson);
+
+  /* Adults and delegates read as one undifferentiated list of names on a long
+   * roster. This is a wash, not a colour -- 4% navy, well under any threshold
+   * where it competes with --tint for meaning -- and it is always accompanied
+   * by the Type column, so nobody has to perceive it to use the page. */
+  --tint-adult:     rgba(16, 42, 86, 0.04);
 
   /* Focus rings are purple or navy, NEVER gold. Gold on ivory is 2.06:1 and
    * fails the 3:1 minimum for a non-text indicator, so a gold ring is a ring

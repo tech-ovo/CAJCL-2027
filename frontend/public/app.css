@@ -243,15 +243,19 @@ hr.accent { border: 0; border-top: 2px solid var(--accent); width: var(--space-7
  * Masthead
  * ======================================================================== */
 
+/* The vertical rhythm at the top of every page is: a little air, the masthead,
+ * the rule, the nav, the rule, the content. Each gap used to be a full step
+ * larger, which pushed the first heading below the fold on a laptop for no
+ * gain -- the masthead is small type and does not need a stage. */
 .masthead {
   border-bottom: var(--border-strong);
-  margin-bottom: var(--space-6);
-  padding-top: var(--space-5);
+  margin-bottom: var(--space-4);
+  padding-top: var(--space-4);
 }
 .masthead__bar {
   display: flex; align-items: flex-end; justify-content: space-between;
   gap: var(--space-5); flex-wrap: wrap;
-  padding-bottom: var(--space-3);
+  padding-bottom: var(--space-2);
 }
 .masthead__mark {
   font-family: var(--font-serif);
@@ -275,7 +279,10 @@ hr.accent { border: 0; border-top: 2px solid var(--accent); width: var(--space-7
 
 /* The theme epigraph. Content, not decoration, and it earns exactly one
  * privileged placement. Full on the welcome page, a single-line rail elsewhere. */
-.epigraph { padding: var(--space-5) 0 var(--space-6); }
+/* No top padding. The epigraph is the first thing in its column, and the rail
+ * beside it starts at the top of the same grid row -- so any padding here
+ * pushed the theme down and left "Where" floating above it. */
+.epigraph { padding: 0 0 var(--space-6); }
 .epigraph__latin {
   font-family: var(--font-serif); font-style: italic;
   font-size: var(--size-2xl); line-height: 1.15;
@@ -305,10 +312,10 @@ hr.accent { border: 0; border-top: 2px solid var(--accent); width: var(--space-7
 
 .nav {
   display: flex; flex-wrap: wrap; gap: var(--space-4);
-  align-items: center; padding: var(--space-3) 0;
+  align-items: center; padding: var(--space-2) 0;
   font-family: var(--font-sans); font-size: var(--size-sm);
   border-bottom: var(--border);
-  margin-bottom: var(--space-6);
+  margin-bottom: var(--space-5);
 }
 .nav a {
   color: var(--text); text-decoration: none;
@@ -374,8 +381,12 @@ hr.accent { border: 0; border-top: 2px solid var(--accent); width: var(--space-7
 
 /* Destructive actions are navy, not red — the palette has no red, and a
  * confirmation step carries the weight instead of a colour. */
-.btn--danger { background: var(--ink); border-color: var(--ink); color: var(--ivory); }
-.btn--danger:hover { background: var(--panel-bg); color: var(--ink); }
+/* Destructive actions. Outlined rather than filled, because a solid red block
+ * in a row of buttons pulls the eye to the one thing nobody should click by
+ * accident; the colour is a warning, not an invitation. */
+.btn--danger { border-color: var(--danger); color: var(--danger); background: var(--panel-bg); }
+.btn--danger:hover { background: var(--danger); color: var(--white); border-color: var(--danger); }
+.btn--danger:focus-visible { outline-color: var(--danger); }
 
 .btn--quiet { border-color: var(--rule); color: var(--text-muted); }
 .btn--small { min-height: auto; padding: var(--space-1) var(--space-3); font-size: var(--size-xs); }
@@ -541,8 +552,21 @@ legend { padding: 0; }
 .table tbody tr.is-flagged { background: var(--tint); }
 .table tbody tr.is-inactive td { color: var(--text-muted); }
 
-.table .num, .table th.num { text-align: right; padding-right: 0;
-  font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+/* A roster is two lists printed as one. The wash separates them at a glance
+ * without turning the table into a chart; the Type column still says which is
+ * which, so nothing depends on seeing it. */
+.table tbody tr.is-adult { background: var(--tint-adult); }
+
+/* A right-aligned column must keep its right padding. Without it the heading
+ * of the NEXT column starts at the exact pixel this one ends, and "Grade"
+ * followed by "Latin" reads as a single word: GRADELATIN. The extra left
+ * padding keeps the number off the column before it. */
+.table .num, .table th.num {
+  text-align: right;
+  padding-left: var(--space-4);
+  padding-right: var(--space-3);
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+}
 .table th.num { font-family: var(--font-sans); }
 
 .table__sort {
@@ -666,7 +690,15 @@ th[aria-sort] { color: var(--text); }
 .panel { background: var(--panel-bg); border: var(--border); padding: var(--space-5); }
 .panel--flush { padding: 0; }
 
-.detail { display: grid; grid-template-columns: auto 1fr; gap: var(--space-2) var(--space-5); margin: 0; }
+/* The term is small uppercase sans and the value is body serif, so they have
+ * different line boxes. Left to stretch, each sits at the top of its own box
+ * and the pair reads as very slightly out of true. Aligning on the baseline is
+ * what makes the two columns look like one line. */
+.detail {
+  display: grid; grid-template-columns: auto 1fr;
+  gap: var(--space-2) var(--space-5); margin: 0;
+  align-items: baseline;
+}
 .detail dt {
   font-family: var(--font-sans); font-size: var(--size-xs);
   letter-spacing: var(--tracking-label); text-transform: uppercase;
@@ -701,3 +733,23 @@ th[aria-sort] { color: var(--text); }
   .nav, .banner, .btn, .btn-row, .skip-link, .waking { display: none !important; }
   body { background: var(--white); }
 }
+
+/* ===========================================================================
+ * Dialogs
+ * ======================================================================== */
+
+/* A native <dialog>. The browser handles the focus trap, Escape, the backdrop,
+ * and returning focus to whatever opened it — all of which a hand-rolled modal
+ * gets wrong. This only has to make it look like the rest of the site. */
+.dialog {
+  border: var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--panel-bg);
+  color: var(--text);
+  padding: var(--space-6);
+  max-width: 32rem;
+  width: calc(100% - var(--space-6));
+}
+.dialog::backdrop { background: rgb(16 42 86 / 0.45); }
+.dialog h2 { margin-top: 0; }
+.dialog .field { margin-bottom: var(--space-4); }

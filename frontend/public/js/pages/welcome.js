@@ -1,28 +1,40 @@
 /* The public welcome page.
  *
- * The static snapshot in index.html is ALREADY on screen when this runs. This
- * only replaces the numbers once the API answers, so a visitor arriving at a
- * cold site sees a complete page rather than a loading screen -- and if the API
- * never answers, they keep the snapshot instead of a spinner.
+ * WHERE THE MARKUP LIVES
+ *   In index.html, not here. A visitor arriving while Modal is cold gets a
+ *   finished page from the very first byte, with no request made and nothing
+ *   to wait for, and scripts/build_snapshot.py has exactly one file to write
+ *   the numbers into.
+ *
+ *   The router clears #app before every render, so main.js lifts that markup
+ *   into a fragment at boot and hands back a clone here. Nothing is duplicated
+ *   in JavaScript, and nothing goes blank if this module ever fails to load --
+ *   the page a visitor already has is the right one.
  */
 
 import * as api from "../api.js";
-import { el, clear } from "../ui.js";
-import { state } from "../main.js";
+import { add, el, clear } from "../ui.js";
+import { state, snapshotMarkup, applySnapshot } from "../main.js";
 
 export async function welcomePage(host) {
-  // Nothing is cleared here on purpose: index.html's markup IS the snapshot,
-  // and the router leaves it in place for this route.
-  const stats = document.getElementById("stats");
-  if (!stats) return;
+  const markup = snapshotMarkup();
+  if (markup) add(host, markup);
 
-  const venue = state.convention && state.convention["convention.venue_address"];
-  if (venue) {
+  // The convention facts may have arrived while this page was not on screen.
+  if (state.convention && Object.keys(state.convention).length) {
+    applySnapshot(state.convention);
+  }
+
+  const venueAddress = state.convention && state.convention["convention.venue_address"];
+  if (venueAddress) {
     document.querySelectorAll('[data-snapshot="venue"]').forEach((node) => {
       clear(node);
-      node.append(state.convention["convention.venue_name"], el("br"), venue);
+      add(node, state.convention["convention.venue_name"], el("br"), venueAddress);
     });
   }
+
+  const stats = document.getElementById("stats");
+  if (!stats) return;
 
   try {
     const live = await api.get("/public/stats");
@@ -34,7 +46,7 @@ export async function welcomePage(host) {
   } catch (ignored) {
     // Keep the snapshot. Say so quietly rather than showing an error on a page
     // that is otherwise perfectly readable.
-    stats.append(el("p", { class: "label", style: "grid-column: 1 / -1" },
+    add(stats, el("p", { class: "label", style: "grid-column: 1 / -1" },
       "Showing the most recent published figures."));
   }
 }

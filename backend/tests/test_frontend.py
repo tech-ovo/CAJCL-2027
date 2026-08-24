@@ -227,3 +227,46 @@ def test_no_secret_leaks_into_the_frontend():
                           "code_pepper", "pepper", "modal_token"):
             assert forbidden not in source, \
                 f"{path.name} contains {forbidden!r} outside a comment"
+
+
+# ---------------------------------------------------------------------------
+# The DOM's own append() is banned
+# ---------------------------------------------------------------------------
+
+def test_nothing_calls_the_dom_append_directly():
+    """`node.append(x)` stringifies x, so a conditional child renders as "null".
+
+    Written the ordinary way --
+
+        host.append(error ? errorSummary(error) : null, field({...}))
+
+    -- the page gets a text node reading "null" whenever there is no error.
+    It survives review because the markup is correct; only the rendered page
+    is wrong. This shipped above roughly half the headings on the site.
+
+    ui.js exports `add(node, ...children)`, which filters null, undefined and
+    false exactly as `el()` always has. ui.js itself is exempt: it is where the
+    one real call lives.
+    """
+    offenders = []
+    for path in JS_FILES:
+        if path.name == "ui.js":
+            continue
+        source = path.read_text(encoding="utf-8")
+        for number, line in enumerate(source.splitlines(), start=1):
+            if re.search(r"\.append\(", line):
+                offenders.append(f"{path.relative_to(ROOT).as_posix()}:{number}")
+
+    assert offenders == [], (
+        "use add(node, ...) from ui.js instead of node.append(...) at "
+        + ", ".join(offenders))
+
+
+def test_the_add_helper_drops_empty_children():
+    """The three values a conditional child actually takes."""
+    source = (PUBLIC / "js" / "ui.js").read_text(encoding="utf-8")
+    assert re.search(r"export function add\(node, \.\.\.children\)", source)
+    # add() and el() must go through the same filter, or they drift apart.
+    assert re.search(r"function append\(node, children\)[\s\S]{0,200}?"
+                     r"child === null \|\| child === undefined \|\| child === false",
+                     source)

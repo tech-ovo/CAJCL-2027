@@ -1,0 +1,21 @@
+[
+  {
+    "first": "Ada",
+    "last": "Lovelace",
+    "title": "Sponsor",
+    "school": "University High School",
+    "roles": ["sponsor", "admin"]
+  },
+  {
+    "first": "Grace",
+    "last": "Hopper",
+    "title": "Convention President",
+    "roles": ["admin"]
+  },
+  {
+    "first": "Katherine",
+    "last": "Johnson",
+    "title": "Registration Chair",
+    "roles": ["registration_chair"]
+  }
+]

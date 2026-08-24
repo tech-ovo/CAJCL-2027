@@ -26,7 +26,27 @@ from __future__ import annotations
 import datetime as _dt
 from zoneinfo import ZoneInfo
 
-CONVENTION_TZ = ZoneInfo("America/Los_Angeles")
+try:
+    CONVENTION_TZ = ZoneInfo("America/Los_Angeles")
+except Exception as error:                        # ZoneInfoNotFoundError
+    # `zoneinfo` reads the operating system's time-zone database. Windows has
+    # none, so a fresh checkout there fails on THIS LINE, before anything has
+    # run -- and the traceback is twenty frames of importlib that name neither
+    # the cause nor the fix.
+    raise RuntimeError(
+        "The time-zone database is missing, so 'America/Los_Angeles' cannot "
+        "be loaded.\n\n"
+        "This is normal on Windows: Python reads the operating system's copy, "
+        "and Windows does not ship one.\n\n"
+        "Install it:\n"
+        "    pip install -r backend/requirements.txt\n"
+        "or, on its own:\n"
+        "    pip install tzdata\n\n"
+        "If that does not fix it, you are probably running a different Python "
+        "from the one you installed into. Check that your prompt shows "
+        "(.venv)."
+    ) from error
+
 UTC = _dt.timezone.utc
 
 ISO_FORMAT = "%Y-%m-%dT%H:%M:%SZ"

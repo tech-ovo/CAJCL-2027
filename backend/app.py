@@ -32,13 +32,35 @@ app = modal.App("cajcl-2027")
 # it is rotated.
 secrets = [modal.Secret.from_name("cajcl-2027")]
 
+# ---------------------------------------------------------------------------
+# TURN THIS ON BEFORE CONVENTION WEEKEND, AND OFF AFTERWARDS
+# ---------------------------------------------------------------------------
+# Auto-export writes a full backup every ten minutes. It exists for live
+# grading, where losing ten minutes of scores is the difference between a smooth
+# awards ceremony and a disaster.
+#
+# For the other fifty weeks of the year it is a container starting up 144 times
+# a day to read one setting, find it switched off, and stop. That costs real
+# credit and protects nothing, because there is nothing being typed in.
+#
+# With this False the function still EXISTS and can be run by hand
+# (`modal run backend/app.py::autoexport`) -- it simply is not scheduled. The
+# in-database switch, Settings > Operations, still has to be on as well: this
+# controls whether the alarm clock rings, that controls what happens when it
+# does.
+#
+#     Friday morning of convention:  set True, `modal deploy`, then turn
+#                                    auto-export on in Settings > Operations
+#     Monday after:                  set False, `modal deploy`
+LIVE_GRADING = False
+
 slim_image = (
     modal.Image.debian_slim(python_version="3.12")
     # openpyxl is pure Python and adds nothing measurable to a cold start, and
     # having it here means an export downloads immediately instead of waiting
     # for the fat image to boot. WeasyPrint is the only thing heavy enough to
     # justify the split.
-    .pip_install("fastapi[standard]", "libsql", "segno", "openpyxl")
+    .pip_install("fastapi[standard]", "libsql", "segno", "openpyxl", "tzdata")
     .add_local_dir(".", remote_path="/root/cajcl", ignore=[
         "**/.git/**", "**/__pycache__/**", "**/.pytest_cache/**",
         "*.db", "*.db-wal", "*.db-shm", "demo-codes.txt",
@@ -54,7 +76,7 @@ fat_image = (
         "libpango-1.0-0", "libpangoft2-1.0-0", "libcairo2",
         "libgdk-pixbuf-2.0-0", "libffi-dev", "shared-mime-info", "fonts-dejavu-core",
     )
-    .pip_install("weasyprint", "openpyxl", "libsql", "segno")
+    .pip_install("weasyprint", "openpyxl", "libsql", "segno", "tzdata")
     .add_local_dir(".", remote_path="/root/cajcl", ignore=[
         "**/.git/**", "**/__pycache__/**", "**/.pytest_cache/**",
         "*.db", "*.db-wal", "*.db-shm", "demo-codes.txt",
@@ -235,6 +257,66 @@ def inspect_secret() -> str:
     return "\n".join(lines)
 
 
+@app.function(image=slim_image, secrets=secrets, timeout=900)
+def add_board_members(people: list, new_codes: bool = False,
+                      create_schools: bool = False) -> dict:
+    """Give the real board their accounts. Returns their codes.
+
+    The names arrive as an argument rather than from a file in the image,
+    because the file they come from is gitignored and must stay that way -- see
+    scripts/add_board.py.
+    """
+    import sys
+    sys.path.insert(0, "/root/cajcl")
+    import scripts.add_board as add_board
+    from backend.lib.db import connect
+
+    db = connect()
+    try:
+        return add_board.run(db, people, new_codes=new_codes,
+                             create_schools=create_schools)
+    finally:
+        db.close()
+
+
+@app.local_entrypoint()
+def board(file: str = "board.json", new_codes: bool = False,
+          create_schools: bool = False):
+    """Provision real people from a local, gitignored file.
+
+        modal run backend/app.py::board
+        modal run backend/app.py::board --new-codes
+
+    Safe to run repeatedly: an existing person keeps their account and their
+    code, and only their roles are brought into line with the file.
+    """
+    import pathlib
+    import sys
+
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+    import scripts.add_board as add_board
+
+    try:
+        people = add_board.load(pathlib.Path(file))
+    except add_board.BoardError as error:
+        print(error)
+        return
+
+    result = add_board_members.remote(people, new_codes=new_codes,
+                                      create_schools=create_schools)
+    text = add_board.report(result)
+    print(text)
+
+    issued = [row for row in result["people"] if row["code"]]
+    if issued:
+        pathlib.Path("board-codes.txt").write_text(
+            "Access codes for the convention board.\n"
+            "REAL PEOPLE. Do not commit this file; it is gitignored.\n"
+            "Each code is shown once and stored only as an HMAC.\n\n" + text,
+            encoding="utf-8")
+        print(f"{len(issued)} code(s) also written to board-codes.txt")
+
+
 @app.local_entrypoint()
 def doctor():
     """Check the Modal secret before running anything that depends on it.
@@ -302,13 +384,22 @@ def warm_reconciler():
     print(f"warm_until={warm_until or '(unset)'} -> min_containers={wanted}")
 
 
-@app.function(image=slim_image, secrets=secrets, schedule=modal.Period(minutes=10))
+@app.function(image=slim_image, secrets=secrets,
+              schedule=modal.Period(minutes=10) if LIVE_GRADING else None)
 def autoexport():
     """A no-op unless auto-export is enabled and inside its window.
 
-    This matters most during live grading, when losing ten minutes of scores is
-    the difference between a smooth awards ceremony and a disaster. It has a
-    SHUT-OFF time as well as a start, so nobody has to remember to turn it off.
+    TWO SWITCHES, DELIBERATELY.
+        `LIVE_GRADING` at the top of this file decides whether this is on a
+        schedule at all, and changing it needs a deploy. `ops.autoexport_enabled`
+        in the database decides what happens when it fires, and changes from the
+        dashboard in a second.
+
+        The first exists so this is not costing credit all year for nothing. The
+        second exists so a chair can stop it mid-convention without a deploy.
+
+    It has a SHUT-OFF time as well as a start, so nobody has to remember to turn
+    it off.
     """
     import sys
     sys.path.insert(0, "/root/cajcl")
@@ -324,6 +415,10 @@ def autoexport():
         db.close()
 
     if not enabled:
+        # Said out loud on purpose. A scheduled function that runs every ten
+        # minutes and logs nothing looks, from the Modal dashboard, exactly
+        # like one that is quietly doing something.
+        print("auto-export is off (Settings > Operations); nothing to do")
         return
     if until and clock.is_past(until):
         print("auto-export window has closed")

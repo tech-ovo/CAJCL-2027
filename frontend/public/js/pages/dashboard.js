@@ -9,10 +9,7 @@
  */
 
 import * as api from "../api.js";
-import {
-  el, clear, table, button, money, field, input, select, errorSummary,
-  loadingRows, localDate,
-} from "../ui.js";
+import { add, el, clear, table, button, money, field, input, select, errorSummary, loadingRows, localDate } from "../ui.js";
 import { openPrintView } from "./roster.js";
 
 export async function dashboardPage(host) {
@@ -20,7 +17,7 @@ export async function dashboardPage(host) {
   let sort = { key: "name", direction: "asc" };
   let panel = null;      // the open side panel: payment, or a new chapter
 
-  host.append(loadingRows(10, "Loading chapters"));
+  add(host, loadingRows(10, "Loading chapters"));
   data = await api.get("/admin/registration", { statusHost: host });
   render();
 
@@ -34,13 +31,13 @@ export async function dashboardPage(host) {
     const totals = data.totals;
     const rows = [...data.schools].sort(compare);
 
-    host.append(
+    add(host, 
       el("section", { class: "grid" },
         el("div", { class: "span-8" },
           el("h1", {}, "Chapters"),
           el("p", { class: "lede" },
-            "Every registered chapter, how large it is, how far along its " +
-            "attendees are, and what it has paid.")),
+            "How large each chapter is, how far along its attendees are, and " +
+            "what it has paid.")),
         el("div", { class: "span-4" },
           el("div", { class: "totals" },
             el("div", { class: "totals__row" },
@@ -116,7 +113,12 @@ export async function dashboardPage(host) {
             variant: "btn--small",
             onclick: () => { panel = { kind: "payment", school: row }; render(); },
           }),
-          button("Roster", {
+          // "Roster" used to open the printable packet, which is not a roster
+          // and cannot be edited. It now opens the chapter's actual roster;
+          // the packet is its own button, named after what it produces.
+          el("a", { class: "btn btn--small", href: `#/roster/${row.id}` },
+            "Roster"),
+          button("Packet", {
             variant: "btn--small btn--quiet",
             onclick: () => openPrintView(`/sponsor/packet?school_id=${row.id}`),
           })) },
@@ -140,7 +142,7 @@ export async function dashboardPage(host) {
 
     function draw() {
       clear(wrap);
-      wrap.append(
+      add(wrap, 
         el("h2", {}, `Record a payment from ${school.name}`),
         el("p", { class: "muted" },
           "Enter the exact amount received. Payments are never edited — a " +
@@ -206,7 +208,7 @@ export async function dashboardPage(host) {
 
     function draw() {
       clear(wrap);
-      wrap.append(
+      add(wrap, 
         el("h2", {}, "Add a chapter"),
         el("p", { class: "muted" },
           "A chapter sending both middle and high school delegates registers " +

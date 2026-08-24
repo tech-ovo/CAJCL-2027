@@ -71,6 +71,9 @@ def activity_sheet(tx: Tx, person: dict) -> dict:
         "status": submission["status"] if submission else "draft",
         "submitted_at": submission["submitted_at"] if submission else None,
         "locked": is_locked(tx, person),
+        # Sent so the form can say when it closes. A delegate who does not know
+        # the date has no reason to finish today.
+        "deadline": settings.get(tx, "deadline.forms_lock"),
         "selected": [r["item_id"] for r in selections],
         "selected_options": chosen_options,
         "catalog": catalog.for_person(
@@ -104,6 +107,7 @@ def adult_sheet(tx: Tx, person: dict) -> dict:
         "status": submission["status"] if submission else "draft",
         "submitted_at": submission["submitted_at"] if submission else None,
         "locked": is_locked(tx, person),
+        "deadline": settings.get(tx, "deadline.forms_lock"),
         "selected": [r["item_id"] for r in roles],
         "catalog": catalog.for_person(
             tx, person_type="adult", school_level=person["school_level"],

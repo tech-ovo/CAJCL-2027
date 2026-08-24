@@ -38,6 +38,27 @@ function append(node, children) {
   }
 }
 
+/**
+ * Append children to an existing node. USE THIS, NEVER `node.append(...)`.
+ *
+ * The DOM's own `append` stringifies whatever it is given, so a conditional
+ * child written the ordinary way --
+ *
+ *     host.append(error ? errorSummary(error) : null, field({...}))
+ *
+ * -- puts the literal word "null" on the page when there is no error. It is a
+ * text node, so it survives every review that looks at markup, and it appeared
+ * above roughly half the headings on this site before anyone noticed.
+ *
+ * `el()` has always filtered its children through the same helper this uses.
+ * The rule is enforced by backend/tests/test_frontend.py rather than left to
+ * memory.
+ */
+export function add(node, ...children) {
+  append(node, children);
+  return node;
+}
+
 export function clear(node) {
   while (node.firstChild) node.firstChild.remove();
   return node;
@@ -71,6 +92,18 @@ export function localDate(iso, { withTime = false } = {}) {
   };
   if (withTime) { options.hour = "numeric"; options.minute = "2-digit"; }
   return date.toLocaleString("en-US", options);
+}
+
+/**
+ * The number printed beside a name or a chapter.
+ *
+ * `№` was unreadable at the size the tabula uses it -- at 11px it is a grey
+ * smudge, and half the people who saw it did not know what it was. `#` is the
+ * sign everyone already reads as "number".
+ */
+export function personNumber(id) {
+  const text = (id === null || id === undefined) ? "" : String(id);
+  return `#${text.padStart(4, "0")}`;
 }
 
 export function fullName(person) {
@@ -242,4 +275,117 @@ export function table(columns, rows, { sort, onSort, rowClass, caption } = {}) {
     el("table", { class: "table table--responsive" },
       caption ? el("caption", { class: "visually-hidden" }, caption) : null,
       el("thead", {}, head), body));
+}
+
+/* --------------------------------------------------------------------------
+ * Leaving a page with unsaved work
+ * ----------------------------------------------------------------------- */
+
+/**
+ * Warn before abandoning unsaved changes. Returns a function that stops it.
+ *
+ * `isDirty()` is called at the moment of leaving, not when this is set up, so
+ * the caller can keep its own state however it likes.
+ *
+ * TWO WAYS TO LEAVE, TWO MECHANISMS.
+ *   Closing the tab or reloading is `beforeunload`, where the browser shows its
+ *   own wording and ignores anything passed to it.
+ *
+ *   Following a link inside the site is a click on an anchor, and it is caught
+ *   in the CAPTURE phase — before the hash changes. A `hashchange` listener
+ *   would be too late: by then the router has rebuilt the page and the answers
+ *   are already gone. Hash changes cannot be cancelled, which is why this hooks
+ *   the click instead.
+ */
+export function guardUnsaved(isDirty, what = "unsaved changes") {
+  const onBeforeUnload = (event) => {
+    if (!isDirty()) return;
+    event.preventDefault();
+    event.returnValue = "";
+  };
+
+  const onClick = (event) => {
+    if (!isDirty() || event.defaultPrevented || event.button !== 0) return;
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+
+    const anchor = event.target.closest && event.target.closest('a[href^="#"]');
+    if (!anchor || anchor.getAttribute("href") === location.hash) return;
+
+    const ok = window.confirm(
+      `You have ${what}.\n\nLeave this page and lose them?`);
+    if (ok) { release(); return; }
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  function release() {
+    window.removeEventListener("beforeunload", onBeforeUnload);
+    document.removeEventListener("click", onClick, true);
+  }
+
+  window.addEventListener("beforeunload", onBeforeUnload);
+  document.addEventListener("click", onClick, true);
+  return release;
+}
+
+/* --------------------------------------------------------------------------
+ * A modal question
+ * ----------------------------------------------------------------------- */
+
+/**
+ * Ask for something in a real dialog. Resolves to the value, or null.
+ *
+ * WHY NOT window.prompt
+ *   `prompt()` renders a plain text field with no way to mask it, so an admin
+ *   re-entering their own access code typed a live credential in the clear —
+ *   visible over a shoulder, offered to the browser's autofill store, and kept
+ *   in its history. It also cannot be styled, so it looked like a browser
+ *   error rather than part of the site.
+ *
+ *   `<dialog>` with showModal() traps focus, closes on Escape, restores focus
+ *   to whatever opened it, and renders a backdrop, all without a line of
+ *   JavaScript to manage any of it.
+ *
+ * `secret: true` masks the field and turns off autocomplete, so nothing about
+ * the value is remembered by the browser.
+ */
+export function ask({ title, body, label, confirmLabel = "Continue",
+                      secret = false, danger = false } = {}) {
+  return new Promise((resolve) => {
+    const input = el("input", {
+      type: secret ? "password" : "text",
+      class: secret ? "mono" : null,
+      id: "ask-value",
+      autocomplete: secret ? "off" : null,
+      autocapitalize: secret ? "characters" : null,
+      spellcheck: "false",
+    });
+
+    let answer = null;
+    const form = el("form", { method: "dialog" });
+    add(form,
+      el("h2", {}, title),
+      body ? el("p", {}, body) : null,
+      field({ id: "ask-value", label, control: input, wide: true }),
+      el("div", { class: "btn-row" },
+        button(confirmLabel, {
+          variant: danger ? "btn--danger" : "btn--primary",
+          type: "submit",
+          onclick: () => { answer = input.value.trim(); },
+        }),
+        button("Cancel", {
+          variant: "btn--quiet",
+          onclick: () => { answer = null; dialog.close(); },
+        })));
+
+    const dialog = el("dialog", { class: "dialog" }, form);
+    dialog.addEventListener("close", () => {
+      dialog.remove();
+      resolve(answer || null);
+    });
+
+    add(document.body, dialog);
+    dialog.showModal();
+    input.focus();
+  });
 }

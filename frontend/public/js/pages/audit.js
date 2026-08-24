@@ -10,14 +10,14 @@
  */
 
 import * as api from "../api.js";
-import { el, clear, table, button, localDate, loadingRows, emptyState } from "../ui.js";
+import { add, el, clear, table, button, localDate, loadingRows, emptyState } from "../ui.js";
 
 export async function auditPage(host) {
   let entries = [];
   let cursor = null;
   let done = false;
 
-  host.append(loadingRows(10, "Loading the log"));
+  add(host, loadingRows(10, "Loading the log"));
   await loadMore(true);
 
   async function loadMore(first = false) {
@@ -32,7 +32,7 @@ export async function auditPage(host) {
 
   function render() {
     clear(host);
-    host.append(
+    add(host, 
       el("h1", {}, "Activity log"),
       el("p", { class: "lede" },
         "Everything that has changed, newest first. Entries are never edited " +

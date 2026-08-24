@@ -13,9 +13,8 @@
  */
 
 import * as api from "../api.js";
-import {
-  el, clear, tabula, field, input, select, button, errorSummary, renderMarkdown,
-} from "../ui.js";
+import { add, el, clear, tabula, field, input, select, button, errorSummary,
+         renderMarkdown, personNumber, guardUnsaved } from "../ui.js";
 
 const MEALS = [["", "Choose one"], ["regular", "Regular"],
                ["vegetarian", "Vegetarian"], ["gluten_free", "Gluten free"]];
@@ -30,12 +29,21 @@ const LATIN = [
   ["advanced", "Advanced — I teach it, or could"],
 ];
 
+/* Two labels each. The long one is for the menu, where somebody is deciding
+ * which they are and the extra words are the whole point. The short one is for
+ * the tabula, where it sits beside a name in small capitals and "Latin teacher
+ * or sponsor" wraps onto two lines to say what "Sponsor" says. */
 const TYPES = [
-  ["sponsor", "Latin teacher or sponsor"],
-  ["chaperone", "Parent or chaperone"],
-  ["scl", "SCL"],
-  ["other", "Other"],
+  ["sponsor", "Latin teacher or sponsor", "Sponsor"],
+  ["chaperone", "Parent or chaperone", "Chaperone"],
+  ["scl", "SCL", "SCL"],
+  ["other", "Other", "Adult"],
 ];
+
+function shortType(value) {
+  const found = TYPES.find(([key]) => key === value);
+  return found ? found[2] : "Adult";
+}
 
 export async function adultSheetPage(host) {
   let sheet = await api.get("/me/adult-sheet", { statusHost: host });
@@ -46,27 +54,49 @@ export async function adultSheetPage(host) {
   let warnings = [];
   let saved = false;
 
+  // Same idea as the activity sheet: compare against what the server sent, so
+  // that changing something and changing it back counts as no change.
+  let original = snapshot();
+  let dirty = false;
+
   render();
+  guardUnsaved(() => dirty, "unsaved changes to your registration form");
+
+  function snapshot() {
+    return JSON.stringify({
+      email: person.email || "",
+      cell_phone: person.cell_phone || "",
+      adult_type: person.adult_type || "",
+      meal: person.meal || "",
+      availability_note: person.availability_note || "",
+      knowledge,
+      selected: [...selected].sort(),
+    });
+  }
+
+  function touch() {
+    dirty = snapshot() !== original;
+  }
 
   function render() {
     clear(host);
 
-    host.append(tabula({
+    add(host, tabula({
       label: "Adult",
       name: `${person.first_name} ${person.last_name}`,
-      left: (TYPES.find(([v]) => v === person.adult_type) || ["", "Adult"])[1],
-      right: `№  ${String(person.id).padStart(4, "0")}`,
+      left: shortType(person.adult_type),
+      right: personNumber(person.id),
     }));
 
     if (sheet.locked) {
-      host.append(el("div", { class: "waking waking--failed" },
+      add(host, el("div", { class: "waking waking--failed" },
         el("p", { class: "label label--ink" }, "Forms are closed"),
         el("p", {}, "The deadline has passed. Ask a registration chair if " +
                     "something needs to change.")));
     }
 
     if (saved) {
-      host.append(el("div", { class: "form-errors", role: "status" },
+      add(host, el("div", { class: "form-errors", role: "status" },
         el("h2", {}, "Your registration is saved"),
         ...(warnings.length
           ? warnings.map((w) => el("p", { style: "margin:0" }, w))
@@ -74,7 +104,7 @@ export async function adultSheetPage(host) {
               "You can change it any time before the deadline.")])));
     }
 
-    host.append(
+    add(host, 
       el("h1", {}, "Adult Registration Sheet"),
       renderMarkdown(
         "Tell us which events you are willing to help run. There are no time " +
@@ -88,7 +118,7 @@ export async function adultSheetPage(host) {
       onsubmit: (event) => { event.preventDefault(); save(); },
     });
 
-    form.append(
+    add(form, 
       el("fieldset", {},
         el("legend", {}, el("h2", {}, "About you")),
         el("div", { class: "grid" },
@@ -97,7 +127,7 @@ export async function adultSheetPage(host) {
             help: "Chairs use this to reach you about your shifts.",
             control: input({
               type: "email", value: person.email || "",
-              oninput: (e) => { person.email = e.target.value; },
+              oninput: (e) => { person.email = e.target.value; touch(); },
             }),
           })),
           el("div", { class: "span-6" }, field({
@@ -105,18 +135,18 @@ export async function adultSheetPage(host) {
             help: "Used only during convention weekend.",
             control: input({
               type: "tel", value: person.cell_phone || "",
-              oninput: (e) => { person.cell_phone = e.target.value; },
+              oninput: (e) => { person.cell_phone = e.target.value; touch(); },
             }),
           })),
           el("div", { class: "span-6" }, field({
             id: "type", label: "You are a", required: true,
             control: select(TYPES.map(([v, t]) => [v, t, v === person.adult_type]),
-              { onchange: (e) => { person.adult_type = e.target.value; } }),
+              { onchange: (e) => { person.adult_type = e.target.value; touch(); } }),
           })),
           el("div", { class: "span-6" }, field({
             id: "meal", label: "Meal preference",
             control: select(MEALS.map(([v, t]) => [v, t, v === person.meal]),
-              { onchange: (e) => { person.meal = e.target.value; } }),
+              { onchange: (e) => { person.meal = e.target.value; touch(); } }),
           })),
           el("div", { class: "span-12" }, field({
             id: "latin", label: "How much Latin do you know?", required: true,
@@ -124,12 +154,12 @@ export async function adultSheetPage(host) {
                   "what opens or closes them below.",
             wide: true,
             control: select(LATIN.map(([v, t]) => [v, t, v === knowledge]),
-              { onchange: (e) => { knowledge = e.target.value; regate(); } }),
+              { onchange: (e) => { knowledge = e.target.value; touch(); regate(); } }),
           })))));
 
     for (const category of sheet.catalog) {
       const chosen = category.items.filter((i) => selected.has(i.id)).length;
-      form.append(el("fieldset", {},
+      add(form, el("fieldset", {},
         el("legend", {}, el("h2", {}, category.name)),
         category.description ? el("p", { class: "muted" }, category.description) : null,
         el("p", { class: "count-note", "aria-live": "polite" },
@@ -142,7 +172,7 @@ export async function adultSheetPage(host) {
           ...category.items.map((item) => choice(item)))));
     }
 
-    form.append(
+    add(form, 
       el("fieldset", {},
         el("legend", {}, el("h2", {}, "Anything else")),
         field({
@@ -150,14 +180,14 @@ export async function adultSheetPage(host) {
           help: "When you can and cannot be there, what you would rather not do, " +
                 "anyone you need to be near — anything at all.",
           control: el("textarea", {
-            oninput: (e) => { person.availability_note = e.target.value; },
+            oninput: (e) => { person.availability_note = e.target.value; touch(); },
           }, person.availability_note || ""),
         })),
       el("div", { class: "btn-row" },
         button(sheet.status === "submitted" ? "Save changes" : "Submit my registration",
           { variant: "btn--primary", type: "submit", disabled: sheet.locked })));
 
-    host.append(form);
+    add(host, form);
   }
 
   function choice(item) {
@@ -173,6 +203,7 @@ export async function adultSheetPage(host) {
         checked: isSelected, disabled: blocked || sheet.locked,
         onchange: (event) => {
           if (event.target.checked) selected.add(item.id); else selected.delete(item.id);
+          touch();
           render();
         },
       }),
@@ -215,8 +246,12 @@ export async function adultSheetPage(host) {
       sheet = await api.get("/me/adult-sheet");
       person = { ...sheet.person };
       selected = new Set(sheet.selected);
+      knowledge = person.latin_knowledge || "none";
+      // What is now on the server becomes the new baseline.
+      original = snapshot();
+      dirty = false;
       render();
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      window.scrollTo({ top: 0 });
     } catch (error) {
       errors = error.errors && error.errors.length ? error.errors : [error.message];
       saved = false;

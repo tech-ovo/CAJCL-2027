@@ -9,7 +9,7 @@
  */
 
 import * as api from "../api.js";
-import { el, clear, tabula, table, money, localDate, renderMarkdown } from "../ui.js";
+import { add, el, clear, tabula, table, money, localDate, renderMarkdown, personNumber } from "../ui.js";
 import { openPrintView } from "./roster.js";
 
 export async function invoicePage(host) {
@@ -18,15 +18,15 @@ export async function invoicePage(host) {
 
   const school = invoice.school;
 
-  host.append(tabula({
+  add(host, tabula({
     label: "Chapter",
     name: school.name,
     left: invoice.exempt ? "Nothing due" : money(invoice.balance_cents) + " outstanding",
-    right: `№  ${String(school.id).padStart(4, "0")}`,
+    right: personNumber(school.id),
   }));
 
   if (invoice.exempt) {
-    host.append(
+    add(host, 
       el("h1", {}, "Invoice"),
       renderMarkdown(
         "This chapter is **not billed** for the state convention, so there is " +
@@ -38,7 +38,7 @@ export async function invoicePage(host) {
     return;
   }
 
-  host.append(
+  add(host, 
     el("section", { class: "grid" },
       el("div", { class: "span-7" },
         el("h1", {}, "Invoice"),

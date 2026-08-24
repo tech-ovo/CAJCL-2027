@@ -13,7 +13,12 @@ rather than shipping unexamined.
 
 from __future__ import annotations
 
+import pathlib
+import re
+
 import pytest
+
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 from backend import api
 from backend.lib import auth
@@ -107,6 +112,11 @@ ROUTES = [
      {"key": "x", "name": "X", "scopes": ["awards"]}),
     ("admin.people.roles", "POST", "/admin/people/{person}/roles",
      {"role_key": "delegate"}),
+    ("sponsor.people.regenerate_many", "POST", "/sponsor/regenerate-codes",
+     {"person_ids": ["{person}"]}),
+    ("admin.board.list", "GET", "/admin/board", None),
+    ("admin.people.rename", "PATCH", "/admin/people/{person}/name",
+     {"first_name": "Renamed", "last_name": "Person"}),
     ("admin.people.search", "GET", "/admin/people?school_id={school}", None),
     ("admin.warm.get", "GET", "/admin/warm", None),
     ("admin.warm.put", "PUT", "/admin/warm", {"hours": 1}),
@@ -124,6 +134,11 @@ def fill(value, fx):
                      .replace("{entry}", "1"))
     if isinstance(value, dict):
         return {k: fill(v, fx) for k, v in value.items()}
+    if isinstance(value, list):
+        # Without this, a route taking a list of ids was probed with the
+        # literal string "{person}" -- which tested the parser, not the
+        # authorization, and passed for the wrong reason.
+        return [fill(v, fx) for v in value]
     return value
 
 
@@ -333,3 +348,118 @@ def test_sign_out_is_server_side(fx, client):
     assert client.get("/auth/me", headers=headers).status_code == 200
     assert client.post("/auth/logout", headers=headers).status_code == 200
     assert client.get("/auth/me", headers=headers).status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# Request size
+# ---------------------------------------------------------------------------
+
+def test_an_oversized_body_is_refused_before_it_is_parsed(fx, client):
+    """The roster paste is capped at 500 lines, but that check runs after
+    FastAPI has read and parsed the whole body. The middleware refuses on the
+    declared Content-Length, so nothing large is ever parsed at all."""
+    headers = as_(fx, "uni_sponsor")
+    huge = "x" * (api.MAX_BODY_BYTES + 1024)
+    response = client.post("/sponsor/roster/parse",
+                           json={"text": huge}, headers=headers)
+    assert response.status_code == 413
+    assert "smaller batches" in response.text
+
+
+def test_a_body_under_the_cap_still_gets_through(fx, client):
+    headers = as_(fx, "uni_sponsor")
+    response = client.post("/sponsor/roster/parse",
+                           json={"text": "Aurelia Vance\nMarcus Reed"},
+                           headers=headers)
+    assert response.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# The scheduled work
+# ---------------------------------------------------------------------------
+
+def test_autoexport_is_not_scheduled_outside_convention():
+    """It runs every ten minutes during live grading and never otherwise.
+
+    Left scheduled all year, it starts a container 144 times a day to read one
+    setting, find it off, and stop. `LIVE_GRADING` in backend/app.py is the
+    switch, and this test exists so that flipping it on for convention and
+    forgetting to flip it back is caught by CI rather than by a bill.
+
+    If this fails and convention is over, set LIVE_GRADING = False and deploy.
+    """
+    source = (ROOT / "backend" / "app.py").read_text(encoding="utf-8")
+
+    assert re.search(r"^LIVE_GRADING = (True|False)$", source, re.MULTILINE), \
+        "LIVE_GRADING should be a plain module-level flag in backend/app.py"
+
+    # The reconciler is unconditional on purpose: it is what makes the "keep
+    # warm" button survive a deploy, and it is the cheapest thing here.
+    assert 'schedule=modal.Period(minutes=5)' in source, \
+        "the warm reconciler must stay scheduled -- a deploy resets the autoscaler"
+
+    if re.search(r"^LIVE_GRADING = True$", source, re.MULTILINE):
+        pytest.skip("LIVE_GRADING is on; remember to turn it off after convention")
+
+    assert "schedule=modal.Period(minutes=10) if LIVE_GRADING else None" in source, \
+        "auto-export should only carry a schedule when LIVE_GRADING is on"
+
+
+# ---------------------------------------------------------------------------
+# Things that must work on a machine with nothing set up
+# ---------------------------------------------------------------------------
+
+def test_the_time_zone_database_is_a_declared_dependency():
+    """`zoneinfo` reads the OPERATING SYSTEM's time-zone database.
+
+    Linux and macOS ship one. Windows does not, and neither does every slim
+    container base — so `ZoneInfo("America/Los_Angeles")` in clock.py raises at
+    import time and the entire application fails before running a line.
+
+    This passed for weeks on a Windows machine that happened to have `tzdata`
+    installed as a dependency of pandas. It failed on the first clean virtual
+    environment. Declaring it is the fix; this is the reminder.
+    """
+    text = (ROOT / "backend" / "requirements.txt").read_text(encoding="utf-8")
+    lines = [line.strip() for line in text.splitlines()
+             if line.strip() and not line.strip().startswith("#")]
+    assert any(line.split(";")[0].strip() == "tzdata" for line in lines), \
+        "backend/requirements.txt must declare tzdata"
+
+    # And unconditionally: a marker would leave Linux depending on whatever the
+    # base image happens to ship.
+    tz = next(line for line in lines if line.split(";")[0].strip() == "tzdata")
+    assert ";" not in tz, "tzdata should have no platform marker"
+
+
+def test_clock_explains_itself_when_the_time_zone_data_is_missing():
+    """The real traceback is twenty frames of importlib naming neither the
+    cause nor the fix. Anyone who hits this is on their first day."""
+    source = (ROOT / "backend" / "lib" / "clock.py").read_text(encoding="utf-8")
+    assert "pip install tzdata" in source
+    assert "Windows" in source
+
+
+def test_the_board_script_loads_without_importing_the_backend():
+    """`modal run backend/app.py::board` reads board.json ON YOUR MACHINE and
+    does the database work in the container.
+
+    If importing scripts/add_board.py pulls in backend.lib, that local half
+    needs a working backend environment — a time-zone database, the Turso
+    driver — for a job that only reads a JSON file. It failed exactly that way
+    on Windows.
+    """
+    import subprocess
+    import sys as _sys
+
+    probe = (
+        "import sys; sys.path.insert(0, r'%s');"
+        "import scripts.add_board;"
+        "print([m for m in sys.modules if m.startswith('backend')])"
+    ) % str(ROOT)
+
+    result = subprocess.run([_sys.executable, "-c", probe],
+                            capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "[]", (
+        "importing scripts.add_board pulled in " + result.stdout.strip())

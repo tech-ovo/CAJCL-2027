@@ -36,7 +36,6 @@ for _stream in (sys.stdout, sys.stderr):
 
 from backend.lib import clock, settings  # noqa: E402
 from backend.lib.db import connect  # noqa: E402
-from backend.lib.printing import convention_dates_roman  # noqa: E402
 
 INDEX = pathlib.Path(__file__).resolve().parent.parent / "frontend" / "public" / "index.html"
 
@@ -68,7 +67,6 @@ def gather(db) -> dict[str, str]:
             "theme_english": convention.get("convention.theme_english", ""),
             "theme_citation": convention.get("convention.theme_citation", ""),
             "dates": dates,
-            "dates_roman": convention_dates_roman(tx),
             "masthead_line":
                 f"{ordinal} State Convention &middot; "
                 f"{convention.get('convention.venue_name', '')}, "
@@ -80,8 +78,11 @@ def gather(db) -> dict[str, str]:
             "welcome_body": body,
             "venue": f"{convention.get('convention.venue_name', '')}<br>"
                      f"{convention.get('convention.venue_address', '')}",
-            "footer": f"California Junior Classical League &middot; "
-                      f"{convention.get('convention.contact_email', '')}",
+            "footer": (
+                f"California Junior Classical League &middot; "
+                f"<a href=\"mailto:{convention.get('convention.contact_email', '')}\">"
+                f"{convention.get('convention.contact_email', '')}</a>"),
+            "hosts": convention.get("convention.hosts", ""),
             "schools_hs": f"{stats['schools_hs']:,}" if stats else "—",
             "schools_ms": f"{stats['schools_ms']:,}" if stats else "—",
             "delegates": f"{stats['delegates']:,}" if stats else "—",
@@ -90,7 +91,15 @@ def gather(db) -> dict[str, str]:
 
 
 def apply(source: str, values: dict[str, str]) -> tuple[str, int]:
-    """Replace the inner text of every element carrying a data-snapshot key."""
+    """Replace the inner text of every element carrying a data-snapshot key.
+
+    An empty value is SKIPPED, never written. The markup already in index.html
+    is what a visitor sees before any request is made and if every request
+    fails, so overwriting it with "" would turn a missing setting into a blank
+    line on the live page.
+    """
+    values = {key: value for key, value in values.items()
+              if value not in (None, "")}
     replaced = 0
 
     def substitute(match: re.Match) -> str:
@@ -130,7 +139,7 @@ def main() -> int:
 
     print(f"baked {replaced} values into {INDEX.name}")
     print(f"  theme     {values['theme_latin']}")
-    print(f"  dates     {values['dates']}  ({values['dates_roman']})")
+    print(f"  dates     {values['dates']}")
     print(f"  chapters  {values['schools_hs']} high school, "
           f"{values['schools_ms']} middle school")
     print(f"  people    {values['delegates']} delegates, {values['adults']} adults")

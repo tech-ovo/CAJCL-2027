@@ -60,19 +60,32 @@ def roman(n: int) -> str:
     return "".join(out)
 
 
-def convention_dates_roman(tx: Tx) -> str:
-    """XII-XIII MARTII MMXXVII."""
-    months = ["IANUARII", "FEBRUARII", "MARTII", "APRILIS", "MAII", "IUNII",
-              "IULII", "AUGUSTI", "SEPTEMBRIS", "OCTOBRIS", "NOVEMBRIS", "DECEMBRIS"]
+def convention_dates(tx: Tx) -> str:
+    """March 12-13, 2027.
+
+    This used to render as XII-XIII MARTII MMXXVII. It looked like a classics
+    convention, and it also meant a sponsor checking a packet against a calendar
+    had to translate first. The dates are the one thing on the page nobody
+    should have to decode.
+    """
+    months = ["January", "February", "March", "April", "May", "June", "July",
+              "August", "September", "October", "November", "December"]
     try:
         start = settings.get(tx, "convention.start_date")
         end = settings.get(tx, "convention.end_date")
-        sy, sm, sd = (int(p) for p in start.split("-"))
-        _, _, ed = (int(p) for p in end.split("-"))
-        return f"{roman(sd)}–{roman(ed)} {months[sm - 1]} {roman(sy)}"
+        year, month, first = (int(part) for part in start.split("-"))
+        end_year, end_month, last = (int(part) for part in end.split("-"))
+
+        if (year, month) == (end_year, end_month):
+            return f"{months[month - 1]} {first}–{last}, {year}"
+        if year == end_year:
+            return (f"{months[month - 1]} {first} – "
+                    f"{months[end_month - 1]} {last}, {year}")
+        return (f"{months[month - 1]} {first}, {year} – "
+                f"{months[end_month - 1]} {last}, {end_year}")
     except Exception:
         # A malformed date must not take the packet down; a sponsor needs the
-        # codes far more than the flourish.
+        # codes far more than the dateline.
         return ""
 
 
@@ -284,6 +297,7 @@ def _document_body(tx: Tx, key: str) -> str:
 # ---------------------------------------------------------------------------
 
 def render_packet(tx: Tx, school: dict, *, only_person: int | None = None,
+                  only_people: list[int] | None = None,
                   base_url: str = "https://state.uhsjcl.org") -> str:
     """One sheet per attendee, plus a chapter cover and the paper-form checklist.
 
@@ -298,15 +312,25 @@ def render_packet(tx: Tx, school: dict, *, only_person: int | None = None,
     people = [p for p in people if p["status"] == "active"]
     if only_person is not None:
         people = [p for p in people if p["id"] == only_person]
+    elif only_people:
+        # Keep the caller's order, so the printed stack matches the list the
+        # sponsor just ticked rather than alphabetical order.
+        wanted = {p["id"]: p for p in people}
+        people = [wanted[i] for i in only_people if i in wanted]
+
+    # A subset is a handful of replacement sheets, not a packet. The cover
+    # ("this packet contains one sheet per attendee") and the paper-forms page
+    # would both be lies on a three-page reprint.
+    whole_packet = only_person is None and not only_people
 
     parts = []
-    if only_person is None:
+    if whole_packet:
         parts.append(_packet_cover(tx, school, people))
 
     for person in people:
         parts.append(_packet_sheet(tx, school, person, base_url))
 
-    if only_person is None:
+    if whole_packet:
         parts.append(_paper_forms_page(tx))
 
     note = (
@@ -314,8 +338,8 @@ def render_packet(tx: Tx, school: dict, *, only_person: int | None = None,
         'Use your browser&rsquo;s print command, or download the PDF. '
         'Each attendee&rsquo;s sheet starts on its own page.</div>'
     )
-    title = (f"Packet - {school['name']}" if only_person is None
-             else f"Access sheet - {school['name']}")
+    title = (f"Packet - {school['name']}" if whole_packet
+             else f"Access sheets - {school['name']}")
     return _document(title, note + "\n".join(parts), _footer(tx))
 
 
@@ -336,7 +360,7 @@ def _packet_cover(tx: Tx, school: dict, people: list[dict]) -> str:
 
     return f"""
 <section class="sheet">
-  <div class="label rail">{_esc(convention_dates_roman(tx))}</div>
+  <div class="label rail">{_esc(convention_dates(tx))}</div>
   <h1>{_esc(settings.get(tx, 'convention.ordinal'))} CAJCL State Convention</h1>
   <div class="meta label">Chapter packet</div>
 {theme}
@@ -367,12 +391,19 @@ def _packet_sheet(tx: Tx, school: dict, person: dict, base_url: str) -> str:
     name = " ".join(filter(None, [
         person["first_name"], person["middle_name"], person["last_name"],
         person["suffix"]]))
-    kind = "Delegate" if person["person_type"] == "delegate" else "Adult"
+    if person["person_type"] == "delegate":
+        kind, instructions = "Delegate", "packet_instructions"
+    elif person.get("adult_type") == "sponsor":
+        kind, instructions = "Sponsor", "packet_instructions_sponsor"
+    elif person.get("adult_type") == "chaperone":
+        kind, instructions = "Chaperone", "packet_instructions_adult"
+    else:
+        kind, instructions = "Adult", "packet_instructions_adult"
     magic = f"{base_url}/#/enter/{person['code_prefix']}-XXXXX-XXXXX"
 
     return f"""
 <section class="sheet">
-  <div class="label rail">{_esc(convention_dates_roman(tx))} &middot; {_esc(school['name'])}</div>
+  <div class="label rail">{_esc(convention_dates(tx))} &middot; {_esc(school['name'])}</div>
 
   <div class="tabula keep">
     <div class="label">{_esc(kind.upper())}</div>
@@ -385,8 +416,9 @@ def _packet_sheet(tx: Tx, school: dict, person: dict, base_url: str) -> str:
 
   <div class="split">
     <div class="body">
-      <h2>Finish your registration</h2>
-      {_document_body(tx, 'packet_instructions')}
+      <h2>{'Finish your registration' if kind == 'Delegate'
+           else 'What to do next'}</h2>
+      {_document_body(tx, instructions)}
     </div>
     <div class="aside">
       <div class="qr">{qr_svg(magic)}</div>
@@ -397,8 +429,9 @@ def _packet_sheet(tx: Tx, school: dict, person: dict, base_url: str) -> str:
   <div class="warn keep">
     <strong>This sheet is your key.</strong> Anyone holding it can sign in as
     {_esc(person['first_name'])}. Keep it somewhere safe, and do not photograph
-    it or post it. If it is lost, ask your sponsor for a new code &mdash; the old
-    one stops working straight away.
+    it or post it. If it is lost, ask
+    {'a convention chair' if kind == 'Sponsor' else 'your sponsor'}
+    for a new code &mdash; the old one stops working straight away.
   </div>
 </section>"""
 
@@ -406,7 +439,7 @@ def _packet_sheet(tx: Tx, school: dict, person: dict, base_url: str) -> str:
 def _paper_forms_page(tx: Tx) -> str:
     return f"""
 <section class="sheet">
-  <div class="label rail">{_esc(convention_dates_roman(tx))}</div>
+  <div class="label rail">{_esc(convention_dates(tx))}</div>
   <h1>Required paper forms</h1>
   <hr class="rule">
   {_document_body(tx, 'packet_paper_forms')}
@@ -479,7 +512,7 @@ def render_invoice(tx: Tx, school: dict) -> str:
     if ctx["exempt"]:
         # A blank invoice reads as a bug. Say why, in words.
         body = f"""
-<div class="label rail">{_esc(convention_dates_roman(tx))}</div>
+<div class="label rail">{_esc(convention_dates(tx))}</div>
 <h1>Invoice</h1>
 <hr class="rule">
 <div class="tabula">
@@ -496,7 +529,12 @@ def render_invoice(tx: Tx, school: dict) -> str:
         if not line["count"] and not line["amount_cents"]:
             continue
         unit = money(line["unit_cents"]) if line["unit_cents"] else "&mdash;"
-        note = f' <span class="label">{_esc(line["note"])}</span>' if line.get("note") else ""
+        # Parenthesised. Without the brackets the line read
+        # "Adults included at no charge ONE PER 10 DELEGATES" -- body type
+        # running straight into small capitals with no mark to say the voice
+        # had changed, which looked like a rendering fault rather than an aside.
+        note = (f' <span class="label">({_esc(line["note"])})</span>'
+                if line.get("note") else "")
         rows.append(
             f'<tr><td>{_esc(line["label"])}{note}</td>'
             f'<td class="num mono">{line["count"]}</td>'
@@ -527,7 +565,7 @@ def render_invoice(tx: Tx, school: dict) -> str:
             f'remain on this invoice.</p>')
 
     body = f"""
-<div class="label rail">{_esc(convention_dates_roman(tx))}</div>
+<div class="label rail">{_esc(convention_dates(tx))}</div>
 <h1>Invoice</h1>
 <hr class="rule">
 

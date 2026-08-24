@@ -11,12 +11,28 @@
      thing painted and a late swap on it is very visible. -->
 <link rel="preload" href="fonts/literata-600.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/plex-sans-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/literata-italic-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="icon" href="img/favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="icon" href="img/favicon.png" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" href="img/apple-touch-icon.png">
 <link rel="stylesheet" href="tokens.css">
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
 
 <a class="skip-link" href="#main">Skip to content</a>
+
+<!-- Signing in, the roster, and every form need JavaScript. The welcome page
+     below does not: it is real markup, so a visitor with scripting off still
+     gets the theme, the dates, the venue, and the current numbers. Say what is
+     missing rather than letting them click Sign in and find nothing. -->
+<noscript>
+  <div class="banner banner--warning">
+    <span class="banner__label">JavaScript is off</span>
+    <span>You can read this page, but signing in and every form need JavaScript.
+      Turn it on for this site, or open it in a different browser.</span>
+  </div>
+</noscript>
 
 <!-- Banners are injected here: the demonstration-data marker, any announcement,
      and the impersonation notice. -->
@@ -34,7 +50,7 @@
         <p class="masthead__mark"><a href="#/">CAJCL</a></p>
         <p class="masthead__line" data-snapshot="masthead_line">72nd State Convention &middot; University High School, Irvine</p>
       </div>
-      <p class="label" data-snapshot="dates_roman">XII–XIII MARTII MMXXVII</p>
+      <p class="label" data-snapshot="dates">March 12–13, 2027</p>
     </div>
   </div>
 </header>
@@ -51,10 +67,12 @@
   <div id="app">
     <section class="with-rail">
       <div class="rail">
-        <p class="label">Convention</p>
+        <p class="label">Where</p>
         <p class="small muted" data-snapshot="venue">University High School<br>4771 Campus Drive, Irvine, CA 92612</p>
-        <p class="label">Dates</p>
+        <p class="label">When</p>
         <p class="small muted" data-snapshot="dates">March 12–13, 2027</p>
+        <p class="label">Hosted by</p>
+        <p class="small muted" data-snapshot="hosts">Jointly hosted by University High School and Woodbridge High School</p>
       </div>
 
       <div>
@@ -94,7 +112,7 @@
 
 <footer class="page">
   <hr class="hair">
-  <p class="label" data-snapshot="footer">California Junior Classical League &middot; state@uhsjcl.org</p>
+  <p class="label" data-snapshot="footer">California Junior Classical League &middot; <a href="mailto:state@uhsjcl.org">state@uhsjcl.org</a></p>
 </footer>
 
 <script src="config.js"></script>

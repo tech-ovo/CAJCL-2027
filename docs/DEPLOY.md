@@ -46,10 +46,12 @@ belonging to one project, so that this project's packages cannot collide with
 another's. Make it inside the project folder, where it is obvious what it
 belongs to.
 
-Windows, in PowerShell:
+Windows, in PowerShell. **The `cd` is part of the recipe** — run it in the same
+window, or the virtual environment is created in whatever folder you happened
+to be in, which is usually your home folder:
 
 ```powershell
-cd path\to\CAJCL-2027
+cd $HOME\OneDrive\Desktop\CAJCL-2027
 py -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r backend/requirements.txt
@@ -67,14 +69,45 @@ pip install modal
 ```
 
 You must run the activate line in **every new terminal window**. When it has
-worked, your prompt gains a `(.venv)` prefix, like this:
+worked, your prompt gains a `(.venv)` prefix **and shows the project folder**:
 
 ```
-(.venv) PS C:\Users\you\CAJCL-2027>
+(.venv) PS C:\Users\you\OneDrive\Desktop\CAJCL-2027>
 ```
+
+Check both halves. A prompt still reading `PS C:\Users\you>` means the `cd` did
+not happen, and any `.venv` created there belongs to nothing. Remove it with
+`Remove-Item -Recurse -Force $HOME\.venv` and start again from the `cd`.
 
 If a command suddenly says a package is missing, the reason is almost always
-that you opened a new terminal and forgot this step.
+that you opened a new terminal and forgot to activate.
+
+### If PowerShell refuses to run the activate script
+
+```
+Activate.ps1 cannot be loaded because running scripts is disabled on this system.
+```
+
+Windows blocks all PowerShell scripts by default. Allow them for your own
+account only — this changes nothing for other users and turns off no other
+protection:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+Then run the activate line again.
+
+**On a school-managed machine you may not be permitted to change that,** and
+you do not need to. Skip activation entirely and call the environment's own
+Python by its path. Every command works identically; it is only longer to type:
+
+```powershell
+.venv\Scripts\python.exe -m pip install -r backend/requirements.txt
+.venv\Scripts\python.exe -m pip install modal
+.venv\Scripts\python.exe -m pytest backend/tests
+.venv\Scripts\python.exe -m modal deploy backend/app.py
+```
 
 The `.venv` folder contains thousands of installed files and is specific to
 your computer. It is listed in `.gitignore` — the file that tells Git which
@@ -148,6 +181,30 @@ modal setup                              # opens a browser to log you in
 Modal keeps configuration in something it calls a **secret**: a named bundle of
 settings that the deployed code can read, and that is never written down in the
 repository. This project uses one secret, named `cajcl-2027`.
+
+### Running `modal setup` twice is fine
+
+It mints a **new** token each time and writes it to `~/.modal.toml` — on
+Windows, `C:\Users\you\.modal.toml`. The old one is not deleted or replaced; it
+stays valid until you revoke it.
+
+That is not a conflict, and nothing needs undoing. A Modal token is a
+credential for **your account**, not for an app. Every token you hold reaches
+the same workspace and deploys the same `cajcl-2027` app, so it does not matter
+which one a particular machine uses. Deploy from your laptop, deploy from
+GitHub Actions, deploy from a different computer — the last deploy wins,
+exactly as it would with one token.
+
+**Your laptop's token differing from the one in GitHub Actions is the better
+arrangement, not a mistake.** If a laptop is lost, revoke that one token and CI
+keeps working. If the repository's secrets are exposed, revoke that one and
+your laptop keeps working.
+
+See and revoke them at **modal.com → Settings → API Tokens**. Keep one per
+machine plus one for CI, and delete any you cannot account for.
+
+None of this touches the repository, so it has no bearing on whether it is safe
+to commit. No Modal token has ever been in these files.
 
 ### Generate the pepper first, and look at it
 
@@ -363,6 +420,79 @@ have actually happened here and what each one means.
 
 ---
 
+## 4b. Give the real board their accounts — 5 minutes
+
+The demonstration data is entirely invented, so nobody real can sign in to it.
+Board members and chapter sponsors get accounts from a separate file that is
+**never committed**, because this repository is public.
+
+Copy the example and fill it in:
+
+```powershell
+Copy-Item board.example.json board.json
+```
+
+Each entry needs a name, a title, and the roles that name carries. `school` is
+optional and defaults to the state board; give it only for someone who runs a
+chapter:
+
+```json
+[
+  {
+    "first": "Ada", "last": "Lovelace", "title": "Sponsor",
+    "school": "University High School", "roles": ["sponsor", "admin"]
+  },
+  {
+    "first": "Grace", "last": "Hopper", "title": "Convention President",
+    "roles": ["admin"]
+  },
+  {
+    "first": "Katherine", "last": "Johnson", "title": "Registration Chair",
+    "roles": ["registration_chair"]
+  }
+]
+```
+
+The role keys are `admin`, `registration_chair`, `academics_chair`,
+`awards_chair`, and `sponsor`. `admin` is everything; the rest are what their
+names say. Settings → Roles lists them all, with what each one reaches.
+
+Then:
+
+```powershell
+modal run backend/app.py::board --create-schools
+```
+
+`--create-schools` adds any chapter named in the file that does not exist yet.
+Leave it off once every chapter is in place, and a misspelt school name becomes
+an error naming the chapters it does know — rather than a second chapter that
+looks right in a list and holds nobody.
+
+Every new person's code is printed and written to `board-codes.txt`, which is
+gitignored. **Codes are shown once.** Hand each person theirs directly.
+
+### Running it again
+
+Safe, and expected — this is how you add someone in October. A person already
+in the database keeps their account, their id, and their existing code; only
+their roles are brought into line with the file. Nobody gets a second account
+and nobody is signed out.
+
+```powershell
+modal run backend/app.py::board                    # add anyone new, fix roles
+modal run backend/app.py::board --new-codes        # reissue for EVERYONE listed
+```
+
+`--new-codes` signs out every device using an old code, so use it only when you
+mean to. To reissue for one person, use the roster's **Issue new codes** button
+instead.
+
+**Each person is its own transaction.** If the run stops halfway — a misspelt
+chapter, a role that does not exist — the people before it are already saved.
+Fix the file and run it again; the ones already done are left alone.
+
+---
+
 ## 5. Check that it answers — 2 minutes
 
 ```bash
@@ -514,7 +644,58 @@ well-designed that loading message is.
 
 ---
 
-## 9. Rehearse — twice
+## 9. What this costs, and the one thing worth switching off
+
+Modal bills for the time a container is actually running. The other two
+services are free at this scale — Turso's free tier is measured in hundreds of
+millions of row reads a month and this convention uses single-digit millions,
+and GitHub Pages is free outright.
+
+So Modal's number is the only one worth watching, and three things spend it:
+
+| What | When | Roughly |
+| --- | --- | --- |
+| Answering requests | While somebody is using the site | Tiny — a request is milliseconds |
+| Keeping a container warm | Only while you have switched it on | The largest item, by far |
+| The scheduled jobs | Continuously, used or not | Small, but never zero |
+
+**The idle cost is the one that surprises people,** because it accrues while
+nobody is looking. Leave the app deployed for a week, read the figure on the
+Modal dashboard, and multiply by four. That is a far better estimate than
+anything written here, because it measures your app rather than a guess about
+it.
+
+### Auto-export is off outside convention
+
+`LIVE_GRADING` at the top of `backend/app.py` is `False`, which means the
+auto-export job carries no schedule at all. With it on, a container starts 144
+times a day to read one setting, find auto-export switched off, and stop.
+
+**Turn it on for convention weekend, and off afterwards.** There are two
+switches on purpose: this one decides whether the alarm clock rings and needs a
+deploy, and Settings → Operations decides what happens when it does and changes
+in a second. A test fails while the flag is left on, so CI will remind you.
+
+### The warm reconciler stays
+
+It runs every five minutes all year and that is not negotiable: deploying
+resets Modal's autoscaler to whatever is written in the code, so a hotfix
+during convention would silently un-warm the site. Five minutes is how long
+that window can stay open. It is also the cheapest of the three — it reads one
+setting and stops.
+
+### Keeping warm is the expensive one
+
+A warm container is billed for every minute it is warm, whether anyone visits
+or not. That is the trade: several seconds off the first request, in exchange
+for paying while nothing happens. Use it for the hours that matter — the board
+meeting, Friday check-in, the awards ceremony — and let it sleep the rest of
+the time. **Keep warm for 6 hours** is shaped that way deliberately, and
+expires on its own so nobody has to remember.
+
+---
+
+## 10. Rehearse — twice
 
 Against the real deployed site, start to finish, with the projector if you can
 get hold of one. Time it. Then have somebody else drive while you watch,
@@ -532,6 +713,9 @@ because you will click straight past the thing that is broken.
 - [ ] A QR code from a printed sheet scans and signs in on a **phone**
 - [ ] The packet prints; the invoice prints; the exempt invoice explains itself
 - [ ] Warm is set to last past the end of the meeting
+- [ ] `LIVE_GRADING` in `backend/app.py` is still `False` — it is for
+      convention weekend only
+- [ ] Every board member in `board.json` has signed in once with their code
 - [ ] `demo-codes.txt` is printed on paper
 - [ ] A screen recording of the full flow exists
 - [ ] A local copy runs offline, in case the venue Wi-Fi fails

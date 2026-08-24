@@ -45,6 +45,33 @@ ALLOWED_ORIGINS = [
 # route with no declared scope, and this app allows none of those.
 app = FastAPI(title="CAJCL 2027 Convention",
               docs_url=None, redoc_url=None, openapi_url=None)
+# An unbounded request body is a free way to make a container work hard: the
+# roster paste is capped at 500 lines, but that check runs after FastAPI has
+# already read and parsed however much was sent.
+#
+# 1 MB is roughly forty times the largest legitimate paste (500 lines of names)
+# and larger than any other body this API accepts. Anything above it is a
+# mistake or a probe, and either way the answer is the same.
+MAX_BODY_BYTES = 1_048_576
+
+
+@app.middleware("http")
+async def limit_body_size(request: Request, call_next):
+    declared = request.headers.get("content-length")
+    if declared is not None:
+        try:
+            if int(declared) > MAX_BODY_BYTES:
+                return JSONResponse(
+                    status_code=413,
+                    content={"detail": "That is too large to send. If you are "
+                                       "pasting a roster, paste it in smaller "
+                                       "batches."})
+        except ValueError:
+            return JSONResponse(status_code=400,
+                                content={"detail": "Malformed request."})
+    return await call_next(request)
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -480,6 +507,67 @@ def regenerate(person_id: int, request: Request,
         "person_id": person_id,
         "reprint_url": f"/sponsor/packet?person_id={person_id}",
         "note": "This is the only time this code is shown. Reprint the sheet now.",
+    }
+
+
+@app.post("/sponsor/regenerate-codes")
+def regenerate_many(request: Request, payload: dict = Body(...),
+                    principal: auth.Principal = guard(
+                        "sponsor.people.regenerate_many",
+                        "sponsor", "registration", writes=True)):
+    """Issue new codes for a chosen few, and return them with their sheets.
+
+    WHY THIS IS A LIST AND NOT A BUTTON THAT SAYS "EVERYONE"
+        A code is stored only as an HMAC, so a code that was never written down
+        cannot be recovered -- the packet prints blocks where it would go. The
+        way out is to mint new ones, and the way that stays safe is to mint them
+        for the people who actually need them. A whole-chapter reissue would
+        sign out every delegate who was already using the site, most of whom
+        have their sheet and are perfectly fine.
+
+        The caller therefore names each person. There is no "all" shortcut on
+        purpose; the checklist in the roster is the safeguard.
+
+    Every code comes back ONCE, together with a print link, because a code
+    nobody printed is exactly the problem this endpoint exists to fix.
+    """
+    ids = payload.get("person_ids")
+    if not isinstance(ids, list) or not ids:
+        raise catalog.ValidationError(["Choose at least one person."])
+    if len(ids) > 200:
+        raise catalog.ValidationError(["That is more people than one chapter has."])
+
+    try:
+        wanted = [int(raw) for raw in ids]
+    except (TypeError, ValueError):
+        raise catalog.ValidationError(["That is not a list of people."])
+
+    school_id = payload.get("school_id")
+    issued = []
+
+    with database().tx(request_id=request_id(request)) as tx:
+        school = _school_of(tx, principal, school_id)
+        for person_id in wanted:
+            auth.require_person_in_scope(tx, principal, person_id)
+            person = tx.one("people.get", (person_id,))
+            if person is None:
+                raise auth.ForbiddenError("no such person")
+            if person["school_id"] != school["id"]:
+                raise auth.ForbiddenError("that belongs to a different school")
+
+            code = roster.regenerate_code(tx, school, principal, dict(person))
+            issued.append({
+                "person_id": person_id,
+                "name": f"{person['first_name']} {person['last_name']}".strip(),
+                "code": code,
+            })
+
+    return {
+        "issued": issued,
+        "print_url": "/sponsor/packet?person_ids="
+                     + ",".join(str(row["person_id"]) for row in issued),
+        "note": "These codes are shown once. Print the sheets before leaving "
+                "this page.",
     }
 
 
@@ -1090,6 +1178,60 @@ def create_role(request: Request, payload: dict = Body(...),
     return {"ok": True, "id": role_id}
 
 
+@app.get("/admin/board")
+def list_board(principal: auth.Principal = guard("admin.board.list", "*",
+                                                 school_rule="any")):
+    """Everyone who holds a role beyond delegate or chapter leader.
+
+    This is the list a president needs when a chair changes in October: who has
+    what, in one place, without knowing which chapter each person is filed
+    under.
+    """
+    with database().read() as tx:
+        return {"people": [dict(r) for r in tx.all("admin.board_members")]}
+
+
+@app.patch("/admin/people/{person_id}/name")
+def rename_person(person_id: int, request: Request, payload: dict = Body(...),
+                  principal: auth.Principal = guard("admin.people.rename", "*",
+                                                    school_rule="any",
+                                                    writes=True)):
+    """Correct a board member's name or title.
+
+    A sponsor can already do this for their own chapter. This is the same
+    action for the people who belong to no chapter -- and for the ones whose
+    name was typed by somebody else at provisioning time.
+    """
+    first = (payload.get("first_name") or "").strip()
+    last = (payload.get("last_name") or "").strip()
+    if not first or not last:
+        raise catalog.ValidationError(["A first and last name are both needed."])
+
+    with database().tx(request_id=request_id(request)) as tx:
+        person = tx.one("people.get", (person_id,))
+        if person is None:
+            raise auth.ForbiddenError("no such person")
+
+        before = f"{person['first_name']} {person['last_name']}"
+        title = payload.get("adult_type_other")
+        title = title.strip() if isinstance(title, str) else person["adult_type_other"]
+
+        tx.run("people.rename", (
+            first, (payload.get("middle_name") or "").strip() or None, last,
+            title or None, clock.now_iso(), person_id))
+
+        after = f"{first} {last}"
+        tx.audit("person.update",
+                 f"{principal.display_name} renamed {before} to {after}."
+                 if before != after
+                 else f"{principal.display_name} updated {after}'s title.",
+                 school_id=person["school_id"],
+                 entity_type="person", entity_id=person_id,
+                 changed_fields=["first_name", "middle_name", "last_name",
+                                 "adult_type_other"])
+    return {"ok": True, "name": after}
+
+
 @app.post("/admin/people/{person_id}/roles")
 def grant_role(person_id: int, request: Request, payload: dict = Body(...),
                principal: auth.Principal = guard("admin.people.roles", "*",
@@ -1335,14 +1477,31 @@ def reset_demo(request: Request,
 @app.get("/sponsor/packet", response_class=HTMLResponse)
 def packet(school_id: int | None = Query(default=None),
            person_id: int | None = Query(default=None),
+           person_ids: str | None = Query(default=None),
            principal: auth.Principal = guard("sponsor.packet", "sponsor",
                                              "registration")):
-    """The printable packet, or one attendee's sheet for a reprint."""
+    """The printable packet, one attendee's sheet, or a chosen few.
+
+    `person_ids` is the reprint after a selective code reissue: exactly the
+    sheets that just changed, and nothing else. Printing the whole packet to
+    hand out three new sheets is how a sponsor ends up with two versions of the
+    same page in circulation.
+    """
+    chosen: list[int] | None = None
+    if person_ids:
+        try:
+            chosen = [int(part) for part in person_ids.split(",") if part.strip()]
+        except ValueError:
+            raise catalog.ValidationError(["That is not a list of people."])
+        if not chosen or len(chosen) > 200:
+            raise catalog.ValidationError(["Choose between one and 200 people."])
+
     with database().read() as tx:
         school = _school_of(tx, principal, school_id)
-        if person_id is not None:
-            auth.require_person_in_scope(tx, principal, person_id)
-        return HTMLResponse(printing.render_packet(tx, school, only_person=person_id))
+        for one in ([person_id] if person_id is not None else []) + (chosen or []):
+            auth.require_person_in_scope(tx, principal, one)
+        return HTMLResponse(printing.render_packet(
+            tx, school, only_person=person_id, only_people=chosen))
 
 
 @app.get("/sponsor/invoice.html", response_class=HTMLResponse)

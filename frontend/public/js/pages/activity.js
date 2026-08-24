@@ -12,9 +12,8 @@
  */
 
 import * as api from "../api.js";
-import {
-  el, clear, tabula, field, select, button, errorSummary, renderMarkdown,
-} from "../ui.js";
+import { add, el, clear, tabula, field, select, button, errorSummary,
+         renderMarkdown, localDate, personNumber, guardUnsaved } from "../ui.js";
 
 const MEALS = [["", "Choose one"], ["regular", "Regular"],
                ["vegetarian", "Vegetarian"], ["gluten_free", "Gluten free"]];
@@ -30,47 +29,62 @@ export async function activitySheetPage(host) {
   let warnings = [];
   let saved = false;
 
+  // What was on the server when this page loaded. Every comparison for "are
+  // there unsaved changes" is against this, not against the last render, so
+  // ticking a box and unticking it again correctly counts as no change.
+  let original = snapshot();
+  let dirty = false;
+
+  const noteNodes = new Map();
+  let submitButton = null;
+  let unsavedNote = null;
+
   const levels = sheet.school_level === "MS"
     ? ["MS-1", "MS-2", "MS-3"]
     : ["HS-1", "HS-2", "HS-3", "HS-Adv"];
   const grades = sheet.school_level === "MS" ? [6, 7, 8] : [9, 10, 11, 12];
 
   render();
+  guardUnsaved(() => dirty, "unsaved changes to your activity sheet");
 
   function render() {
+    // A full rebuild throws away the scroll position. This runs rarely now --
+    // only on save and on a Latin-level change -- but when it does run, the
+    // page must not jump.
+    const scroll = window.scrollY;
     clear(host);
     const person = sheet.person;
 
-    host.append(
+    add(host,
       tabula({
         label: "Delegate",
         name: `${person.first_name} ${person.last_name}`,
         left: level || "Latin level not set",
-        right: `№  ${String(person.id).padStart(4, "0")}`,
+        right: personNumber(person.id),
       }));
 
     if (sheet.locked) {
-      host.append(el("div", { class: "waking waking--failed" },
+      add(host, el("div", { class: "waking waking--failed" },
         el("p", { class: "label label--ink" }, "Forms are closed"),
         el("p", {}, "The deadline has passed. If something needs to change, ask " +
                     "your sponsor — they can ask a chair to reopen your form.")));
     }
 
     if (saved) {
-      host.append(el("div", { class: "form-errors", role: "status" },
+      add(host, el("div", { class: "form-errors", role: "status" },
         el("h2", {}, "Your activity sheet is saved"),
         el("p", { style: "margin:0" },
           "You can come back and change it any time before the deadline."),
         ...warnings.map((w) => el("p", { style: "margin:.5rem 0 0" }, w))));
     }
 
-    host.append(
-      el("h1", {}, "Student Activity Sheet"),
+    add(host,
+      el("h1", {}, "Activities"),
       renderMarkdown(
         "Choose the events you would like to enter. **None of these choices " +
         "are binding** — they exist so the Academics, Activities, and Athletics " +
-        "chairs know how many students to prepare for. You can change your " +
-        "answers until the deadline."),
+        "chairs know how many students to prepare for."),
+      deadlineNote(),
       errors.length ? errorSummary(errors) : null);
 
     const form = el("form", {
@@ -79,36 +93,36 @@ export async function activitySheetPage(host) {
     });
 
     // -- about you -------------------------------------------------------
-    form.append(
+    add(form, 
       el("fieldset", {},
         el("legend", {}, el("h2", {}, "About you")),
         el("div", { class: "grid" },
           el("div", { class: "span-4" }, field({
             id: "grade", label: "Grade", required: true,
             control: select([["", "Choose one"], ...grades.map((g) => [g, g, g == grade])],
-              { onchange: (e) => { grade = e.target.value; } }),
+              { onchange: (e) => { grade = e.target.value; touch(); } }),
           })),
           el("div", { class: "span-4" }, field({
             id: "latin", label: "Latin level", required: true,
             help: "This decides which tests you may take.",
             control: select([["", "Choose one"],
                              ...levels.map((l) => [l, l, l === level])],
-              { onchange: (e) => { level = e.target.value; regate(); } }),
+              { onchange: (e) => { level = e.target.value; touch(); regate(); } }),
           })),
           el("div", { class: "span-4" }, field({
-            id: "meal", label: "Meal preference",
+            id: "meal", label: "Meal preference", required: true,
             control: select(MEALS.map(([v, t]) => [v, t, v === meal]),
-              { onchange: (e) => { meal = e.target.value; } }),
+              { onchange: (e) => { meal = e.target.value; touch(); } }),
           })))));
 
     // -- catalog ---------------------------------------------------------
     for (const category of sheet.catalog) {
-      form.append(categorySection(category));
+      add(form, categorySection(category));
     }
 
     // -- chapter entries, read-only --------------------------------------
     if (sheet.chapter_entries && sheet.chapter_entries.length) {
-      form.append(el("fieldset", {},
+      add(form, el("fieldset", {},
         el("legend", {}, el("h2", {}, "Your chapter's team entries")),
         el("p", { class: "muted" },
           "Your sponsor enters these for the whole chapter. You cannot change " +
@@ -117,16 +131,61 @@ export async function activitySheetPage(host) {
           el("li", {}, `${entry.item_name} — team ${entry.team_label}`)))));
     }
 
-    const submit = button(sheet.status === "submitted" ? "Save changes" : "Submit my sheet",
-      { variant: "btn--primary", type: "submit", disabled: sheet.locked });
+    submitButton = button(
+      sheet.status === "submitted" ? "Save changes" : "Submit my sheet",
+      { variant: "btn--primary", type: "submit" });
+    unsavedNote = el("p", { class: "small muted", "aria-live": "polite" });
 
-    form.append(el("div", { class: "btn-row" }, submit));
-    host.append(form);
+    add(form, el("div", { class: "btn-row" }, submitButton, unsavedNote));
+    add(host, form);
+    refreshSubmit();
+    window.scrollTo({ top: scroll });
+  }
+
+  /* The button is live only when there is something to save. A button that is
+   * always clickable teaches people that clicking it means nothing. */
+  function refreshSubmit() {
+    if (!submitButton) return;
+    const blocked = sheet.locked || !dirty;
+    submitButton.disabled = blocked;
+    clear(unsavedNote);
+    if (sheet.locked) add(unsavedNote, "Forms are closed.");
+    else if (dirty) add(unsavedNote, "You have unsaved changes.");
+    else if (sheet.status === "submitted") add(unsavedNote, "Everything is saved.");
+  }
+
+  /* Something changed. Compare against what the server sent, so that undoing a
+   * change also undoes the warning. */
+  function touch() {
+    dirty = snapshot() !== original;
+    refreshSubmit();
+  }
+
+  function snapshot() {
+    return JSON.stringify({
+      grade: String(grade || ""),
+      level: level || "",
+      meal: meal || "",
+      selected: [...selected].sort(),
+      options: Object.fromEntries(Object.entries(options)
+        .filter(([, list]) => list && list.length)
+        .map(([key, list]) => [key, [...list].sort()])),
+    });
+  }
+
+  function deadlineNote() {
+    if (!sheet.deadline) return null;
+    const when = localDate(sheet.deadline);
+    if (!when) return null;
+    return el("p", { class: "deadline" },
+      el("span", { class: "label label--ink" }, "Due"),
+      ` ${when}. You can change your answers freely until then.`);
   }
 
   function categorySection(category) {
-    const chosen = category.items.filter((i) => selected.has(i.id)).length;
-    const note = countNote(category, chosen);
+    const note = el("p", { "aria-live": "polite" });
+    noteNodes.set(category.key, note);
+    refreshCount(category);
 
     return el("fieldset", { id: `cat-${category.key}` },
       el("legend", {}, el("h2", {}, category.name)),
@@ -136,6 +195,11 @@ export async function activitySheetPage(host) {
         ...category.items.map((item) => choice(category, item))));
   }
 
+  /* Ticking a box used to re-render the entire page, which scrolled the reader
+   * back to the top and took the focus off the box they had just clicked. On a
+   * sheet with forty checkboxes that is unusable. Everything a tick changes --
+   * the label's own styling, its sub-options, and the category's count -- is
+   * updated in place instead. */
   function choice(category, item) {
     const blocked = !item.eligible_now;
     const isSelected = selected.has(item.id);
@@ -146,9 +210,21 @@ export async function activitySheetPage(host) {
       disabled: blocked || sheet.locked,
       id: `item-${item.id}`,
       onchange: (event) => {
-        if (event.target.checked) selected.add(item.id);
-        else { selected.delete(item.id); delete options[item.id]; }
-        render();
+        const on = event.target.checked;
+        if (on) {
+          selected.add(item.id);
+        } else {
+          selected.delete(item.id);
+          delete options[item.id];
+        }
+        label.classList.toggle("choice--selected", on);
+
+        const existing = label.querySelector(".choice__options");
+        if (existing) existing.remove();
+        if (on && item.options.length) add(label, subOptions(item));
+
+        refreshCount(category);
+        touch();
       },
     });
 
@@ -165,14 +241,17 @@ export async function activitySheetPage(host) {
         item.description ? el("span", { class: "choice__why" }, item.description) : null));
 
     if (isSelected && item.options.length) {
-      label.append(subOptions(item));
+      add(label, subOptions(item));
     }
     return label;
   }
 
   function subOptions(item) {
     const picked = new Set(options[item.id] || []);
-    return el("span", { style: "grid-column: 2; display:block; margin-top:.5rem" },
+    return el("span", {
+      class: "choice__options",
+      style: "grid-column: 2; display:block; margin-top:.5rem",
+    },
       el("span", { class: "label" },
         item.max_sub_selections
           ? `Choose up to ${item.max_sub_selections}`
@@ -189,26 +268,30 @@ export async function activitySheetPage(host) {
               const next = new Set(options[item.id] || []);
               if (event.target.checked) next.add(option.id); else next.delete(option.id);
               options[item.id] = [...next];
-              render();
+              touch();
             },
           }),
           option.name))));
   }
 
-  function countNote(category, chosen) {
-    const { min_selections: low, max_selections: high, enforcement } = category;
-    if (!low && !high) return null;
+  function refreshCount(category) {
+    const note = noteNodes.get(category.key);
+    if (!note) return;
 
+    const { min_selections: low, max_selections: high, enforcement } = category;
+    clear(note);
+    if (!low && !high) { note.className = ""; return; }
+
+    const chosen = category.items.filter((i) => selected.has(i.id)).length;
     let text;
     if (low && high) text = `Choose between ${low} and ${high}. You have ${chosen}.`;
     else if (low) text = `Choose at least ${low}. You have ${chosen}.`;
     else text = `Choose no more than ${high}. You have ${chosen}.`;
 
     const over = (low && chosen < low) || (high && chosen > high);
-    return el("p", {
-      class: over ? "count-note count-note--over" : "count-note",
-      "aria-live": "polite",
-    }, text, over && enforcement === "warn" ? " This is a suggestion, not a rule." : "");
+    note.className = over ? "count-note count-note--over" : "count-note";
+    add(note, text,
+      over && enforcement === "warn" ? " This is a suggestion, not a rule." : null);
   }
 
   /* Latin level changed: re-evaluate eligibility locally, with no request.
@@ -226,6 +309,7 @@ export async function activitySheetPage(host) {
         if (!item.eligible_now) selected.delete(item.id);
       }
     }
+    touch();
     render();
   }
 
@@ -246,8 +330,15 @@ export async function activitySheetPage(host) {
       sheet = await api.get("/me/activity-sheet");
       selected = new Set(sheet.selected);
       options = { ...(sheet.selected_options || {}) };
+      grade = sheet.person.grade || "";
+      level = sheet.person.latin_level || "";
+      meal = sheet.person.meal || "";
+      // What is now on the server becomes the new baseline, so the page is
+      // clean again and the leave-warning goes quiet.
+      original = snapshot();
+      dirty = false;
       render();
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      window.scrollTo({ top: 0 });
     } catch (error) {
       errors = error.errors && error.errors.length ? error.errors : [error.message];
       saved = false;

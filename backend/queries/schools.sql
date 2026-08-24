@@ -42,3 +42,15 @@ WHERE id = ?;
 -- a missing counter row and no LEFT JOIN has to guess at zero.
 INSERT INTO school_stats (school_id, updated_at) VALUES (?, ?)
 ON CONFLICT (school_id) DO NOTHING;
+
+-- name: schools.all_including_organizations
+-- Every school row, chapters AND organizations. `schools.list` deliberately
+-- excludes organizations so the state board never appears as a delegation on
+-- the chair dashboard; this is for the places that need to look a school up by
+-- name regardless of kind -- board provisioning, mainly.
+--
+-- Fifty rows at most, and it is not on any request path.
+SELECT id, name, level, kind, city, billing_exempt, discount_cents,
+       discount_reason, drive_folder_id, status, notes
+FROM schools
+ORDER BY name;

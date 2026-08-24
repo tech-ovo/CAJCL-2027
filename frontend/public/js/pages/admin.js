@@ -11,9 +11,8 @@
  */
 
 import * as api from "../api.js";
-import {
-  el, clear, field, input, button, errorSummary, table, localDate, loadingRows,
-} from "../ui.js";
+import { add, el, clear, field, input, button, errorSummary, table,
+         localDate, loadingRows, guardUnsaved } from "../ui.js";
 import { state } from "../main.js";
 
 export async function adminPage(host) {
@@ -22,26 +21,47 @@ export async function adminPage(host) {
   let message = null;
   let errors = [];
 
-  host.append(loadingRows(6, "Loading settings"));
+  /* Edits typed into the Values tab and not yet saved.
+   *
+   * It lives out here rather than inside renderSettings so the leave-warning
+   * can see it. A key is REMOVED when the field is typed back to its stored
+   * value, so undoing an edit really does clear the warning rather than
+   * leaving the form permanently "dirty" after one keystroke. */
+  let pending = {};
+
+  add(host, loadingRows(6, "Loading settings"));
   settings = await api.get("/admin/settings", { statusHost: host });
   render();
+  guardUnsaved(() => Object.keys(pending).length > 0,
+               "unsaved changes to the convention settings");
 
   function render() {
     clear(host);
-    host.append(
+    add(host, 
       el("h1", {}, "Convention settings"),
       el("p", { class: "lede" },
-        "Everything here can be changed without touching code or redeploying " +
-        "anything. Colours, fonts and page layout are the only things that " +
-        "still live in the repository."),
+        "Everything here changes without a deploy. Colours, fonts and page " +
+        "layout are the only things that still live in the repository."),
 
       el("nav", { class: "nav", "aria-label": "Settings sections" },
         ...[["settings", "Values"], ["documents", "Printed wording"],
             ["announcements", "Announcements"], ["roles", "Roles"],
             ["ops", "Operations"]].map(([key, label]) => {
-          const a = el("a", { href: "#/admin",
-            onclick: (e) => { e.preventDefault(); tab = key; message = null; render(); } },
-            label);
+          const a = el("a", { href: "#/admin", onclick: (e) => {
+            e.preventDefault();
+            // Leaving the Values tab abandons whatever is typed into it just
+            // as surely as leaving the page does.
+            if (tab === "settings" && key !== "settings"
+                && Object.keys(pending).length
+                && !confirm("You have unsaved changes to the convention "
+                          + "settings.\n\nLeave this tab and lose them?")) {
+              return;
+            }
+            if (key !== "settings") pending = {};
+            tab = key;
+            message = null;
+            render();
+          } }, label);
           if (tab === key) a.setAttribute("aria-current", "page");
           return a;
         })),
@@ -68,15 +88,19 @@ export async function adminPage(host) {
       groups[row.group_name].push(row);
     }
 
-    const pending = {};
     const form = el("form", {
       onsubmit: async (event) => {
         event.preventDefault();
         errors = [];
         try {
+          const count = Object.keys(pending).length;
+          if (!count) { message = "Nothing had changed."; render(); return; }
           await api.put("/admin/settings", { settings: pending });
           settings = await api.get("/admin/settings");
-          message = "Saved. These values are live everywhere on the site.";
+          pending = {};
+          message = count === 1
+            ? "Saved. That value is live everywhere on the site."
+            : `Saved ${count} values. They are live everywhere on the site.`;
           render();
         } catch (error) {
           errors = error.errors && error.errors.length ? error.errors : [error.message];
@@ -86,31 +110,42 @@ export async function adminPage(host) {
     });
 
     for (const [group, rows] of Object.entries(groups)) {
-      form.append(el("fieldset", {},
+      add(form, el("fieldset", {},
         el("legend", {}, el("h2", {}, group)),
         el("div", { class: "grid" },
-          ...rows.map((row) => el("div", { class: "span-6" }, settingField(row, pending))))));
+          ...rows.map((row) => el("div", { class: "span-6" }, settingField(row))))));
     }
 
-    form.append(el("div", { class: "btn-row" },
+    add(form, el("div", { class: "btn-row" },
       button("Save settings", { variant: "btn--primary", type: "submit" })));
-    host.append(form);
+    add(host, form);
   }
 
-  function settingField(row, pending) {
+  function settingField(row) {
     const isDate = row.value_type === "datetime";
     const isMoney = row.value_type === "cents";
 
     // A deadline is entered as a plain California date. The server converts it
     // to the right UTC instant, including working out whether that date is in
     // PST or PDT.
+    //
+    // `shown` is what this field displays when nothing has been touched, and it
+    // is what every keystroke is compared against -- so typing a change and
+    // typing it back removes the entry instead of leaving the whole form
+    // permanently unsaved after one keystroke.
+    const shown = isDate ? toDateInput(row.value)
+      : isMoney ? (Number(row.value || 0) / 100).toFixed(2)
+      : (row.value === null || row.value === undefined ? "" : String(row.value));
+
     const control = input({
       type: isDate ? "date" : "text",
-      value: isDate ? toDateInput(row.value)
-        : isMoney ? (Number(row.value || 0) / 100).toFixed(2)
-        : row.value,
+      value: shown,
       class: isMoney ? "mono" : null,
       oninput: (event) => {
+        if (event.target.value === shown) {
+          delete pending[row.key];
+          return;
+        }
         pending[row.key] = isMoney
           ? String(Math.round(Number(event.target.value || 0) * 100))
           : event.target.value;
@@ -122,7 +157,7 @@ export async function adminPage(host) {
       label: row.label,
       help: isDate ? "A California date. End of that day is used."
         : isMoney ? "In dollars."
-        : row.key,
+        : null,
       control,
     });
   }
@@ -143,15 +178,13 @@ export async function adminPage(host) {
   /* -------------------------------------------------------------------- */
 
   function renderDocuments() {
-    host.append(el("p", { class: "muted" },
-      "Every block of printed or displayed wording. Changing these never " +
-      "requires a deploy."));
+    add(host, el("p", { class: "muted" },
+      "Every block of wording that gets printed or displayed."));
 
     for (const document_ of settings.documents) {
       const body = el("textarea", { style: "min-height:12rem" }, document_.body_md);
-      host.append(el("section", { class: "panel", style: "margin-bottom:1.5rem" },
+      add(host, el("section", { class: "panel", style: "margin-bottom:1.5rem" },
         el("h2", {}, document_.title),
-        el("p", { class: "label" }, document_.key),
         field({ id: `doc-${document_.key}`, label: "Wording", wide: true,
                 help: "Blank lines make paragraphs. **Two asterisks** make bold. " +
                       "A line starting with - makes a bullet.",
@@ -182,7 +215,7 @@ export async function adminPage(host) {
       el("option", { value: "warning" }, "Important"),
       el("option", { value: "critical" }, "Urgent"));
 
-    host.append(
+    add(host, 
       el("section", { class: "panel" },
         el("h2", {}, "Put a banner on every page"),
         el("p", { class: "muted" },
@@ -205,13 +238,17 @@ export async function adminPage(host) {
             },
           }))),
       el("p", { class: "small muted", style: "margin-top:1rem" },
-        "If Modal is down entirely, edit frontend/public/announcement.json in " +
-        "the GitHub web interface. The static file is the second layer and needs " +
-        "no server at all."));
+        "If the server is down entirely, edit ",
+        el("a", {
+          href: "https://github.com/tech-ovo/CAJCL-2027/edit/main/frontend/public/announcement.json",
+          target: "_blank", rel: "noreferrer",
+        }, "announcement.json"),
+        " on GitHub and commit it. That file is the second layer: it is part " +
+        "of the site itself, so it shows even with nothing running behind it."));
 
     const existing = await api.get("/admin/announcements");
     if (existing.announcements.length) {
-      host.append(el("h2", {}, "Recent announcements"),
+      add(host, el("h2", {}, "Recent announcements"),
         table([
           { key: "body_md", label: "Message" },
           { key: "level", label: "Level" },
@@ -227,13 +264,45 @@ export async function adminPage(host) {
 
   async function renderRoles() {
     const roles = await api.get("/admin/roles");
+    const board = await api.get("/admin/board");
+
+    add(host,
+      el("h2", {}, "Who holds what"),
+      el("p", { class: "muted" },
+        "Everyone with a role beyond delegate or chapter leader. Change a "
+        + "person's roles here and it takes effect the next time they load a "
+        + "page — there is no second code and nothing to reissue."),
+      board.people.length
+        ? table([
+            { key: "name", label: "Name",
+              render: (row) => `${row.first_name} ${row.last_name}` },
+            { key: "adult_type_other", label: "Position",
+              render: (row) => row.adult_type_other || "—" },
+            { key: "school_name", label: "Chapter" },
+            { key: "role_names", label: "Roles",
+              render: (row) => (row.role_names || "").split(",").join(", ") },
+            { key: "actions", label: "Actions",
+              render: (row) => el("span",
+                { style: "display:flex;gap:.5rem;flex-wrap:wrap" },
+                button("Rename", {
+                  variant: "btn--small btn--quiet",
+                  onclick: () => renamePerson(row),
+                }),
+                button("Roles", {
+                  variant: "btn--small",
+                  onclick: () => editRoles(row, roles.roles),
+                })) },
+          ], board.people, { caption: "Board members and their roles" })
+        : el("p", { class: "muted" }, "Nobody has been given a role yet."),
+      el("hr", { class: "hair" }));
+
     const key = input({ placeholder: "colloquia_chair" });
     const name = input({ placeholder: "Colloquia Chair" });
     const scopes = ["registration", "academics", "awards", "sponsor",
                     "delegate", "chapter", "*"];
     const chosen = new Set();
 
-    host.append(
+    add(host, 
       el("h2", {}, "Roles"),
       el("p", { class: "muted" },
         "A scope reaches a person only through a role. Create a role with the " +
@@ -281,6 +350,91 @@ export async function adminPage(host) {
           }))));
   }
 
+  /* Roles are toggled one at a time against the endpoint that already exists.
+   * There is no bulk save: each grant and each revoke is its own audited
+   * action, which is what makes the log readable six months later. */
+  async function editRoles(person, allRoles) {
+    const held = new Set((person.role_keys || "").split(",").filter(Boolean));
+    const name = `${person.first_name} ${person.last_name}`;
+
+    const boxes = allRoles.map((role) => el("label", { class: "choice" },
+      el("input", {
+        type: "checkbox", checked: held.has(role.key),
+        onchange: async (event) => {
+          event.target.disabled = true;
+          try {
+            await api.post(`/admin/people/${person.id}/roles`, {
+              role_key: role.key, granted: event.target.checked });
+            event.target.disabled = false;
+          } catch (error) {
+            event.target.checked = !event.target.checked;
+            event.target.disabled = false;
+            alert(error.message);
+          }
+        },
+      }),
+      el("span", {},
+        el("span", { class: "choice__name" }, role.name),
+        el("span", { class: "choice__why" }, role.description || role.key))));
+
+    const dialog = el("section", { class: "panel", role: "dialog",
+                                   "aria-label": `Roles for ${name}` },
+      el("h2", {}, `Roles for ${name}`),
+      el("p", { class: "muted" },
+        "Each change is saved as you make it, and each one is logged."),
+      el("div", { class: "choices choices--two" }, ...boxes),
+      el("div", { class: "btn-row" },
+        button("Done", { variant: "btn--primary", onclick: () => render() })));
+
+    clear(host);
+    add(host, dialog);
+  }
+
+  /* One dialog with three fields, not three prompts in a row. Chained prompts
+   * meant cancelling the third silently discarded the first two, and none of
+   * them showed whose name was being corrected. */
+  function renamePerson(person) {
+    const first = input({ value: person.first_name || "" });
+    const last = input({ value: person.last_name || "" });
+    const title = input({ value: person.adult_type_other || "" });
+    let save = false;
+
+    const form = el("form", { method: "dialog" });
+    add(form,
+      el("h2", {}, `Correct ${person.first_name} ${person.last_name}`),
+      field({ id: "ren-first", label: "First name", required: true, control: first }),
+      field({ id: "ren-last", label: "Last name", required: true, control: last }),
+      field({ id: "ren-title", label: "Position",
+              help: "Shown on their access sheet and in this list.",
+              control: title }),
+      el("div", { class: "btn-row" },
+        button("Save", { variant: "btn--primary", type: "submit",
+                         onclick: () => { save = true; } }),
+        button("Cancel", { variant: "btn--quiet",
+                           onclick: () => { save = false; dialog.close(); } })));
+
+    const dialog = el("dialog", { class: "dialog" }, form);
+    dialog.addEventListener("close", async () => {
+      dialog.remove();
+      if (!save) return;
+      try {
+        await api.patch(`/admin/people/${person.id}/name`, {
+          first_name: first.value, last_name: last.value,
+          adult_type_other: title.value });
+        message = `Saved ${first.value} ${last.value}.`;
+        render();
+      } catch (error) {
+        errors = error.errors && error.errors.length
+          ? error.errors : [error.message];
+        render();
+      }
+    });
+
+    add(document.body, dialog);
+    dialog.showModal();
+    first.focus();
+  }
+
   function describeScope(scope) {
     return {
       "*": "Everything, including the audit log, exports, roles, impersonation, " +
@@ -300,7 +454,7 @@ export async function adminPage(host) {
     const warm = await api.get("/admin/warm");
     const hours = input({ type: "number", value: "6", min: "0", max: "72" });
 
-    host.append(
+    add(host, 
       el("section", { class: "grid" },
         el("div", { class: "span-6" },
           el("h2", {}, "Keep the server warm"),
@@ -404,7 +558,7 @@ export async function adminPage(host) {
       const link = document.createElement("a");
       link.href = url;
       link.download = match ? match[1] : `cajcl-export.${format}`;
-      document.body.append(link);
+      add(document.body, link);
       link.click();
       link.remove();
       URL.revokeObjectURL(url);

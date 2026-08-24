@@ -16,9 +16,7 @@
  */
 
 import * as api from "../api.js";
-import {
-  el, clear, field, button, errorSummary, table, emptyState,
-} from "../ui.js";
+import { add, el, clear, field, button, errorSummary, table, emptyState } from "../ui.js";
 
 /* Warning copy. Warnings must be rare enough that a sponsor reads them --
  * flagging every third row teaches people to click through without looking. */
@@ -81,7 +79,7 @@ export async function importPage(host) {
         el("span", { class: "choice__name" }, label));
     }
 
-    host.append(
+    add(host, 
       el("section", { class: "with-rail" },
         el("div", { class: "rail" },
           el("p", { class: "label" }, "Chapter"),
@@ -150,7 +148,7 @@ export async function importPage(host) {
     const rows = preview.rows;
     const flagged = rows.filter((r) => r.warnings.length).length;
 
-    host.append(
+    add(host, 
       el("h1", {}, `Check these ${rows.length} ${rows.length === 1 ? "person" : "people"}`),
       el("p", { class: "lede" },
         "Nothing has been saved yet. Correct anything that is wrong, then " +
@@ -280,7 +278,7 @@ export async function importPage(host) {
       });
 
       clear(host);
-      host.append(
+      add(host, 
         el("h1", {}, result.already_committed
           ? "Already added"
           : `Added ${result.committed_count} ` +

@@ -14,3 +14,10 @@ __pycache__/
 .venv/
 venv/
 demo-codes.txt
+
+# Real board members' names. The repository is public and the demonstration is
+# projected in a room, so no real person's name is ever committed. Copy
+# board.example.json to board.json and fill it in; scripts/add_board.py reads it.
+board.json
+
+board-codes.txt

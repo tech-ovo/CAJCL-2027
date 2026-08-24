@@ -12,7 +12,7 @@
  *   content region -- not a modal, not a full-page block.
  */
 
-import { el, clear } from "./ui.js";
+import { add, el, clear } from "./ui.js";
 
 const WAKING_MS = 400;
 const LATE_MS = 8000;
@@ -137,17 +137,17 @@ function startColdStartLadder(host, controller) {
 
   const waking = setTimeout(() => {
     clear(host);
-    node.append(
+    add(node, 
       el("span", { class: "waking__dot", "aria-hidden": "true" }),
       el("span", {}, "Waking up the server…")
     );
-    host.append(node);
+    add(host, node);
   }, WAKING_MS);
 
   const late = setTimeout(() => {
     node.className = "waking waking--late";
     clear(node);
-    node.append(
+    add(node, 
       el("span", { class: "waking__dot", "aria-hidden": "true" }),
       el("span", {}, "This is taking longer than usual. Still trying…")
     );
@@ -157,7 +157,7 @@ function startColdStartLadder(host, controller) {
     failed = true;
     node.className = "waking waking--failed";
     clear(node);
-    node.append(
+    add(node, 
       el("p", { class: "label label--ink" }, "The server is not responding"),
       el("p", {},
         "Nothing you did caused this and nothing you entered has been lost. " +

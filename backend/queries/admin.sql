@@ -134,3 +134,33 @@ FROM people p JOIN schools s ON s.id = p.school_id
 WHERE p.school_id = ?
 ORDER BY p.last_name, p.first_name
 LIMIT 200;
+
+-- name: admin.board_members
+-- Everyone holding a role that is not simply "I am a delegate" or "I am a
+-- chapter leader" -- in other words, the convention's board and chairs.
+--
+-- DRIVEN FROM roles, NOT FROM people. There are seven roles and five of them
+-- are board roles, so the plan starts with five index seeks on
+-- idx_person_roles_role (added in 009) and reaches people by primary key.
+-- Starting from people would scan one row per delegate at the convention to
+-- find about twenty adults, and Turso bills a scan by rows scanned.
+--
+-- The role list is a correlated subquery rather than a second GROUP BY, so a
+-- person who holds both `sponsor` and `admin` appears once, with both.
+SELECT DISTINCT
+       p.id, p.first_name, p.middle_name, p.last_name,
+       p.adult_type, p.adult_type_other, p.status,
+       p.school_id, s.name AS school_name,
+       (SELECT group_concat(r2.key) FROM person_roles pr2
+          JOIN roles r2 ON r2.id = pr2.role_id
+         WHERE pr2.person_id = p.id)  AS role_keys,
+       (SELECT group_concat(r2.name) FROM person_roles pr2
+          JOIN roles r2 ON r2.id = pr2.role_id
+         WHERE pr2.person_id = p.id)  AS role_names
+FROM roles r
+JOIN person_roles pr ON pr.role_id = r.id
+JOIN people p        ON p.id = pr.person_id
+JOIN schools s       ON s.id = p.school_id
+WHERE r.key NOT IN ('delegate', 'chapter_leader')
+ORDER BY p.last_name, p.first_name
+LIMIT 200;

@@ -152,15 +152,23 @@ def test_the_theme_appears_once_with_its_macrons(fx):
             f"U+{codepoint:04X} missing from the printed theme"
 
 
-def test_dates_are_roman_in_metadata_and_arabic_where_acted_on(fx):
-    """The entire budget for classical flourish. A parent reading a payment due
-    date should not have to decode it."""
+def test_every_printed_date_is_readable_without_translation(fx):
+    """The dates used to print as XII-XIII MARTII MMXXVII.
+
+    It suited a classics convention and it also meant a sponsor checking a
+    packet against a calendar, or a parent reading a payment due date, had to
+    decode it first. The dates are the one thing on the page that nobody should
+    have to work out.
+    """
+    months = (r"(January|February|March|April|May|June|July|August|"
+              r"September|October|November|December)")
+
     packet = packet_for(fx)
-    assert "MARTII MMXXVII" in packet
+    assert "MARTII" not in packet and "MMXXVII" not in packet
+    assert re.search(months + r" \d{1,2}–\d{1,2}, \d{4}", packet),         "the packet should carry the convention dates in plain English"
 
     invoice = invoice_for(fx)
-    assert re.search(r"(January|February|March|April|May|June|July|August|"
-                     r"September|October|November|December) \d{1,2}, \d{4}", invoice)
+    assert re.search(months + r" \d{1,2}, \d{4}", invoice)
 
 
 # ---------------------------------------------------------------------------
@@ -322,3 +330,48 @@ def test_the_anonymised_export_carries_no_attendee_data(fx, tmp_path):
     leaked = sorted(v for v in identities
                     if re.search(rf"{re.escape(v)}", inserts))
     assert leaked == [], f"anonymised export leaked {leaked}"
+
+
+# ---------------------------------------------------------------------------
+# Reprinting a chosen few
+# ---------------------------------------------------------------------------
+
+def test_a_subset_reprint_is_sheets_only(fx):
+    """After a selective code reissue, the sponsor prints exactly the sheets
+    that changed.
+
+    Not the cover, whose first line is "This packet contains one sheet per
+    attendee", and not the paper-forms page. Both would be wrong on a
+    three-page reprint, and printing the whole packet to replace three sheets is
+    how two versions of the same page end up in circulation.
+    """
+    with fx.db.read() as tx:
+        school = dict(tx.one("schools.get", (fx.uni_id,)))
+        people = [dict(r) for r in tx.all("roster.list", (fx.uni_id,))]
+        active = [p for p in people if p["status"] == "active"][:2]
+        chosen = [p["id"] for p in active]
+        html = printing.render_packet(tx, school, only_people=chosen)
+
+    assert html.count('class="sheet"') == len(chosen)
+    assert "packet contains one sheet" not in html
+    for person in active:
+        assert person["first_name"] in html
+
+
+def test_a_subset_reprint_keeps_the_order_it_was_given(fx):
+    """The printed stack matches the list the sponsor ticked, so they can hand
+    the sheets out without re-sorting them."""
+    with fx.db.read() as tx:
+        school = dict(tx.one("schools.get", (fx.uni_id,)))
+        people = [dict(r) for r in tx.all("roster.list", (fx.uni_id,))]
+        active = [p for p in people if p["status"] == "active"][:3]
+        reversed_ids = [p["id"] for p in reversed(active)]
+        html = printing.render_packet(tx, school, only_people=reversed_ids)
+
+    positions = [html.index(p["first_name"]) for p in reversed(active)]
+    assert positions == sorted(positions), "sheets came out in the wrong order"
+
+
+def test_the_whole_packet_still_has_its_cover_and_paper_page(fx):
+    packet = packet_for(fx)
+    assert "packet contains one sheet" in packet

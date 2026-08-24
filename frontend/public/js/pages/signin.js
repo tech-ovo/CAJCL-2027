@@ -7,7 +7,7 @@
  */
 
 import * as api from "../api.js";
-import { el, clear, field, input, button, errorSummary } from "../ui.js";
+import { add, el, clear, field, input, button, errorSummary } from "../ui.js";
 import { checkSymbolOk, formatCode } from "../codes.js";
 import { state, route } from "../main.js";
 
@@ -22,7 +22,9 @@ export async function signInPage(host) {
       autocomplete: "one-time-code",
       spellcheck: "false",
       autocapitalize: "characters",
-      placeholder: "DEL-XXXXX-XXXXX",
+      // Not "DEL-XXXXX-XXXXX": a sponsor or a chair whose code starts SPO or
+      // ADM should not be left wondering whether they are on the right screen.
+      placeholder: "XXX-XXXXX-XXXXX",
       maxlength: 15,
       oninput: (event) => {
         const atEnd = event.target.selectionStart === event.target.value.length;
@@ -45,7 +47,7 @@ export async function signInPage(host) {
 
         if (!checkSymbolOk(code)) {
           error = "Check that code again — one of the characters does not look " +
-                  "right. It is printed on the sheet your sponsor gave you.";
+                  "right. It is printed on your registration sheet.";
           render();
           return;
         }
@@ -67,12 +69,12 @@ export async function signInPage(host) {
       },
     });
 
-    form.append(
+    add(form, 
       error ? errorSummary([error]) : null,
       field({
         id: "code",
         label: "Your access code",
-        help: "Fifteen characters, printed on the sheet your sponsor gave you. " +
+        help: "Fifteen characters, printed on your registration sheet. " +
               "It is not case sensitive.",
         required: true,
         control: codeInput,
@@ -81,12 +83,22 @@ export async function signInPage(host) {
       status,
     );
 
-    host.append(el("section", { class: "with-rail" },
+    add(host, el("section", { class: "with-rail" },
       el("div", { class: "rail" },
         el("p", { class: "label" }, "Signing in"),
         el("p", { class: "small muted" },
           "Scan the square code on your sheet with your phone camera and you " +
-          "will not need to type anything at all.")),
+          "will not need to type anything at all."),
+        el("hr", { class: "hair" }),
+        // Everyone signs in the same way, but "ask your sponsor" is wrong
+        // advice for the sponsor, and worse advice for a convention chair.
+        // Say who issues a code to whom, once, plainly.
+        el("p", { class: "label" }, "Where codes come from"),
+        el("dl", { class: "detail small" },
+          el("dt", {}, "Delegates"), el("dd", {}, "Your sponsor"),
+          el("dt", {}, "Chaperones"), el("dd", {}, "The chapter's sponsor"),
+          el("dt", {}, "Sponsors"), el("dd", {}, "A convention chair"),
+          el("dt", {}, "Board"), el("dd", {}, "A convention president"))),
       el("div", {},
         el("h1", {}, "Sign in"),
         el("p", { class: "lede" },
@@ -95,8 +107,8 @@ export async function signInPage(host) {
         form,
         el("hr", { class: "hair" }),
         el("p", { class: "small muted" },
-          "Lost your code? Your sponsor can issue a new one. The old code stops " +
-          "working the moment they do."),
+          "Lost your code? Whoever issued it can issue another. The old one " +
+          "stops working the moment they do."),
         el("p", { class: "small muted" },
           "Using a shared computer? Sign out when you are finished — the button " +
           "is in the bar at the top of every page."))));

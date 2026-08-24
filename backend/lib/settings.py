@@ -119,6 +119,7 @@ def public_convention(tx: Tx) -> dict[str, str]:
         "convention.year", "convention.ordinal",
         "convention.start_date", "convention.end_date",
         "convention.venue_name", "convention.venue_address",
+        "convention.hosts",
         "convention.theme_latin", "convention.theme_english",
         "convention.theme_citation", "convention.contact_email",
     )

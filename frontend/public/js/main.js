@@ -13,7 +13,7 @@
  */
 
 import * as api from "./api.js";
-import { el, clear, button } from "./ui.js";
+import { add, el, clear, button } from "./ui.js";
 import { checkSymbolOk } from "./codes.js";
 
 import { welcomePage } from "./pages/welcome.js";
@@ -40,6 +40,10 @@ const ROUTES = [
   [/^\/sign-in$/,                signInPage,        { public: true }],
   [/^\/account$/,                accountPage,       {}],
   [/^\/roster$/,                 rosterPage,        { scope: "sponsor" }],
+  // A chair opening one chapter's roster. Same page, same endpoint -- the
+  // server already accepts ?school_id for an administrative scope and refuses
+  // it for everyone else, so this adds a route and no new authority.
+  [/^\/roster\/(\d+)$/,          rosterPage,        { scope: "registration" }],
   [/^\/roster\/import$/,         importPage,        { scope: "sponsor" }],
   [/^\/invoice$/,                invoicePage,       { scope: "sponsor" }],
   [/^\/activity-sheet$/,         activitySheetPage, { scope: "delegate" }],
@@ -51,9 +55,34 @@ const ROUTES = [
 
 const appNode = () => document.getElementById("app");
 
+/* The welcome page's markup lives in index.html, not in JavaScript, so that a
+ * visitor arriving while Modal is cold sees a finished page rather than a
+ * spinner -- and so scripts/build_snapshot.py has one place to write the
+ * numbers into.
+ *
+ * The router clears #app before every render, which would destroy it. So the
+ * original children are lifted into a fragment once, at boot, before anything
+ * has had a chance to clear them, and welcomePage appends a fresh clone.
+ * index.html stays the single source of truth and nothing is duplicated in JS.
+ */
+let snapshotTemplate = null;
+
+function captureSnapshot() {
+  snapshotTemplate = document.createDocumentFragment();
+  const app = appNode();
+  while (app.firstChild) add(snapshotTemplate, app.firstChild);
+}
+
+export function snapshotMarkup() {
+  return snapshotTemplate ? snapshotTemplate.cloneNode(true) : null;
+}
+
 /* ------------------------------------------------------------------------ */
 
 async function boot() {
+  // Before anything can clear #app.
+  captureSnapshot();
+
   api.setUnauthorizedHandler(() => {
     api.token.clear();
     state.me = null;
@@ -81,7 +110,7 @@ async function loadPublicFacts() {
   loadAnnouncements();
 }
 
-function applySnapshot(convention) {
+export function applySnapshot(convention) {
   const set = (key, value) => {
     if (value === undefined || value === null || value === "") return;
     document.querySelectorAll(`[data-snapshot="${key}"]`)
@@ -158,10 +187,10 @@ async function magicLink(host, [raw]) {
   // not survive in history, a screenshot, or a shared tab.
   history.replaceState(null, "", location.pathname + location.search + "#/");
 
-  host.append(el("p", { class: "label" }, "Signing you in"));
+  add(host, el("p", { class: "label" }, "Signing you in"));
 
   if (!checkSymbolOk(code)) {
-    host.append(el("div", { class: "waking waking--failed" },
+    add(host, el("div", { class: "waking waking--failed" },
       el("p", { class: "label label--ink" }, "That code did not scan cleanly"),
       el("p", {}, "Try scanning again, or type the code from your sheet."),
       el("a", { class: "btn", href: "#/sign-in" }, "Type it instead")));
@@ -177,7 +206,7 @@ async function magicLink(host, [raw]) {
     await route();
   } catch (error) {
     clear(host);
-    host.append(el("div", { class: "waking waking--failed" },
+    add(host, el("div", { class: "waking waking--failed" },
       el("p", { class: "label label--ink" }, "That code did not work"),
       el("p", {}, error.message),
       el("a", { class: "btn", href: "#/sign-in" }, "Type your code instead")));
@@ -196,29 +225,29 @@ function renderNav() {
     return a;
   };
 
-  nav.append(link("#/", "Welcome"));
+  add(nav, link("#/", "Welcome"));
 
   if (state.me) {
     if (hasScope("sponsor")) {
-      nav.append(link("#/roster", "Roster"), link("#/invoice", "Invoice"));
+      add(nav, link("#/roster", "Roster"), link("#/invoice", "Invoice"));
     }
     if (state.me.person_type === "delegate") {
-      nav.append(link("#/activity-sheet", "Activity sheet"));
+      add(nav, link("#/activity-sheet", "Activities"));
     } else if (state.me.person_type === "adult" && !hasScope("*")) {
-      nav.append(link("#/adult-sheet", "Adult sheet"));
+      add(nav, link("#/adult-sheet", "My form"));
     }
-    if (hasScope("registration")) nav.append(link("#/dashboard", "Chapters"));
-    if (hasScope("*")) nav.append(link("#/admin", "Settings"), link("#/audit", "Log"));
+    if (hasScope("registration")) add(nav, link("#/dashboard", "Chapters"));
+    if (hasScope("*")) add(nav, link("#/admin", "Settings"), link("#/audit", "Log"));
 
-    nav.append(el("span", { class: "nav__spacer" }));
-    nav.append(link("#/account", state.me.first_name || "Account"));
+    add(nav, el("span", { class: "nav__spacer" }));
+    add(nav, link("#/account", state.me.first_name || "Account"));
     // Visible on every page. Not in a menu. Assume shared devices.
-    nav.append(el("button", {
+    add(nav, el("button", {
       class: "btn btn--small nav__signout", type: "button", onclick: signOut,
     }, "Sign out"));
   } else {
-    nav.append(el("span", { class: "nav__spacer" }));
-    nav.append(link("#/sign-in", "Sign in"));
+    add(nav, el("span", { class: "nav__spacer" }));
+    add(nav, link("#/sign-in", "Sign in"));
   }
 }
 
@@ -249,16 +278,22 @@ function renderBanners() {
 
   // The demonstration-data marker. The demo is projected in a room full of
   // teachers; nobody should have to wonder whether these are real children.
+  //
+  // The wording is narrower than it was, and deliberately. Real board members
+  // now have real accounts here, so "every name is invented" became false the
+  // moment scripts/add_board.py first ran. The promise worth making is the one
+  // about minors, and it is still true: no delegate, parent, or chapter on this
+  // site is a real person.
   if (state.demoMode) {
-    host.append(el("div", { class: "banner banner--demo" },
+    add(host, el("div", { class: "banner banner--demo" },
       el("span", { class: "banner__label" }, "Demonstration data"),
-      el("span", {}, "Every name on this site is invented. No real student, " +
-                     "parent, or teacher appears anywhere.")));
+      el("span", {}, "Every chapter, delegate, and parent on this site is " +
+                     "invented. No real student appears anywhere.")));
   }
 
   const impersonation = state.me && state.me.impersonation;
   if (impersonation && impersonation.active) {
-    host.append(el("div", { class: "banner banner--impersonating on-dark" },
+    add(host, el("div", { class: "banner banner--impersonating on-dark" },
       el("span", { class: "banner__label" }, "Viewing as another person"),
       el("span", {},
         `${impersonation.by} is viewing the site as ` +
@@ -268,7 +303,7 @@ function renderBanners() {
   }
 
   for (const announcement of state.announcements || []) {
-    host.append(el("div", { class: `banner banner--${announcement.level}` },
+    add(host, el("div", { class: `banner banner--${announcement.level}` },
       el("span", { class: "banner__label" },
         announcement.level === "critical" ? "Important" : "Notice"),
       el("span", {}, announcement.body_md)));
@@ -299,7 +334,7 @@ async function loadAnnouncements() {
 
 function renderNoAccess(scope) {
   clear(appNode());
-  appNode().append(
+  add(appNode(), 
     el("h1", {}, "You do not have access to that page"),
     el("p", {}, "Your account does not carry the permission this page needs " +
                 `(${scope}). If you think it should, ask a convention president.`),
@@ -308,7 +343,7 @@ function renderNoAccess(scope) {
 
 function renderFailure(error) {
   clear(appNode());
-  appNode().append(
+  add(appNode(), 
     el("div", { class: "waking waking--failed" },
       el("p", { class: "label label--ink" }, "This page could not load"),
       el("p", {}, error && error.message ? error.message

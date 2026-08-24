@@ -94,3 +94,12 @@ ON CONFLICT (person_id, role_id) DO NOTHING;
 
 -- name: people.revoke_role
 DELETE FROM person_roles WHERE person_id = ? AND role_id = ?;
+
+-- name: people.rename
+-- An admin correcting a board member's name or title. Chapter attendees are
+-- renamed by their own sponsor through people.update_details, which also
+-- carries the grade and Latin level this one has no business touching.
+UPDATE people
+SET first_name = ?, middle_name = ?, last_name = ?,
+    adult_type_other = ?, updated_at = ?
+WHERE id = ?;
