@@ -163,3 +163,54 @@ def test_board_json_is_not_committed():
         assert name in ignored, f"{name} must be in .gitignore"
     assert not (ROOT / "board.example.json").exists(), (
         "board.example.json was removed; docs/DEPLOY.md step 4b shows the shape")
+
+
+# ---------------------------------------------------------------------------
+# Migrations are forward-only
+# ---------------------------------------------------------------------------
+
+def test_no_applied_migration_has_been_edited():
+    """A migration that has run can never change again — not a statement, not
+    a comment, not a space.
+
+    `migrate.py` enforces this properly, by comparing each file against the
+    hash recorded when it ran. But that hash lives in the DEPLOYED DATABASE,
+    so the check fires in CI, against production, after a push — which is how
+    a one-word change to an illustrative comment in `003_money_audit.sql`
+    stopped a deploy.
+
+    This is the same check, on the laptop, where the fix is `git checkout`.
+
+    Adding a migration? `python scripts/checksum_migrations.py`, and commit the
+    manifest with it.
+    """
+    import hashlib
+
+    migrations = ROOT / "backend" / "migrations"
+    manifest = migrations / "CHECKSUMS.txt"
+    assert manifest.exists(), "run python scripts/checksum_migrations.py"
+
+    recorded = {}
+    for line in manifest.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line and not line.startswith("#"):
+            value, name = line.split(maxsplit=1)
+            recorded[name.strip()] = value
+
+    problems = []
+    for path in sorted(migrations.glob("*.sql")):
+        actual = hashlib.sha256(
+            path.read_text(encoding="utf-8").encode()).hexdigest()
+        if path.name not in recorded:
+            problems.append(f"{path.name} is not in CHECKSUMS.txt — run "
+                            f"scripts/checksum_migrations.py and commit it")
+        elif recorded[path.name] != actual:
+            problems.append(f"{path.name} has CHANGED since it was applied. "
+                            f"Revert it and write a new migration instead.")
+
+    for name in recorded:
+        if not (migrations / name).exists():
+            problems.append(f"{name} is recorded but missing — a migration "
+                            f"that has run cannot be deleted")
+
+    assert problems == [], "\n".join(problems)

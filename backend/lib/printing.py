@@ -172,6 +172,19 @@ strong { font-weight: 700; }
   font-size: 19pt; font-weight: 600; margin: 2pt 0 6pt;
   overflow-wrap: anywhere; word-wrap: break-word;
 }
+/* A very long name is set smaller rather than allowed to run to four lines.
+ *
+ * `overflow-wrap: anywhere` already stops it overflowing the sheet -- it wraps
+ * -- but at 19pt an 82-character name takes four lines and pushes the QR and
+ * the instructions down the page. Two steps down keeps the longest real name
+ * to two lines and is still far larger than anything else on the sheet, which
+ * is the point: a sponsor sorting a stack must not hand the wrong page to the
+ * wrong student.
+ *
+ * The threshold is applied in Python, not in CSS, because CSS cannot count
+ * characters. See _packet_sheet. */
+.tabula .name--long { font-size: 15pt; }
+.tabula .name--verylong { font-size: 12.5pt; }
 .tabula .row {
   display: flex; justify-content: space-between; align-items: baseline;
   gap: 12pt;
@@ -379,6 +392,21 @@ def _packet_cover(tx: Tx, school: dict, people: list[dict]) -> str:
 </section>"""
 
 
+def _name_size(name: str) -> str:
+    """Which size class a name needs, if any.
+
+    Counted here because CSS cannot count characters. The thresholds are where
+    a name stops fitting on two lines at the size above, measured against the
+    printed sheet's text column rather than guessed.
+    """
+    length = len(name)
+    if length > 60:
+        return " name--verylong"
+    if length > 38:
+        return " name--long"
+    return ""
+
+
 def _packet_sheet(tx: Tx, school: dict, person: dict, base_url: str) -> str:
     """One attendee's sheet.
 
@@ -407,7 +435,7 @@ def _packet_sheet(tx: Tx, school: dict, person: dict, base_url: str) -> str:
 
   <div class="tabula keep">
     <div class="label">{_esc(kind.upper())}</div>
-    <div class="name">{_esc(name)}</div>
+    <div class="name{_name_size(name)}">{_esc(name)}</div>
     <div class="row">
       <span class="code mono">{_esc(person['code_prefix'])}-&#9608;&#9608;&#9608;&#9608;&#9608;-&#9608;&#9608;&#9608;&#9608;&#9608;</span>
       <span class="mono label">&#8470;&nbsp; {person['id']:04d}</span>

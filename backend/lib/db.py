@@ -371,7 +371,7 @@ class Tx:
         """Write one audit entry, inside this transaction.
 
         `summary` must be a complete human-readable sentence, rendered now:
-        "Rosalind Ferraro added 28 delegates to University High School." A future
+        "Mark Michalak added 28 delegates to University High School." A future
         commissioner reads this log with no access to the source.
 
         `changed_fields` is field NAMES only, never values. This keeps PII out

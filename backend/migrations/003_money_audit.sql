@@ -88,7 +88,7 @@ CREATE TABLE audit_log (
   entity_id              INTEGER,
   school_id              INTEGER REFERENCES schools(id),  -- denormalized so filtering is indexed
   -- A complete human-readable sentence, rendered at insert time:
-  -- "Rosalind Ferraro added 28 delegates to University High School."
+  -- "Mark Michalak added 28 delegates to University High School."
   -- A future commissioner reads this log with no access to the source.
   summary                TEXT NOT NULL,
   -- Field NAMES only, never values. This keeps PII out of the log: the log says

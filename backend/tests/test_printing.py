@@ -375,3 +375,78 @@ def test_a_subset_reprint_keeps_the_order_it_was_given(fx):
 def test_the_whole_packet_still_has_its_cover_and_paper_page(fx):
     packet = packet_for(fx)
     assert "packet contains one sheet" in packet
+
+
+# ---------------------------------------------------------------------------
+# A name that does not fit
+# ---------------------------------------------------------------------------
+
+LONG_NAME = ("Maximiliana Aleksandra "
+             "Wojciechowska-Featherstonehaugh de la Cruz y Villalobos III")
+
+
+def _person_with_name(fx, first, middle, last, suffix):
+    from backend.lib import clock
+    with fx.db.tx() as tx:
+        person_id = tx.insert("people.create", (
+            fx.uni_id, "delegate", None, None,
+            first, middle, last, suffix, None,
+            11, "HS-3", None, None, None, None, None, None, None,
+            f"fixture-{last}-{clock.now_iso()}", "DEL", 1,
+            clock.now_iso(), clock.now_iso(), clock.now_iso(), None))
+        tx.audit("person.create", "long-name fixture", school_id=fx.uni_id,
+                 entity_type="person", entity_id=person_id)
+    return person_id
+
+
+def test_a_very_long_name_prints_whole(fx):
+    """`break-inside: avoid` on the credential block means an overflowing name
+    pushes rather than splits — but nothing had ever checked that the name
+    survives at all, or that the suffix is not silently dropped."""
+    person_id = _person_with_name(
+        fx, "Maximiliana", "Aleksandra",
+        "Wojciechowska-Featherstonehaugh de la Cruz y Villalobos", "III")
+
+    with fx.db.read() as tx:
+        school = dict(tx.one("schools.get", (fx.uni_id,)))
+        html = printing.render_packet(tx, school, only_person=person_id)
+
+    assert "Wojciechowska-Featherstonehaugh" in html
+    assert "de la Cruz y Villalobos" in html
+    assert "III" in html
+    assert len(LONG_NAME) > 80
+
+
+def test_a_long_name_is_set_smaller_rather_than_running_to_four_lines(fx):
+    """At 19pt an 82-character name takes four lines and pushes the QR and the
+    instructions down the sheet."""
+    long_id = _person_with_name(
+        fx, "Maximiliana", "Aleksandra",
+        "Wojciechowska-Featherstonehaugh de la Cruz y Villalobos", "III")
+    short_id = _person_with_name(fx, "Mei", None, "Ng", None)
+
+    with fx.db.read() as tx:
+        school = dict(tx.one("schools.get", (fx.uni_id,)))
+        long_html = printing.render_packet(tx, school, only_person=long_id)
+        short_html = printing.render_packet(tx, school, only_person=short_id)
+
+    assert 'class="name name--verylong"' in long_html
+
+    # A short name is untouched: the shrink is an exception, not the rule.
+    # Asserted on the ATTRIBUTE, because the stylesheet in every document
+    # defines both classes whether or not anything uses them.
+    assert 'class="name"' in short_html
+    assert 'class="name name--' not in short_html
+
+    # And the class it applies is one the stylesheet actually defines.
+    assert ".tabula .name--verylong" in long_html
+
+
+def test_the_size_thresholds_are_where_they_claim_to_be():
+    from backend.lib.printing import _name_size
+
+    assert _name_size("Mei Ng") == ""
+    assert _name_size("A" * 38) == ""
+    assert _name_size("A" * 39) == " name--long"
+    assert _name_size("A" * 60) == " name--long"
+    assert _name_size("A" * 61) == " name--verylong"

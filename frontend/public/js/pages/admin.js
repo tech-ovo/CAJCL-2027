@@ -12,8 +12,8 @@
 
 import * as api from "../api.js";
 import { add, el, clear, field, input, button, errorSummary, table,
-         localDate, loadingRows, guardUnsaved } from "../ui.js";
-import { state } from "../main.js";
+         localDate, loadingRows, guardUnsaved, ask } from "../ui.js";
+import { state, route, adopt, hasScope } from "../main.js";
 
 export async function adminPage(host) {
   let tab = "settings";
@@ -505,6 +505,38 @@ export async function adminPage(host) {
     dialog.addEventListener("close", () => dialog.remove());
     add(document.body, dialog);
     dialog.showModal();
+  }
+
+  /* The same step-up the roster uses: the admin's own code, typed again, into
+   * a masked field. A walked-away laptop should not be one click from reading
+   * the site as somebody else. */
+  async function viewAs(person) {
+    const name = `${person.first_name} ${person.last_name}`;
+    const code = await ask({
+      title: `Sign in as ${name}`,
+      body: "You will see exactly what they see, read-only, for thirty "
+          + "minutes. Both names appear in a banner on every page, and this is "
+          + "recorded in the log.",
+      label: "Your own access code",
+      confirmLabel: "Sign in as them",
+      secret: true,
+    });
+    if (!code) return;
+
+    try {
+      const result = await api.post("/auth/impersonate", {
+        target_person_id: person.id, admin_code: code.trim() });
+      api.adminToken.set(api.token.get());
+      api.token.set(result.token);
+      adopt(result.person);
+      // Somewhere they can actually open: a registration chair has no roster
+      // of their own, and a delegate has no settings page.
+      location.hash = hasScope("*") ? "#/admin" : "#/";
+      await route();
+    } catch (error) {
+      errors = [error.message];
+      render();
+    }
   }
 
   /* One dialog with three fields, not three prompts in a row. Chained prompts

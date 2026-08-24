@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 
 from backend import api
-from backend.lib import clock, settings
+from backend.lib import clock, roster, settings
 
 from .helpers import Fixture
 
@@ -506,3 +506,85 @@ def test_declaring_advanced_latin_opens_the_role_in_the_same_save(fx, client):
 
 def test_a_delegate_cannot_open_the_adult_sheet(fx, client, delegate):
     assert client.get("/me/adult-sheet", headers=delegate).status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Two sponsors, one chapter
+# ---------------------------------------------------------------------------
+
+def test_a_preview_goes_stale_when_someone_else_changes_the_roster(fx):
+    """A chapter can have two sponsors and both may write.
+
+    The idempotency key has always bound the pasted TEXT, so nobody can review
+    one list and commit another. It said nothing about the roster those names
+    were checked against — so two sponsors pasting the same twenty students at
+    the same time both previewed against an empty roster, both saw no
+    duplicates, and both committed. The chapter got forty.
+    """
+    paste = "Aurelia Vance\nMarcus DeLuca\nPriya Raghunathan"
+    # Resolved OUTSIDE the write transactions below. principal() opens its
+    # own read transaction, and a read nested inside a write blocks on the
+    # lock the write already holds -- see the note on _Handle in db.py.
+    sponsor = fx.principal("uni_sponsor")
+
+    with fx.db.read() as tx:
+        school = dict(tx.one("schools.get", (fx.uni_id,)))
+        first = roster.preview(tx, school, paste)
+        second = roster.preview(tx, school, paste)
+
+    # Both sponsors reviewed the same roster, so both keys agree with it.
+    with fx.db.tx() as tx:
+        roster.commit(tx, school, sponsor, paste,
+                      first["idempotency_key"], first["rows"])
+
+    # The second sponsor's preview is now describing a roster that no longer
+    # exists. Their duplicate check said "none", and it is wrong.
+    with pytest.raises(roster.RosterError) as caught:
+        with fx.db.tx() as tx:
+            roster.commit(tx, school, sponsor, paste,
+                          second["idempotency_key"], second["rows"])
+
+    assert "changed this chapter's roster" in str(caught.value)
+
+
+def test_a_double_click_still_wins_over_the_staleness_check(fx):
+    """The first press is itself what changes the roster.
+
+    Checked in the wrong order, the second press of a double-click is rejected
+    as "somebody else changed this roster" — which is true, and is the same
+    person, half a second earlier. The idempotency lookup has to come first.
+    """
+    paste = "Corin Ashworth\nDelia Okafor"
+    # Resolved OUTSIDE the write transactions below. principal() opens its
+    # own read transaction, and a read nested inside a write blocks on the
+    # lock the write already holds -- see the note on _Handle in db.py.
+    sponsor = fx.principal("uni_sponsor")
+
+    with fx.db.read() as tx:
+        school = dict(tx.one("schools.get", (fx.uni_id,)))
+        preview = roster.preview(tx, school, paste)
+
+    results = []
+    for _ in range(2):
+        with fx.db.tx() as tx:
+            results.append(roster.commit(
+                tx, school, sponsor, paste,
+                preview["idempotency_key"], preview["rows"]))
+
+    assert results[1]["already_committed"] is True
+    assert results[0]["committed_count"] == results[1]["committed_count"] == 2
+    assert ([p["id"] for p in results[0]["created"]]
+            == [p["id"] for p in results[1]["created"]])
+
+
+def test_a_key_from_before_the_fingerprint_existed_is_still_accepted(fx):
+    """A preview open across a deploy is a worse failure than the race this
+    closes, and the race needs two sponsors acting inside five minutes."""
+    paste = "Halden Voss"
+
+    with fx.db.read() as tx:
+        school = dict(tx.one("schools.get", (fx.uni_id,)))
+
+    old_style = roster.issue_key(school["id"], paste, None)
+    payload = roster.verify_key(old_style, school["id"], paste, "anything-else")
+    assert payload["school_id"] == school["id"]

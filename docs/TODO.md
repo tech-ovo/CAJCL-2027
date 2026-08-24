@@ -19,9 +19,8 @@ AGAINST**
 
 | | What | Hours | Notes |
 | --- | --- | --- | --- |
-| SOON | Warn before a preview goes stale | 2 | RISKS: two sponsors previewing the same roster both commit. Reject a commit whose preview predates the school's `updated_at`. |
 | SOON | Catalog editing screen | 6 | The catalog is seeded correctly and read-only. Cut for the demo. |
-| SOON | Impersonation from Settings → Roles | 1 | The roster has **View as**. The board table does not, and board members are the people most likely to report something odd. |
+| SOON | Restore `board.json` from the live database | 1 | If the file is lost, the names are still in the database. A `--export` flag on `add_board.py` would rebuild it. |
 | LATER | Draft restore on the settings form | 1 | The activity and adult sheets keep a `localStorage` draft. Settings warns before leaving but keeps nothing. |
 
 ## The board and the chapter it lives in
@@ -71,7 +70,6 @@ takes two minutes and unblocks the rest.
 | BEFORE CONVENTION | PDF generation, tested end to end | 3 | The print view works and is the same document. The PDF path has never been run against a real request. **Demo the print view.** |
 | BEFORE CONVENTION | Check-in screen | 6 | Friday morning, fifty chapters arriving at once. Wants to work on a phone with bad wifi. |
 | SOON | Apps Script for Drive exports | 5 | Exports currently download to the browser. Only needed for contest submissions. |
-| SOON | A long name on the printed tabula | 1 | Untested against the 90-character fixture. `break-inside: avoid` should push rather than split; unverified. |
 | LATER | Chapter team entries UI | 4 | The data model and endpoints exist. No screen. |
 
 ## Decided against

@@ -55,11 +55,27 @@ def _signing_key() -> bytes:
     return hmac.new(auth._pepper(), b"roster-idempotency-v1", hashlib.sha256).digest()
 
 
-def issue_key(school_id: int, raw_text: str) -> str:
+def roster_fingerprint(existing: list[dict]) -> str:
+    """What the chapter's roster looked like at a given moment.
+
+    Ids and nothing else: a rename does not invalidate a preview, and does not
+    need to. What matters is whether the SET of people changed while somebody
+    was reviewing a paste, because that is the case where two sponsors each
+    add the same twenty students and the chapter ends up with forty.
+    """
+    ids = sorted(int(person["id"]) for person in existing)
+    joined = ",".join(str(i) for i in ids)
+    return hashlib.sha256(joined.encode("utf-8")).hexdigest()[:16]
+
+
+def issue_key(school_id: int, raw_text: str, roster_sha: str) -> str:
     """A signed idempotency key. No database row, no cleanup, no stored text."""
     payload = {
         "school_id": school_id,
         "text_sha": hashlib.sha256(raw_text.encode("utf-8")).hexdigest()[:32],
+        # The roster this preview was reviewed against. See verify_key.
+        # None is how a key made before this existed looks, and is accepted.
+        "roster_sha": roster_sha,
         "issued_at": clock.now_iso(),
         "nonce": secrets.token_urlsafe(9),
     }
@@ -68,7 +84,8 @@ def issue_key(school_id: int, raw_text: str) -> str:
     return f"{body}.{signature}"
 
 
-def verify_key(key: str, school_id: int, raw_text: str) -> dict:
+def verify_key(key: str, school_id: int, raw_text: str,
+               roster_sha: str | None = None) -> dict:
     """Check a key belongs to this school, this text, and is still fresh.
 
     Binding the key to a hash of the pasted text is what stops a sponsor from
@@ -97,6 +114,25 @@ def verify_key(key: str, school_id: int, raw_text: str) -> dict:
     age = (clock.now_utc() - clock.parse_iso(payload["issued_at"])).total_seconds()
     if age > PREVIEW_TTL_MINUTES * 60:
         raise RosterError("That preview has expired. Paste your roster again.")
+
+    # THE ROSTER ITSELF CHANGED WHILE THIS PREVIEW WAS OPEN.
+    #
+    # A chapter can have two sponsors, and both may write. The key already
+    # binds the pasted TEXT, so a sponsor cannot review one list and commit
+    # another -- but it said nothing about the roster those names were checked
+    # against. Two sponsors pasting the same twenty students at the same time
+    # both previewed against an empty roster, both saw no duplicates, and both
+    # committed. The chapter ended up with forty.
+    #
+    # Older keys carry no fingerprint. They are accepted rather than rejected:
+    # a preview open across a deploy is a worse failure than the race this
+    # closes, and the race needs two sponsors acting inside five minutes.
+    if roster_sha is not None and payload.get("roster_sha") not in (None, roster_sha):
+        raise RosterError(
+            "Somebody else changed this chapter's roster while you were "
+            "reviewing this list, so the duplicate check you saw is out of "
+            "date. Paste it again and look at the warnings before confirming."
+        )
     return payload
 
 
@@ -127,7 +163,8 @@ def preview(tx: Tx, school: dict, raw_text: str,
     )
     return {
         "rows": [r.to_dict() for r in rows],
-        "idempotency_key": issue_key(school["id"], raw_text),
+        "idempotency_key": issue_key(school["id"], raw_text,
+                                     roster_fingerprint(existing)),
         "parsed_count": len(rows),
         "warning_count": sum(1 for r in rows if r.warnings),
     }
@@ -146,11 +183,18 @@ def commit(tx: Tx, school: dict, actor: auth.Principal, raw_text: str,
     rolls back all of it, which is why a half-imported roster is not a state
     this system can reach.
     """
-    verify_key(key, school["id"], raw_text)
-
-    # The double-click guard. If this key has been seen, the roster already
-    # exists -- return what the first commit produced rather than a plausible
-    # approximation of it.
+    # THE DOUBLE-CLICK GUARD RUNS FIRST, AND THE ORDER IS LOAD-BEARING.
+    #
+    # If this key has been seen, this roster already exists: return what the
+    # first commit produced rather than a plausible approximation of it.
+    #
+    # It has to come before the staleness check below, because the first press
+    # is itself what changes the roster. Checked the other way round, the second
+    # press of a double-click is rejected as "somebody else changed this
+    # roster" -- which is true, and is the same person, half a second ago.
+    #
+    # Skipping verification here is safe: a key only reaches this row by having
+    # been verified when that row was written, and a forged key matches nothing.
     seen = tx.one("roster.import_by_key", (key,))
     if seen is not None:
         created = tx.all("roster.people_of_import", (seen["id"],))
@@ -159,6 +203,12 @@ def commit(tx: Tx, school: dict, actor: auth.Principal, raw_text: str,
             "committed_count": seen["committed_count"],
             "already_committed": True,
         }
+
+    # Now the roster as it is NOW, against what the preview was reviewed
+    # against.
+    existing = [dict(r) for r in tx.all("people.existing_names_for_dedupe",
+                                        (school["id"],))]
+    verify_key(key, school["id"], raw_text, roster_fingerprint(existing))
 
     if not rows:
         raise RosterError("There is nobody in that list to add.")

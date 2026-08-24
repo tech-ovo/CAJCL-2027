@@ -607,3 +607,42 @@ what that file is for. Neither is demonstration data.
 **Why a docstring was not enough.** It described an intention, and intentions
 do not survive somebody adding themselves to a list of administrators at
 eleven at night. The check that matters is the one that runs.
+
+### Editing a migration that has already run
+**MITIGATED.** `migrate.py` has always refused to start when an applied
+migration's contents change — it compares each file against the sha256 recorded
+in `schema_migrations` when that file ran. The check is correct and it is the
+one that protects the data.
+
+But it lives in the **deployed database**, so it fires in CI, against
+production, after a push. A one-word change to an illustrative comment in
+`003_money_audit.sql` — not a statement, a comment — stopped a deploy that way.
+
+`backend/migrations/CHECKSUMS.txt` now records the same hashes in the
+repository, and `test_source.py` fails if a file no longer matches. The answer
+becomes `git checkout` before the commit rather than a failed deploy after it.
+`scripts/checksum_migrations.py` regenerates the manifest, refuses to do so
+quietly when an applied file has changed, and is run only when ADDING a
+migration.
+
+### Two sponsors from one school edit the roster simultaneously
+**MITIGATED.** Previously PARTIAL, and this was the oldest open entry here.
+
+The idempotency key bound the school, a hash of the pasted text, and a
+five-minute freshness window — so nobody could review one list and commit
+another. It said nothing about the roster those names were checked *against*.
+Two sponsors pasting the same twenty students at the same time both previewed
+against an empty roster, both saw no duplicates, and both committed. The
+chapter ended up with forty.
+
+The key now also carries a fingerprint of the roster the preview was reviewed
+against, and a commit whose fingerprint no longer matches is refused with a
+message saying so. Keys issued before this existed carry no fingerprint and are
+accepted: a preview open across a deploy is a worse failure than a race that
+needs two sponsors acting inside five minutes.
+
+**The order of the two checks is load-bearing.** The idempotency lookup runs
+first, because the first press of a double-click is itself what changes the
+roster — checked the other way round, the second press is rejected as
+"somebody else changed this roster", which is true, and is the same person half
+a second earlier. Both directions are tested.
