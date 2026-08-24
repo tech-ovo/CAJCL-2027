@@ -1,10 +1,17 @@
 """Generate the demonstration database.
 
-EVERY NAME IN HERE IS FABRICATED. No real student, parent, teacher, or school
-appears anywhere in this file except University High School itself, which is the
-host site and a matter of public record. The repository is public and the demo
-is projected in a room full of teachers; nobody should have to wonder whether
-the names on screen belong to real children.
+EVERY DELEGATE, PARENT AND CHAPTER IN HERE IS FABRICATED. The repository is
+public and the demonstration is projected in a room full of teachers; nobody
+should have to wonder whether the names on screen belong to real children.
+
+The exceptions are named, few, and adults who have agreed to it: the two
+technology commissioners, the host chapter's sponsor, and University High
+School itself, which is the host site and a matter of public record. They
+appear because the seeded audit log reads as a narrative of a real convention
+and, being illustrative, is understood as one. `scripts/add_board.py` finds
+these people rather than duplicating them.
+
+No student. No parent. No guardian. Not one.
 
 The whole thing is reproducible from a fixed seed, so re-running it produces the
 same schools, the same rosters, and the same spread of completion. Access codes
@@ -124,6 +131,11 @@ class Seeder:
         self.db = db
         self.rng = random.Random(SEED)
         self.codes: dict[str, str] = {}
+        # Set while the host chapter's sponsors are created, and used as the
+        # actor on every audit entry after that. Declared here so a failure to
+        # set it is an obvious None rather than an AttributeError forty lines
+        # further down.
+        self.uni_sponsor_id: int | None = None
 
     # -- small helpers ------------------------------------------------------
 
@@ -188,9 +200,14 @@ class Seeder:
             board = self._school(tx, "CAJCL State Board", "HS", "Irvine",
                                  kind="organization", created=days_ago(74))
 
+            # The two technology commissioners, who are real and have said so.
+            #
+            # The convention presidents used to be here as invented people.
+            # They are not any more: the real ones exist, and they arrive with
+            # everybody else from board.json via scripts/add_board.py -- see
+            # docs/DEPLOY.md step 4b. Running that against a seeded database
+            # finds these two rather than duplicating them.
             admins = [
-                ("Helena", "", "Okonkwo", "Convention President"),
-                ("Rafael", "", "Estrada", "Convention President"),
                 ("Carl", "", "Liu", "Technology Commissioner"),
                 ("Timothy", "Wei", "Chen", "Technology Commissioner"),
             ]
@@ -202,7 +219,7 @@ class Seeder:
                 self.codes[f"{title}: {first} {last}"] = code
 
             tx.audit("school.create",
-                     "The state board was set up with four administrator accounts.",
+                     "The state board was set up with two administrator accounts.",
                      school_id=board, entity_type="school", entity_id=board,
                      ts=days_ago(74))
 
@@ -211,7 +228,7 @@ class Seeder:
             uni = self._school(tx, "University High School", "HS", "Irvine",
                                created=days_ago(56))
             tx.audit("school.create",
-                     "Helena Okonkwo added University High School to the convention.",
+                     "Mark Michalak added University High School to the convention.",
                      school_id=uni, entity_type="school", entity_id=uni,
                      ts=days_ago(56))
 
@@ -224,7 +241,11 @@ class Seeder:
                     latin_knowledge="advanced", meal="regular",
                     cell_phone="555-0100")
                 self.codes[f"Sponsor: {first} {last} (University High School)"] = code
-                if first == "Mark":
+                # The FIRST sponsor is the one the rest of the seed acts as.
+                # This used to test `first == "Mark"`, which broke silently the
+                # moment the name changed -- the attribute simply never got
+                # set, forty lines before anything read it.
+                if self.uni_sponsor_id is None:
                     self.uni_sponsor_id = pid
 
             for first, middle, last in [("Alan", "", "Pryce"), ("Nadia", "", "Ibarra")]:
@@ -375,7 +396,7 @@ class Seeder:
                                       discount=discount, discount_reason=reason,
                                       created=created)
                 tx.audit("school.create",
-                         f"Rafael Estrada added {name} to the convention.",
+                         f"Mark Michalak added {name} to the convention.",
                          school_id=school, entity_type="school", entity_id=school,
                          ts=created)
 
@@ -431,7 +452,7 @@ class Seeder:
             created = days_ago(56)
             scl = self._school(tx, "SCL", "HS", "Statewide", exempt=1, created=created)
             tx.audit("school.create",
-                     "Helena Okonkwo added SCL, which is not billed for the convention.",
+                     "Mark Michalak added SCL, which is not billed for the convention.",
                      school_id=scl, entity_type="school", entity_id=scl, ts=created)
 
             for first, last in (("Gwen", "Halvorsen"), ("Desmond", "Abara")):
@@ -451,7 +472,7 @@ class Seeder:
                 uni, 250000, "check", "3418", clock.local_date_of(when),
                 "Partial payment, remainder to follow", admin["id"], when))
             tx.audit("payment.record",
-                     "Helena Okonkwo recorded a $2,500.00 check from "
+                     "Mark Michalak recorded a $2,500.00 check from "
                      "University High School.",
                      actor_person_id=admin["id"], school_id=uni,
                      entity_type="payment", entity_id=uni,

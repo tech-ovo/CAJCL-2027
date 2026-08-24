@@ -240,7 +240,21 @@ def redeem(request: Request, payload: dict = Body(...)):
         user_agent=request.headers.get("User-Agent"),
         via_magic_link=bool(payload.get("via_magic_link")),
     )
-    return {"token": token, "person": principal.to_public_dict()}
+
+    # `demo_mode` so the caller does not have to turn round and ask /auth/me
+    # for it. Signing in used to cost two requests -- one to exchange the code,
+    # one to find out who that was -- which on a cold container is two waits
+    # where the delegate can see only the second one.
+    #
+    # `sessions` is deliberately NOT here. It is a list that grows with every
+    # device a person has ever used, only the account page wants it, and that
+    # page fetches /auth/me for itself.
+    with database().read() as tx:
+        demo = settings.get_bool(tx, "ops.demo_mode")
+
+    body = principal.to_public_dict()
+    body["demo_mode"] = demo
+    return {"token": token, "person": body}
 
 
 @app.get("/auth/me")
@@ -287,7 +301,11 @@ def impersonate(request: Request, payload: dict = Body(...),
             ip=client_ip(request),
             user_agent=request.headers.get("User-Agent"),
         )
-    return {"token": token, "person": target.to_public_dict()}
+    with database().read() as tx:
+        demo = settings.get_bool(tx, "ops.demo_mode")
+    body = target.to_public_dict()
+    body["demo_mode"] = demo
+    return {"token": token, "person": body}
 
 
 @app.post("/auth/impersonate/end")
@@ -1020,7 +1038,14 @@ def audit_log(cursor: int | None = Query(default=None),
 def get_settings(principal: auth.Principal = guard("admin.settings.get", "*",
                                                    school_rule="any")):
     with database().read() as tx:
-        return {"settings": [dict(r) for r in settings.rows(tx)],
+        rows = []
+        for row in settings.rows(tx):
+            item = dict(row)
+            # The dashboard renders from this, not from value_type. See
+            # settings.render_hint for why the server is the one that decides.
+            item["render_as"] = settings.render_hint(row)
+            rows.append(item)
+        return {"settings": rows,
                 "documents": [dict(r) for r in tx.all("documents.all")]}
 
 
@@ -1040,8 +1065,14 @@ def put_settings(request: Request, payload: dict = Body(...),
             row = tx.one("settings.get", (key,))
             if row is None:
                 raise catalog.ValidationError([f"There is no setting called {key}."])
-            if row["value_type"] == "datetime" and value and "T" not in str(value):
+            hint = settings.render_hint(row)
+            if hint == "deadline" and value and "T" not in str(value):
                 value = clock.end_of_day_utc(str(value))
+            elif hint == "date" and value:
+                # A calendar date, not an instant. Stored exactly as typed, so
+                # `convention.start_date` stays the string every other part of
+                # the system already parses.
+                value = str(value).strip()
             tx.run("settings.update", (str(value), now, principal.person_id, key))
         tx.audit("settings.update",
                  f"{principal.display_name} changed "

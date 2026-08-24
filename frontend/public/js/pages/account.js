@@ -67,7 +67,7 @@ export async function accountPage(host) {
 }
 
 /** "chapter_leader" -> "Chapter leader". */
-export function titleCase(slug) {
+function titleCase(slug) {
   const words = String(slug || "").replace(/[_-]+/g, " ").trim();
   return words ? words[0].toUpperCase() + words.slice(1) : "";
 }

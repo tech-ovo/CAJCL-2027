@@ -426,15 +426,9 @@ The demonstration data is entirely invented, so nobody real can sign in to it.
 Board members and chapter sponsors get accounts from a separate file that is
 **never committed**, because this repository is public.
 
-Copy the example and fill it in:
-
-```powershell
-Copy-Item board.example.json board.json
-```
-
-Each entry needs a name, a title, and the roles that name carries. `school` is
-optional and defaults to the state board; give it only for someone who runs a
-chapter:
+Create `board.json` in the project folder. Each entry needs a name, a title,
+and the roles that name carries. `school` and `city` are optional and default
+to the state board; give them for anyone who runs a chapter:
 
 ```json
 [

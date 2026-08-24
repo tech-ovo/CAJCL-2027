@@ -9,7 +9,7 @@
 import * as api from "../api.js";
 import { add, el, clear, field, input, button, errorSummary } from "../ui.js";
 import { checkSymbolOk, formatCode } from "../codes.js";
-import { state, route } from "../main.js";
+import { state, route, adopt } from "../main.js";
 
 export async function signInPage(host) {
   let error = null;
@@ -60,7 +60,9 @@ export async function signInPage(host) {
           const result = await api.post("/auth/redeem", { code },
                                         { statusHost: status });
           api.token.set(result.token);
-          state.me = null;
+          // The response already says who this is, so the next page renders
+          // from it instead of asking again.
+          adopt(result.person);
           location.hash = "#/";
           await route();
         } catch (problem) {

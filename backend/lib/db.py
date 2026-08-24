@@ -284,11 +284,23 @@ def _open_remote(url: str, auth_token: str | None) -> _Handle:
     auth_token = _clean_credential(auth_token, "TURSO_AUTH_TOKEN")
 
     conn = libsql.connect(url, auth_token=auth_token or "", isolation_level=None)
+
+    # ONLY foreign_keys. Turso allows a short list of pragmas and rejects the
+    # rest outright:
+    #
+    #     SQL not allowed statement: PRAGMA busy_timeout = 5000
+    #
+    # `busy_timeout` was added here to match the local handle, on the reasoning
+    # that contention is a hosted database's problem rather than a laptop's.
+    # That reasoning was right and the mechanism was wrong: this is not a file
+    # being opened, it is a statement sent over the wire to a server that
+    # decides what it will run. It failed at CONNECTION time, which took the
+    # whole API down rather than one query.
+    #
+    # The wait is done in Python instead, in _run_with_retry above, which does
+    # not need the server's permission.
     conn.execute("PRAGMA foreign_keys = ON")
-    # The local handle has always had this and the remote one had not, which is
-    # backwards: contention is a HOSTED database's problem, not a laptop's.
-    # It is the driver's own wait, underneath the retry loop above.
-    conn.execute("PRAGMA busy_timeout = 5000")
+
     # Plain BEGIN, not IMMEDIATE: a hosted database has a single writer already,
     # and IMMEDIATE is a local-file locking concern that remote need not honour.
     return _Handle(conn, begin_sql="BEGIN")
@@ -359,7 +371,7 @@ class Tx:
         """Write one audit entry, inside this transaction.
 
         `summary` must be a complete human-readable sentence, rendered now:
-        "Mark Michalak added 28 delegates to University High School." A future
+        "Rosalind Ferraro added 28 delegates to University High School." A future
         commissioner reads this log with no access to the source.
 
         `changed_fields` is field NAMES only, never values. This keeps PII out

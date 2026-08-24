@@ -9,7 +9,7 @@ WHY THE NAMES ARE NOT IN THIS FILE
     board members are real people, so their names live in `board.json` in the
     project folder, which is listed in .gitignore and never committed.
 
-    `board.example.json` shows the shape. Copy it, fill it in, and keep it.
+    docs/DEPLOY.md step 4b shows the shape and the role names.
 
 RUNNING IT TWICE IS SAFE
     A person is matched on first name, last name, and chapter. Someone already
@@ -59,8 +59,9 @@ def load(path: pathlib.Path) -> list[dict]:
     if not path.exists():
         raise BoardError(
             f"no {path.name} found.\n"
-            f"Copy board.example.json to {path.name} and fill it in. It is "
-            f"gitignored, so the names never reach the repository.")
+            f"Create {path.name} in the project folder — docs/DEPLOY.md "
+            f"step 4b shows the shape. It is gitignored, so the names never "
+            f"reach the repository.")
     people = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(people, list):
         raise BoardError(f"{path.name} should hold a list of people.")

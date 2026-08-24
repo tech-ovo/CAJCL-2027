@@ -124,3 +124,42 @@ def public_convention(tx: Tx) -> dict[str, str]:
         "convention.theme_citation", "convention.contact_email",
     )
     return {key: values.get(key, "") for key in keys}
+
+
+# ---------------------------------------------------------------------------
+# How a setting should be edited
+# ---------------------------------------------------------------------------
+
+def render_hint(row) -> str:
+    """Which control the dashboard should give this setting.
+
+    THE SERVER DECIDES, NOT THE BROWSER. The frontend cannot see `value_type`
+    without being told, and it certainly cannot know that a key ending `_date`
+    is a plain calendar date while a `datetime` is an instant meaning "the end
+    of that day in California". Deciding it here keeps the two answers in one
+    place.
+
+    The four hints:
+
+    `deadline`  a `datetime`. Entered as a California date; the server converts
+                it to the right UTC instant, DST included. Forms lock, payment
+                due.
+
+    `date`      a plain calendar date stored verbatim, with no conversion,
+                because it is a fact about a day rather than a moment. The
+                convention's first and last day. These were being rendered as
+                free text, so the two dates everyone actually knows were the
+                only ones you had to type by hand -- and could type `2027-3-12`
+                into, or `March 12`.
+
+    `money`     cents in the database, dollars in the field.
+
+    `text`      everything else.
+    """
+    if row["value_type"] == "datetime":
+        return "deadline"
+    if row["value_type"] == "cents":
+        return "money"
+    if row["key"].endswith("_date"):
+        return "date"
+    return "text"

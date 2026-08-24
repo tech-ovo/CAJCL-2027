@@ -550,3 +550,60 @@ On Windows it failed before opening it.
 The backend imports now live inside the functions that use them. `load()` and
 `report()` are pure text handling and import nothing, which is checked by a
 test that runs a subprocess and asserts no `backend.*` module was loaded.
+
+### A pragma the hosted database will not run
+**MITIGATED.** `PRAGMA busy_timeout` was added to the remote connection to
+match the local one, on the reasoning that lock contention is a hosted
+database's problem rather than a laptop's. The reasoning was right and the
+mechanism was wrong: Turso allows a short list of pragmas and refuses the rest
+outright, and because pragmas run at CONNECTION time a refused one took down
+every request rather than one query. It shipped and broke production.
+
+The wait now happens in Python — `_run_with_retry` in `db.py` — which needs
+nobody's permission. `test_source.py` asserts the remote path sends only
+`foreign_keys`, and that test was verified by reintroducing the bug and
+watching it fail.
+
+The general shape: **a local file is opened, a hosted database is asked.**
+Anything that configures the connection has to be checked against what the
+server will actually accept, and there is no way to learn that from a local
+SQLite file.
+
+### A file no test ever loaded
+**MITIGATED.** `backend/app.py` imports `modal` at module level, so nothing in
+the suite ever imported it — and a broken string literal in it therefore
+reached the person trying to run `modal run`, as a `SyntaxError` at import.
+Every other file is imported by some test; this one and the standalone scripts
+were not.
+
+`test_source.py` now **compiles** every Python file in the repository. Parsing
+needs no dependencies, no credentials and no network, so it covers exactly the
+files that nothing else touches: `app.py`, `scripts/`, `workers/`. Verified by
+reintroducing the bug.
+
+**A related trap, worth naming.** The two checks above were first written
+inside `test_db_drivers.py`, which opens with `pytest.importorskip("libsql")`.
+That driver has no ARM wheel, so the whole module — and both new checks — was
+silently skipped on precisely the machines that needed it. A test that does not
+run is not a test. Source-level checks live in their own module, which imports
+nothing.
+
+### The seed file promised something that was not true
+**MITIGATED.** `scripts/seed.py` opens by saying every name in it is
+fabricated and that no real student, parent, teacher or school appears. Three
+real people were in it — two commissioners and the host chapter's sponsor, who
+narrated half the seeded audit log — and the repository is public.
+
+They are gone, replaced with invented names, and `test_source.py` now fails if
+any of them comes back. The list of names to refuse is in that test; add to it
+when somebody real joins.
+
+**Two places still carry a real name, both deliberately.** The
+`invoice.remit_to` setting is whose name a chapter writes on a cheque: a
+business fact printed on a real invoice, specified in `structure.md`, and
+editable from Settings. `docs/TODO.md` says who is meant to do what, which is
+what that file is for. Neither is demonstration data.
+
+**Why a docstring was not enough.** It described an intention, and intentions
+do not survive somebody adding themselves to a list of administrators at
+eleven at night. The check that matters is the one that runs.

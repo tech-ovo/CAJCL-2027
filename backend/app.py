@@ -355,13 +355,9 @@ def retire_adm_codes():
     text = add_board.report(result)
     print(text)
     pathlib.Path("board-codes.txt").write_text(
-        "Access codes reissued when the ADM prefix was retired.
-"
-        "REAL PEOPLE. Do not commit this file; it is gitignored.
-"
-        "Each code is shown once. Everyone here needs a new sheet.
-
-" + text,
+        "Access codes reissued when the ADM prefix was retired.\n"
+        "REAL PEOPLE. Do not commit this file; it is gitignored.\n"
+        "Each code is shown once. Everyone here needs a new sheet.\n\n" + text,
         encoding="utf-8")
     print(f"{len(result['people'])} code(s) also written to board-codes.txt")
 

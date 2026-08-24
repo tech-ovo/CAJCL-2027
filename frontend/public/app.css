@@ -808,3 +808,18 @@ th[aria-sort] { color: var(--text); }
 @media (prefers-reduced-motion: reduce) {
   .just-changed { transition: none; }
 }
+
+/* A unit that belongs to the field, printed against it rather than described
+ * in a sentence underneath. The sign is decoration: the label already says
+ * what the number is, and the input is still an ordinary text box. */
+.input-prefix { display: flex; align-items: stretch; }
+.input-prefix > span:first-child {
+  display: flex; align-items: center;
+  padding: 0 var(--space-2);
+  border: var(--border); border-right: 0;
+  border-radius: var(--radius) 0 0 var(--radius);
+  background: var(--page-bg);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+.input-prefix > input { border-radius: 0 var(--radius) var(--radius) 0; flex: 1; }

@@ -177,27 +177,102 @@ That is the note to end on. This site is meant to be inherited.
 
 ## Questions you should expect
 
+Answers you can give from the front of a room. Where the honest answer is "not
+yet", say so and write it down — a board that catches you overstating once will
+discount everything else.
+
+### About the students
+
 **"What about student privacy?"**
-Delegate emails are never collected. Medical forms and waivers are paper,
-scanned by the sponsor into their own Drive folder that no code here reads. The
-site records only that a form arrived, never what is in it.
+Delegate email addresses are never collected — several delegates are eleven.
+Medical forms and waivers are paper, scanned by the sponsor into their own
+Drive folder that no code here reads. The site records only that a form
+arrived, never what is in it.
 
 **"Is this real student data?"**
-No. Every chapter, delegate and parent on the site is invented — the banner at
-the top says so on every page. The only real people are the board members in
-the room.
+No. Every chapter, delegate and parent on the site is invented, and the banner
+at the top of every page says so. The only real people are the board members in
+this room.
 
-**"What happens if it goes down at convention?"**
-There is a local copy that runs with no internet, and every export is an
-ordinary SQLite file that opens in free tools. `docs/RUNBOOK.md`.
+**"What if a student does not have a phone or a computer?"**
+Their sponsor can print a paper copy of the form and type the answers in for
+them. It is slower and mistakes are harder to catch, so the packet says to
+avoid it where possible — but nobody is locked out.
 
-**"Who pays for it?"**
-Nobody. All three services are on free tiers with a large margin — measured,
-not guessed: `docs/RISKS.md` has the numbers.
+**"Can a student change their own name?"**
+No. Names come from the sponsor's roster, and a delegate cannot edit theirs.
+This is deliberate: the name on the roster is the name on the award.
 
-**"Can we have a feature X?"**
-`docs/TODO.md` has what is not built yet, with estimates. Write it down rather
-than promising it live.
+**"What stops a student signing in as someone else?"**
+Nothing except holding the other student's sheet, and the sheet says so in
+plain words. That is the trade for having no passwords. Every sheet carries one
+name in large type so a sponsor cannot hand the wrong page to the wrong
+student, and a lost sheet is replaced in about ten seconds.
+
+### About the sponsors
+
+**"How much work is this for me?"**
+Paste your roster once. Tick each paper form as it arrives. That is the whole
+job. Everything else — the invoice, the packet, the codes — is generated.
+
+**"What if my spreadsheet is a mess?"**
+That is the case it was built for. You just watched it read four different
+formats in one paste. Anything ambiguous is flagged rather than guessed at, and
+every row is editable before anything is saved.
+
+**"Can two of us from the same school use it?"**
+Yes. A chapter can have more than one sponsor and both can edit the roster. If
+you both paste a roster at the same time you will get both rosters — the site
+warns about duplicates but does not stop you.
+
+**"What if a student drops out after we have paid?"**
+They are marked cancelled and stay on the invoice, so your balance still reads
+zero. There are no refunds — the convention runs on pre-payment — and the site
+does not pretend otherwise by showing you a credit that is never coming.
+
+**"Does the deadline actually lock me out?"**
+It locks the students out of their own forms. A chair can reopen any individual
+form, and you can always ask.
+
+### About the money
+
+**"Who sees what we have paid?"**
+You, and the registration chairs. Not other chapters. The invoice shows the
+arithmetic rather than a total, so if the number is wrong you can see where.
+
+**"What if the fee changes after we are invoiced?"**
+It is not expected to once registration opens. If it has to, the site handles
+it with a discount or a negative payment, and both leave a visible trail on
+your invoice.
+
+**"We are not billed. Will the site cope?"**
+Yes — that is a flag on the chapter, not a name check, so it keeps working if
+SCL is ever typed differently. An exempt chapter's invoice says why it is zero
+instead of showing a blank page.
+
+### About the system
+
+**"Who pays for this?"**
+Nobody. All three services are on free tiers with a large margin, and it has
+been measured rather than estimated.
+
+**"What happens if it goes down during convention?"**
+There is a local copy that runs with no internet at all, and every backup is an
+ordinary SQLite file that opens in free tools. The runbook is written for
+somebody who did not build this and is panicking.
+
+**"Who maintains it next year?"**
+Next year's commissioners, and that is the point. Every fee, deadline, date and
+block of printed wording is editable from the Settings page without touching
+code. The handover documents are in the repository.
+
+**"What is not built yet?"**
+Scores, tabulation and Certamen brackets. Registration is finished; the awards
+side is not. There is a list with time estimates, and it is honest.
+
+**"Can we see the code?"**
+It is public. That is deliberate — the next commissioners inherit it, and a
+private repository would have to be handed over rather than simply found.
 
 ---
 

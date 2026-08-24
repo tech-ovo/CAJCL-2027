@@ -24,6 +24,7 @@ WHY IT MATTERS
 from __future__ import annotations
 
 import pathlib
+import re
 import sqlite3
 
 import pytest

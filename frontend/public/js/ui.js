@@ -64,12 +64,6 @@ export function clear(node) {
   return node;
 }
 
-export function fragment(...children) {
-  const f = document.createDocumentFragment();
-  append(f, children);
-  return f;
-}
-
 /* --------------------------------------------------------------------------
  * Formatting
  * ----------------------------------------------------------------------- */

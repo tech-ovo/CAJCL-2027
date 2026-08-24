@@ -16,7 +16,7 @@
  * every value is distinct modulo it. With 32 characters and a modulus of 31,
  * 'Z' (31) and '0' (0) are congruent and swapping them is undetectable -- that
  * bug shipped once. Keep ALPHABET.length === CHECK_MODULUS. */
-export const ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXY";
+const ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXY";
 const CHECK_MODULUS = 31;
 
 /* I and L read as 1, O reads as 0. Someone typing what they see must get in. */
@@ -28,7 +28,7 @@ const PREFIXES = ["SPO", "DEL", "VOL"];
 const DATA_LENGTH = 9;
 
 /** Fold a typed code into the exact string the server hashes, or null. */
-export function normalize(code) {
+function normalize(code) {
   const stripped = String(code || "")
     .replace(/[\s–-]/g, "")
     .toUpperCase();
@@ -49,7 +49,7 @@ export function normalize(code) {
 }
 
 /** The check symbol for a run of data characters. */
-export function checkSymbol(data) {
+function checkSymbol(data) {
   let total = 0;
   for (let i = 0; i < data.length; i += 1) {
     total += (i + 1) * ALPHABET.indexOf(data[i]);

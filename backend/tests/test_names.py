@@ -283,8 +283,8 @@ def test_delegate_email_is_discarded_with_a_warning():
 
 
 def test_adult_email_is_kept():
-    r = one("Mark Michalak,mark@example.edu", default_person_type="adult")
-    assert r.email == "mark@example.edu"
+    r = one("Rosalind Ferraro,rosalind@example.edu", default_person_type="adult")
+    assert r.email == "rosalind@example.edu"
     assert "email_discarded" not in r.warnings
 
 
@@ -292,15 +292,15 @@ def test_adult_email_is_kept():
     "555-123-4567", "(555) 123-4567", "5551234567", "555.123.4567",
 ])
 def test_phone_formats(phone):
-    r = one(f"Mark Michalak,{phone}", default_person_type="adult")
+    r = one(f"Rosalind Ferraro,{phone}", default_person_type="adult")
     assert r.cell_phone is not None
-    assert names_of(r)[0] == "Mark"
+    assert names_of(r)[0] == "Rosalind"
 
 
 def test_embedded_email_without_a_delimiter():
-    r = one("Mark Michalak mark@example.edu", default_person_type="adult")
-    assert r.email == "mark@example.edu"
-    assert names_of(r) == ("Mark", "", "Michalak", "")
+    r = one("Rosalind Ferraro rosalind@example.edu", default_person_type="adult")
+    assert r.email == "rosalind@example.edu"
+    assert names_of(r) == ("Rosalind", "", "Ferraro", "")
 
 
 # ---------------------------------------------------------------------------

@@ -187,6 +187,23 @@ async function ensureSession({ quiet = false } = {}) {
   }
 }
 
+/**
+ * Take up a session the server has just handed us, without asking who it is.
+ *
+ * `/auth/redeem` and `/auth/impersonate` both return the same body `/auth/me`
+ * would, so calling it afterwards is a second round trip for an answer already
+ * in hand. On a cold container that is two waits where the person can only see
+ * the second one, and it happens at the single worst moment: the very first
+ * thing anybody does on the site.
+ *
+ * `sessions` is the one field not in that body. Only the account page wants it
+ * and that page fetches /auth/me for itself.
+ */
+export function adopt(person) {
+  state.me = person || null;
+  state.demoMode = !!(person && person.demo_mode);
+}
+
 export function hasScope(scope) {
   if (!state.me) return false;
   const scopes = state.me.scopes || [];
@@ -216,7 +233,7 @@ async function magicLink(host, [raw]) {
     const result = await api.post("/auth/redeem",
       { code, via_magic_link: true }, { statusHost: host });
     api.token.set(result.token);
-    state.me = null;
+    adopt(result.person);
     location.hash = "#/";
     await route();
   } catch (error) {

@@ -8,7 +8,7 @@
 import * as api from "../api.js";
 import { add, el, clear, tabula, table, button, emptyState, loadingRows,
          fullName, personNumber, ask } from "../ui.js";
-import { state, route, hasScope } from "../main.js";
+import { state, route, hasScope, adopt } from "../main.js";
 
 export async function rosterPage(host, params = []) {
   // Set when a chair has opened one chapter from the Chapters table. A sponsor
@@ -372,7 +372,7 @@ export async function rosterPage(host, params = []) {
       // Keep the admin's own token so the banner's Stop button can restore it.
       api.adminToken.set(api.token.get());
       api.token.set(result.token);
-      state.me = null;
+      adopt(result.person);
       // Where they land has to be a page THEY can open. A delegate has no
       // roster, and sending them to one bounces straight to "no access".
       location.hash = person.person_type === "delegate"

@@ -122,23 +122,24 @@ export async function adminPage(host) {
   }
 
   function settingField(row) {
-    const isDate = row.value_type === "datetime";
-    const isMoney = row.value_type === "cents";
+    // The SERVER says how to render this; see settings.render_hint. The
+    // convention's first and last day used to arrive as plain text purely
+    // because they are stored as strings, so the two dates everybody actually
+    // knows were the only ones you had to type by hand.
+    const hint = row.render_as || "text";
+    const isDeadline = hint === "deadline";
+    const isDate = hint === "date";
+    const isMoney = hint === "money";
 
-    // A deadline is entered as a plain California date. The server converts it
-    // to the right UTC instant, including working out whether that date is in
-    // PST or PDT.
-    //
-    // `shown` is what this field displays when nothing has been touched, and it
-    // is what every keystroke is compared against -- so typing a change and
-    // typing it back removes the entry instead of leaving the whole form
-    // permanently unsaved after one keystroke.
-    const shown = isDate ? toDateInput(row.value)
+    // `shown` is what this field displays untouched, and what every keystroke
+    // is compared against -- so typing a change and typing it back removes the
+    // entry rather than leaving the form permanently unsaved.
+    const shown = isDeadline ? toDateInput(row.value)
       : isMoney ? (Number(row.value || 0) / 100).toFixed(2)
       : (row.value === null || row.value === undefined ? "" : String(row.value));
 
     const control = input({
-      type: isDate ? "date" : "text",
+      type: (isDeadline || isDate) ? "date" : "text",
       value: shown,
       class: isMoney ? "mono" : null,
       oninput: (event) => {
@@ -155,10 +156,13 @@ export async function adminPage(host) {
     return field({
       id: `set-${row.key}`,
       label: row.label,
-      help: isDate ? "A California date. End of that day is used."
-        : isMoney ? "In dollars."
-        : null,
-      control,
+      // A dollar sign in front of the box says "dollars" without a sentence
+      // underneath saying it. The help line below a field is for something a
+      // person could not work out by looking.
+      help: isDeadline ? "The end of this day, California time." : null,
+      control: isMoney
+        ? el("span", { class: "input-prefix" }, el("span", {}, "$"), control)
+        : control,
     });
   }
 
@@ -178,17 +182,27 @@ export async function adminPage(host) {
   /* -------------------------------------------------------------------- */
 
   function renderDocuments() {
-    add(host, el("p", { class: "muted" },
-      "Every block of wording that gets printed or displayed."));
+    add(host,
+      el("p", { class: "muted" },
+        "Every block of wording that gets printed or displayed."),
+      // Said once, at the top. It used to sit under all nine boxes, which is
+      // eight repetitions of the same sentence and a column of identical
+      // "WORDING" labels doing no work: the heading above each box already
+      // says which document it is.
+      el("p", { class: "small muted" },
+        "Blank lines make paragraphs. ",
+        el("strong", {}, "**Two asterisks**"), " make bold. ",
+        "A line starting with - makes a bullet."));
 
     for (const document_ of settings.documents) {
-      const body = el("textarea", { style: "min-height:12rem" }, document_.body_md);
+      const body = el("textarea", {
+        id: `doc-${document_.key}`,
+        "aria-label": document_.title,
+        style: "min-height:12rem",
+      }, document_.body_md);
       add(host, el("section", { class: "panel", style: "margin-bottom:1.5rem" },
         el("h2", {}, document_.title),
-        field({ id: `doc-${document_.key}`, label: "Wording", wide: true,
-                help: "Blank lines make paragraphs. **Two asterisks** make bold. " +
-                      "A line starting with - makes a bullet.",
-                control: body }),
+        body,
         el("div", { class: "btn-row" },
           button("Save wording", {
             variant: "btn--primary",

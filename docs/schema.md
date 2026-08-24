@@ -475,7 +475,7 @@ Actions: `auth.login`, `auth.login_failed`, `auth.magic_link`, `auth.logout`, `i
 
 `changed_fields` records field **names only**, never values — this keeps PII out of the log and matches the requirement that the log show "Bob updated their forms" rather than what Bob wrote. `value_detail` carries before/after values for `payment.record` only, because money disputes are exactly when you need them.
 
-`summary` is a complete human-readable sentence written at insert time: *"Mark Michalak added 28 delegates to University High School."* A future commissioner reads the log with no code.
+`summary` is a complete human-readable sentence written at insert time: *"Rosalind Ferraro added 28 delegates to University High School."* A future commissioner reads the log with no code.
 
 The log is written **in the same transaction** as the mutation. If the mutation rolls back, so does the log entry. There is no path that changes data without writing an entry.
 
