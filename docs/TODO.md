@@ -20,7 +20,6 @@ AGAINST**
 | | What | Hours | Notes |
 | --- | --- | --- | --- |
 | SOON | Catalog editing screen | 6 | The catalog is seeded correctly and read-only. Cut for the demo. |
-| SOON | Restore `board.json` from the live database | 1 | If the file is lost, the names are still in the database. A `--export` flag on `add_board.py` would rebuild it. |
 | LATER | Draft restore on the settings form | 1 | The activity and adult sheets keep a `localStorage` draft. Settings warns before leaving but keeps nothing. |
 
 ## The board and the chapter it lives in

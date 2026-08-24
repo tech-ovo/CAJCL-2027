@@ -116,6 +116,58 @@ need to think about it again.
 
 ---
 
+## Reading this a year later
+
+This document says `cajcl-2027` a lot, and the 73rd convention is not 2027.
+
+**Almost none of that is a problem.** The convention year, ordinal, dates,
+venue, theme, fees, deadlines and every block of printed wording are settings,
+changed from **Settings → Values** in a browser without touching code. That is
+the whole design: a commissioner who has never opened an editor can run a
+different convention from the same deployment.
+
+`cajcl-2027` is a **name**, and it appears in exactly four places:
+
+| Where | What it is | Change it? |
+| --- | --- | --- |
+| `backend/app.py`, four lines | the Modal app and its secret | Yes — one find-and-replace |
+| Turso database | `turso db create cajcl-2027` | Yes — make your own |
+| `backend/api.py`, `/health` | a label in a JSON response | Cosmetic |
+| The repository folder | just a folder name | Only if you want to |
+
+### Starting a new convention year
+
+Work through steps 1 to 7 as written, substituting your own name for
+`cajcl-2027` throughout. The order that matters:
+
+1. **Fork or clone the repository.** Do not start from an empty one — the
+   migrations and the catalog are years of accumulated decisions.
+2. **Make a new Turso database.** Never reuse last year's: a convention's data
+   is a record, and next year's registration does not belong in the same table
+   as last year's. Old databases cost nothing to keep.
+3. **Find and replace the app name** in `backend/app.py`. Four lines.
+4. **Make a new Modal secret** under the matching name, with a **new pepper**.
+   Do not carry the old one across — every code from last year would still
+   work, against a database those people are no longer in.
+5. **Deploy, migrate, seed** — steps 3 and 4.
+6. **Add yourself** through `board.json` — step 4b, "The first person".
+7. **Change the convention facts** from Settings. Year, ordinal, dates, venue,
+   theme, fees, deadlines. None of these needs a deploy, and none of them is in
+   the code.
+
+### What never to change
+
+**The migrations.** `backend/migrations/` is a record of what has been done to
+databases that exist. Files are added, never edited, and never deleted — see
+`backend/migrations/CHECKSUMS.txt`. A new convention runs all of them from
+scratch and arrives at the same schema.
+
+**And you do not need the demonstration.** `docs/DEMO.md` exists to convince a
+board that this is worth adopting. That argument was made in August 2026. What
+you need is this document and `docs/RUNBOOK.md`.
+
+---
+
 ## 1. Turso, the database — 15 minutes
 
 **On Windows, this is the one step that needs WSL.** Turso publishes its
@@ -525,6 +577,22 @@ work; the file is simply the door that opens from outside.
 board keeps the code they already had; they gain a role, not a login. This is
 the same mechanism that promotes a delegate to chapter leader, and it is why
 an access code says what somebody *is* rather than what they may do.
+
+### If board.json is lost
+
+The names are in the database. The file is what goes missing, and it is the
+only route into provisioning — so recover it rather than retyping it:
+
+```powershell
+modal run backend/app.py::recover_board
+```
+
+It refuses to overwrite an existing `board.json`, so move any partial one aside
+first.
+
+**Codes are not recovered and cannot be.** Only their HMAC is stored, which is
+the property that makes a stolen database useless. Anyone who needs a code gets
+a new one.
 
 ### Running it again
 

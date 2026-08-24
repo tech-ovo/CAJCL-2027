@@ -73,8 +73,57 @@ def recorded() -> dict[str, str]:
     return out
 
 
+def first_committed() -> dict[str, str]:
+    """Each migration's sha256 AS FIRST COMMITTED, from git.
+
+    THE MANIFEST MUST NOT RECORD DRIFT THAT IS ALREADY THERE. The first version
+    of this script hashed the working tree and wrote whatever it found, so a
+    file that had already been edited after being applied was recorded in its
+    edited state -- and the local check then passed while production still
+    refused the deploy. The guard agreed with the mistake.
+
+    Comparing against the version git first saw catches that. It is advisory:
+    git may be absent, the checkout may be shallow, and a legitimately
+    uncommitted new migration has no history at all.
+    """
+    import subprocess
+
+    out: dict[str, str] = {}
+    for path in sorted(MIGRATIONS.glob("*.sql")):
+        rel = path.relative_to(ROOT).as_posix()
+        try:
+            commits = subprocess.run(
+                ["git", "log", "--format=%h", "--reverse", "--", rel],
+                capture_output=True, text=True, cwd=ROOT, timeout=30).stdout.split()
+            if not commits:
+                continue                      # never committed: nothing to compare
+            blob = subprocess.run(
+                ["git", "show", f"{commits[0]}:{rel}"],
+                capture_output=True, cwd=ROOT, timeout=30).stdout
+            text = blob.decode("utf-8").replace('\r\n', '\n')
+            out[path.name] = hashlib.sha256(text.encode()).hexdigest()
+        except Exception:
+            return {}                         # no git, or no history; skip the check
+    return out
+
+
 def main() -> int:
     have, want = recorded(), current()
+
+    # Refuse to record a file that has drifted since git first saw it, even if
+    # the manifest has never mentioned it. That is the case this exists for.
+    original = first_committed()
+    drifted = sorted(n for n in original if n in want and original[n] != want[n])
+    if drifted:
+        for name in drifted:
+            print(f"  DRIFTED  {name}  <- changed since it was first committed")
+        print()
+        print("Those files have been edited after being committed, and at least "
+              "one database has already run them. Restore them with `git "
+              "checkout` and put the change in a NEW migration; recording them "
+              "as they are would make this check agree with the mistake.",
+              file=sys.stderr)
+        return 1
 
     changed = sorted(n for n in have if n in want and have[n] != want[n])
     added = sorted(n for n in want if n not in have)

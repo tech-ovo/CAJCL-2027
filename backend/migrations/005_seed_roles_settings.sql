@@ -148,7 +148,7 @@ If your delegate or adult count changes before the deadline, the amount due chan
    strftime('%Y-%m-%dT%H:%M:%SZ','now')),
 
   ('welcome_body', 'Welcome page body',
-   'The California Junior Classical League gathers each spring for two days of Certamen, competition, and ceremony. The 72nd State Convention will be held at University High School in Irvine.
+   'The California Junior Classical League gathers each spring for two days of certamen, competition, and ceremony. The 72nd State Convention is hosted by University High School in Irvine.
 
 Registration runs through your chapter''s sponsor. If you are a delegate, your sponsor will give you a sheet with your access code on it.',
    strftime('%Y-%m-%dT%H:%M:%SZ','now')),

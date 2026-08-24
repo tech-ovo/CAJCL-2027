@@ -50,6 +50,13 @@ DEFAULT_FILE = ROOT / "board.json"
 # generate an invoice.
 BOARD_SCHOOL = "CAJCL State Board"
 
+# Authority beyond one chapter. `sponsor` is deliberately not here: every
+# chapter has one, they arrive with the roster, and a file listing all fifty of
+# them is not a board.
+CONVENTION_ROLES = frozenset({
+    "admin", "registration_chair", "academics_chair", "awards_chair",
+})
+
 
 class BoardError(Exception):
     pass
@@ -163,7 +170,30 @@ def run(db, people: list[dict], *,
             if existing:
                 person_id = existing["id"]
                 action = "already there"
+
+                # Bring the TITLE into line too, not only the roles.
+                #
+                # This file is declarative: what it says is what should be
+                # true. Reconciling roles but leaving the title alone meant a
+                # correction here was silently ignored for anybody who already
+                # existed -- and the two people the seed creates arrive with no
+                # title at all, so they kept showing as "Board member" no
+                # matter what the file said.
+                #
+                # It does mean the file wins over a rename made in Settings.
+                # That is the right way round for the people it names: the file
+                # is the record, and the next run is where the two are
+                # reconciled.
+                if (existing.get("adult_type") != adult_type
+                        or existing.get("adult_type_other") != adult_type_other):
+                    tx.run("people.set_board_identity", (
+                        first, middle, last, adult_type, adult_type_other,
+                        now, person_id))
+                    changed_title = True
+                else:
+                    changed_title = False
             else:
+                changed_title = False
                 person_id = tx.insert("people.create", (
                     school_id, "adult", adult_type, adult_type_other,
                     first, middle, last, None, None,
@@ -249,6 +279,48 @@ def retire_prefix(db, old_prefix: str = "ADM") -> dict:
     return {"people": issued}
 
 
+def export(db) -> list[dict]:
+    """Rebuild `board.json` from the database.
+
+    The file is gitignored, so it lives in exactly one place: whichever laptop
+    made it. The NAMES are not lost with it -- they are in the database -- but
+    the file is, and the file is the only way in to provisioning. This turns a
+    lost laptop from a problem into an inconvenience.
+
+    Codes are not exported and cannot be: only their HMAC is stored. Anyone who
+    needs one gets a new one.
+    """
+    with db.read() as tx:
+        people = [dict(r) for r in tx.all("admin.board_members")]
+
+    out = []
+    for person in people:
+        roles = [k for k in (person["role_keys"] or "").split(",") if k]
+        roles = [r for r in roles if r not in ("delegate", "chapter_leader")]
+
+        # A chapter's sponsor is not, by itself, somebody this file provisions.
+        # Every chapter has one and they arrive with the roster; board.json is
+        # for people who hold authority BEYOND their own chapter -- which is
+        # what makes a sponsor who also sits on the board belong in it.
+        if not (set(roles) & CONVENTION_ROLES):
+            continue
+
+        entry = {
+            "first": person["first_name"],
+            "last": person["last_name"],
+            "title": (person["adult_type_other"]
+                      or ("Sponsor" if person["adult_type"] == "sponsor"
+                          else "Board member")),
+            "roles": roles,
+        }
+        if person["middle_name"]:
+            entry["middle"] = person["middle_name"]
+        if person["school_name"] != BOARD_SCHOOL:
+            entry["school"] = person["school_name"]
+        out.append(entry)
+    return out
+
+
 def report(result: dict) -> str:
     lines = []
     for row in result["people"]:
@@ -268,6 +340,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", help="a local .db file; omit to use Turso")
     parser.add_argument("--file", default=str(DEFAULT_FILE))
+    parser.add_argument("--export", action="store_true",
+                        help="write board.json FROM the database instead of "
+                             "reading it, for when the file has been lost")
     parser.add_argument("--create-schools", action="store_true",
                         help="create any chapter named in the file that does "
                              "not exist yet")
@@ -275,6 +350,28 @@ def main() -> int:
                         help="reissue codes for people who already exist, "
                              "signing out every device using the old ones")
     args = parser.parse_args()
+
+    if args.export:
+        from backend.lib.db import connect
+
+        db = connect(args.db) if args.db else connect()
+        try:
+            people = export(db)
+        finally:
+            db.close()
+
+        target = pathlib.Path(args.file)
+        if target.exists():
+            print(f"{target.name} already exists. Move it aside first -- this "
+                  f"would overwrite it.", file=sys.stderr)
+            return 1
+        target.write_text(json.dumps(people, indent=2, ensure_ascii=False) + '\n',
+                          encoding="utf-8")
+        print(f"wrote {len(people)} person/people to {target.name}")
+        for entry in people:
+            print(f"  {entry['first']} {entry['last']} - {entry['title']} "
+                  f"- {', '.join(entry['roles'])}")
+        return 0
 
     try:
         people = load(pathlib.Path(args.file))

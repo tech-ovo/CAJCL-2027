@@ -588,3 +588,78 @@ def test_a_key_from_before_the_fingerprint_existed_is_still_accepted(fx):
     old_style = roster.issue_key(school["id"], paste, None)
     payload = roster.verify_key(old_style, school["id"], paste, "anything-else")
     assert payload["school_id"] == school["id"]
+
+
+# ---------------------------------------------------------------------------
+# board.json, out and back
+# ---------------------------------------------------------------------------
+
+BOARD = [
+    {"first": "Ada", "last": "Lovelace", "title": "Sponsor",
+     "school": "University High School", "roles": ["sponsor", "admin"]},
+    {"first": "Grace", "last": "Hopper", "title": "Convention President",
+     "roles": ["admin"]},
+    {"first": "Katherine", "middle": "Goble", "last": "Johnson",
+     "title": "Registration Chair", "roles": ["registration_chair"]},
+]
+
+
+def test_the_board_file_survives_a_round_trip(fx):
+    """`board.json` is gitignored, so it exists on exactly one laptop. The
+    names are in the database; the FILE is the thing that gets lost, and it is
+    the only way in to provisioning."""
+    import scripts.add_board as add_board
+
+    add_board.run(fx.db, BOARD, create_schools=True)
+    back = add_board.export(fx.db)
+
+    by_name = {(p["first"], p["last"]): p for p in back}
+    for entry in BOARD:
+        got = by_name.get((entry["first"], entry["last"]))
+        assert got is not None, f"{entry['last']} did not come back"
+        assert sorted(got["roles"]) == sorted(entry["roles"])
+        assert got["title"] == entry["title"]
+        assert got.get("school") == entry.get("school")
+        assert got.get("middle") == entry.get("middle")
+
+
+def test_the_export_leaves_ordinary_chapter_sponsors_out(fx):
+    """Every chapter has a sponsor and they arrive with the roster. A file
+    listing all fifty of them is not a board."""
+    import scripts.add_board as add_board
+
+    add_board.run(fx.db, BOARD, create_schools=True)
+    exported = add_board.export(fx.db)
+    names = {(p["first"], p["last"]) for p in exported}
+
+    # Ada holds `admin` as well, so she belongs in the file.
+    assert ("Ada", "Lovelace") in names
+    # The fixture's own sponsor holds only `sponsor`, so she does not.
+    assert not any(p["roles"] == ["sponsor"] for p in exported), exported
+
+
+def test_running_the_board_file_twice_changes_nothing(fx):
+    import scripts.add_board as add_board
+
+    add_board.run(fx.db, BOARD, create_schools=True)
+    second = add_board.run(fx.db, BOARD)
+
+    assert all(row["action"] == "already there" for row in second["people"])
+    assert all(row["role_changes"] == [] for row in second["people"])
+    assert all(row["code"] is None for row in second["people"])
+
+
+def test_a_corrected_title_is_applied_to_somebody_already_there(fx):
+    """The file is declarative. Reconciling roles but not the title meant a
+    correction was silently ignored for anyone who already existed — including
+    the two people the seed creates, who arrive with no title at all."""
+    import scripts.add_board as add_board
+
+    add_board.run(fx.db, BOARD, create_schools=True)
+
+    promoted = [dict(p) for p in BOARD]
+    promoted[1]["title"] = "Convention President Emerita"
+    add_board.run(fx.db, promoted)
+
+    back = {(p["first"], p["last"]): p for p in add_board.export(fx.db)}
+    assert back[("Grace", "Hopper")]["title"] == "Convention President Emerita"

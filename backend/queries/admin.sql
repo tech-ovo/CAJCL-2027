@@ -128,7 +128,8 @@ WHERE pr.person_id = ?;
 -- Impersonation target picker and the admin person lookup. Bounded by LIMIT and
 -- only ever called with an explicit school filter or a name prefix, so it never
 -- walks the whole table.
-SELECT p.id, p.first_name, p.last_name, p.person_type, p.adult_type, p.status,
+SELECT p.id, p.first_name, p.middle_name, p.last_name,
+       p.person_type, p.adult_type, p.adult_type_other, p.status,
        p.school_id, s.name AS school_name
 FROM people p JOIN schools s ON s.id = p.school_id
 WHERE p.school_id = ?

@@ -331,6 +331,49 @@ def reissue_retired_prefix(old_prefix: str = "ADM") -> dict:
         db.close()
 
 
+@app.function(image=slim_image, secrets=secrets, timeout=300)
+def export_board() -> list:
+    import sys
+    sys.path.insert(0, "/root/cajcl")
+    import scripts.add_board as add_board
+    from backend.lib.db import connect
+
+    db = connect()
+    try:
+        return add_board.export(db)
+    finally:
+        db.close()
+
+
+@app.local_entrypoint()
+def recover_board(file: str = "board.json"):
+    """Rebuild board.json from the live database, when the file has been lost.
+
+        modal run backend/app.py::recover_board
+
+    The names are in the database; the file is what goes missing, and it is the
+    only route into provisioning. Codes are NOT recovered and cannot be -- only
+    their HMAC is stored. Anyone who needs one gets a new one.
+    """
+    import json
+    import pathlib
+
+    target = pathlib.Path(file)
+    if target.exists():
+        print(f"{target.name} already exists. Move it aside first -- this "
+              f"would overwrite it.")
+        return
+
+    people = export_board.remote()
+    target.write_text(
+        json.dumps(people, indent=2, ensure_ascii=False) + '\n',
+        encoding="utf-8")
+    print(f"wrote {len(people)} person/people to {target.name}")
+    for entry in people:
+        print(f"  {entry['first']} {entry['last']} - {entry['title']}"
+              f" - {', '.join(entry['roles'])}")
+
+
 @app.local_entrypoint()
 def retire_adm_codes():
     """Reissue for everyone still holding an ADM code.

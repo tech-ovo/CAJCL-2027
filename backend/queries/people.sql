@@ -113,3 +113,16 @@ FROM people p
 JOIN schools s ON s.id = p.school_id
 WHERE p.code_prefix = ?
 ORDER BY s.name, p.last_name, p.first_name;
+
+-- name: people.set_board_identity
+-- What scripts/add_board.py reconciles for somebody already in the database.
+--
+-- SEPARATE FROM people.rename because it also sets `adult_type`. The admin
+-- rename endpoint deliberately cannot change that -- turning a sponsor into a
+-- chaperone from a name-correction dialog would be a surprise, and it changes
+-- which code prefix that person should hold. board.json declares both, so this
+-- is the one path allowed to move it.
+UPDATE people
+SET first_name = ?, middle_name = ?, last_name = ?,
+    adult_type = ?, adult_type_other = ?, updated_at = ?
+WHERE id = ?;
