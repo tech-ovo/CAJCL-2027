@@ -5,12 +5,14 @@
  * wifi doing whatever venue wifi does.
  *
  * Everything follows from that:
- *   - ONE TAP to mark a chapter arrived, and the tap is the whole row.
+ *   - THE WHOLE ROW is the target, and it opens a dialog. A tick box beside a
+ *     note box gave the note a slot two inches wide, at a desk where somebody
+ *     is trying to write "three Certamen machines, one chariot".
  *   - Not-yet-arrived chapters first, because the desk works down what is left.
- *   - The row updates the moment it is tapped; the request goes behind it.
- *     Waiting for a round trip with somebody standing there is the failure.
- *   - Un-marking is one tap too. The commonest mistake at a desk is ticking
- *     the row above the one you meant.
+ *   - Two IDEMPOTENT buttons, not one toggle. "Registration complete" sets
+ *     arrived; "Unregister" clears it. A toggle double-clicked sends two
+ *     opposite requests and lands wherever the network decides — which is
+ *     exactly how this produced SQLITE_BUSY and a failed save.
  *
  * Arrival is per CHAPTER, not per person. They arrive together in a bus, and
  * the per-person question that matters — did their waiver and medical come —
@@ -71,41 +73,38 @@ export async function checkinPage(host) {
       (row) => !needle || row.school_name.toLowerCase().includes(needle));
   }
 
+  /* The whole row is the target, and it opens a dialog.
+   *
+   * A tick box beside a note box meant the note was a slot two inches wide at
+   * a desk where somebody is trying to write "three Certamen machines, one
+   * chariot". The dialog has room, and the row underneath stays a single
+   * glance: who, how many, and whether they are here.
+   */
   function row(chapter) {
     const here = !!chapter.arrived_at;
 
-    const tick = el("button", {
+    return el("button", {
       type: "button",
-      class: "checkin__tick" + (here ? " is-here" : ""),
-      "aria-pressed": here ? "true" : "false",
-      "aria-label": here
-        ? `${chapter.school_name} has arrived. Tap to undo.`
-        : `Mark ${chapter.school_name} arrived`,
-      onclick: () => mark(chapter, !here),
-    }, here ? "✓" : "");
-
-    const note = el("textarea", {
-      class: "checkin__note",
-      rows: "2",
-      placeholder: NOTE_PLACEHOLDER,
-      "aria-label": `Notes for ${chapter.school_name}`,
-      onchange: (event) => saveNote(chapter, event.target.value),
-    }, chapter.checkin_note || "");
-
-    return el("div", { class: "checkin__row" + (here ? " is-here" : "") },
-      tick,
-      el("div", { class: "checkin__who" },
-        el("p", { class: "checkin__name" }, chapter.school_name),
-        el("p", { class: "small muted" },
+      class: "checkin__row" + (here ? " is-here" : ""),
+      onclick: () => open_(chapter),
+    },
+      el("span", { class: "checkin__state" + (here ? " is-here" : "") },
+        here ? "✓" : ""),
+      el("span", { class: "checkin__who" },
+        el("span", { class: "checkin__name" }, chapter.school_name),
+        el("span", { class: "small muted" },
           `${chapter.delegates_active} delegates · `
           + `${chapter.adults_active} adults`,
           chapter.kind !== "chapter"
             ? el("span", { class: "pill", style: "margin-left:.5rem" },
                 "Not a chapter")
             : null),
-        el("p", { class: "checkin__when small muted" },
-          here ? `Arrived ${time(chapter.arrived_at)}` : "")),
-      note);
+        el("span", { class: "checkin__when small muted" },
+          here ? `Registered ${time(chapter.arrived_at)}` : "Not yet registered"),
+        chapter.checkin_note
+          ? el("span", { class: "checkin__note-preview small" },
+              chapter.checkin_note)
+          : null));
   }
 
   function time(iso) {
@@ -115,37 +114,68 @@ export async function checkinPage(host) {
     return at === -1 ? when : when.slice(at + 4);
   }
 
-  /* Painted first, sent second. A desk cannot wait for a round trip, and the
-   * failure mode is honest: if the request is refused the tick goes back and
-   * the reason is said out loud. */
-  async function mark(chapter, arrived) {
-    chapter.arrived_at = arrived ? new Date().toISOString() : null;
-    recount();
-    render();
+  /* One dialog per chapter. Both buttons are IDEMPOTENT -- "Registration
+   * complete" sets arrived, "Unregister" clears it -- rather than one control
+   * that toggles. A toggle double-clicked at a desk sends two opposite
+   * requests and lands wherever the network decides; two buttons that each
+   * assert a state cannot. */
+  function open_(chapter) {
+    const note = el("textarea", {
+      id: "checkin-note", rows: "5", class: "checkin__note",
+      placeholder: NOTE_PLACEHOLDER,
+    }, chapter.checkin_note || "");
 
-    try {
-      const result = await api.post(`/admin/checkin/${chapter.school_id}`,
-                                    { arrived });
-      chapter.arrived_at = result.arrived_at;
-      recount();
-    } catch (error) {
-      chapter.arrived_at = arrived ? null : new Date().toISOString();
-      recount();
-      render();
-      alert(`That did not save: ${error.message}`);
-    }
-  }
+    const status = el("p", { class: "form-note", "aria-live": "polite" },
+      chapter.arrived_at
+        ? `Registered ${time(chapter.arrived_at)}`
+        : "Not yet registered");
 
-  async function saveNote(chapter, text) {
-    const before = chapter.checkin_note;
-    chapter.checkin_note = text.trim() || null;
-    try {
-      await api.post(`/admin/checkin/${chapter.school_id}`, { note: text });
-    } catch (error) {
-      chapter.checkin_note = before;
-      render();
-      alert(`That note did not save: ${error.message}`);
-    }
+    let busy = false;
+    const send = async (body, buttons) => {
+      if (busy) return;                 // a second click while the first is out
+      busy = true;
+      buttons.forEach((b) => { b.disabled = true; });
+      try {
+        const result = await api.post(`/admin/checkin/${chapter.school_id}`, body);
+        chapter.arrived_at = result.arrived_at;
+        chapter.checkin_note = result.note;
+        clear(status);
+        add(status, chapter.arrived_at
+          ? `Registered ${time(chapter.arrived_at)}` : "Not yet registered");
+        recount();
+      } catch (error) {
+        clear(status);
+        status.className = "form-note form-note--unsaved";
+        add(status, `Not saved: ${error.message}`);
+      } finally {
+        busy = false;
+        buttons.forEach((b) => { b.disabled = false; });
+      }
+    };
+
+    const done = button("Registration complete", { variant: "btn--primary" });
+    const undo = button("Unregister", { variant: "btn--quiet btn--danger" });
+    const buttons = [done, undo];
+    done.onclick = () => send({ arrived: true, note: note.value }, buttons);
+    undo.onclick = () => send({ arrived: false, note: note.value }, buttons);
+
+    const form = el("form", { method: "dialog" },
+      el("h2", {}, chapter.school_name),
+      el("p", { class: "muted" },
+        `${chapter.delegates_active} delegates · ${chapter.adults_active} adults`),
+      status,
+      el("label", { class: "label", for: "checkin-note" }, "Notes"),
+      note,
+      el("div", { class: "btn-row" },
+        done, undo,
+        button("Close", { variant: "btn--quiet",
+                          onclick: () => dialog.close() })));
+
+    const dialog = el("dialog", { class: "dialog" }, form);
+    dialog.addEventListener("close", () => { dialog.remove(); render(); });
+    add(document.body, dialog);
+    dialog.showModal();
+    note.focus();
   }
 
   function recount() {

@@ -131,8 +131,24 @@ def _authenticate(request: Request, authorization: str | None) -> auth.Principal
     token = None
     if authorization and authorization.lower().startswith("bearer "):
         token = authorization[7:].strip()
-    with database().tx() as tx:
+    # A READ transaction. Authentication happens on every request, and libSQL
+    # has one writer -- opening a write transaction here meant every request
+    # queued behind every other one, and two clicks in quick succession
+    # returned SQLITE_BUSY to somebody standing at a check-in desk.
+    with database().read() as tx:
         principal = auth.authenticate(tx, token)
+
+    # The last-seen timestamp, if it has actually gone stale: a separate, tiny
+    # write that the request does not wait on the lock for. Failing to record
+    # it is not worth failing the request over -- it is a column shown on the
+    # account page, not a fact anything depends on.
+    if principal.needs_touch:
+        try:
+            with database().tx() as tx:
+                auth.touch_session(tx, principal.session_id)
+        except Exception:
+            pass
+
     request.state.principal = principal
     return principal
 

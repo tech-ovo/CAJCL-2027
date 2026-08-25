@@ -528,6 +528,16 @@ class Seeder:
         The zero-invoice path is still demonstrated here: `billing_exempt`
         remains the reason nothing is owed, and it is a flag rather than a name
         check, so it keeps working when somebody types "S.C.L."
+
+        WHEN "AT LARGE" IS ADDED, IT IS TWO ROWS, NOT ONE. Members at large can
+        be middle or high school, and every rule that depends on school level --
+        which Latin levels exist, which tests are open, which grades are
+        offered -- reads `schools.level`. One row would have to be a lie for
+        half of them. "At Large (MS)" and "At Large (HS)", both organizations.
+
+        `schools.level` is NOT NULL with a CHECK, so SCL is stored as 'HS' and
+        the frontend simply does not show a level for an organization. Making
+        it nullable needs a table rebuild; see docs/TODO.md.
         """
         with self.db.tx() as tx:
             created = days_ago(56)

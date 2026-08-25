@@ -72,8 +72,26 @@ jobs:
           import sqlite3
           conn = sqlite3.connect("fresh.db")
           q = lambda s: conn.execute(s).fetchone()[0]
+          # A CHAPTER IS A SCHOOL. SCL and members at large are organizations:
+          # real attendees, but not a delegation, and counting them as chapters
+          # made the public figure wrong and listed SCL as a high school.
           chapters = q("SELECT COUNT(*) FROM schools WHERE kind='chapter'")
-          assert chapters == 12, f"expected 12 chapters, got {chapters}"
+          assert chapters == 11, f"expected 11 chapters, got {chapters}"
+          orgs = q("SELECT COUNT(*) FROM schools WHERE kind='organization'")
+          assert orgs == 1, f"expected 1 organization, got {orgs}"
+
+          # Their people still count toward attendance. The distinction is
+          # about what a chapter IS, not about who is coming.
+          public = conn.execute(
+              "SELECT schools_hs + schools_ms, delegates + adults "
+              "FROM public_stats_cache").fetchone()
+          everyone = q("SELECT COUNT(*) FROM people p JOIN schools s "
+                       "ON s.id = p.school_id "
+                       "WHERE p.status='active' AND s.status='active'")
+          assert public[0] == chapters, (
+              f"public says {public[0]} chapters, database has {chapters}")
+          assert public[1] == everyone, (
+              f"public says {public[1]} people, database has {everyone}")
           uni = q("SELECT id FROM schools WHERE name='University High School'")
           delegates = q(f"SELECT COUNT(*) FROM people WHERE school_id={uni} AND person_type='delegate'")
           assert delegates == 30, f"expected 30 delegates at Uni, got {delegates}"

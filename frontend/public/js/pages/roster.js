@@ -54,7 +54,11 @@ export async function rosterPage(host, params = []) {
         // putting a school's row id in the same place implied chapters are
         // numbered in a way anybody uses. Nobody has ever referred to a
         // chapter by a four-digit number.
-        left: [school.level, school.city].filter(Boolean).join(" · "),
+        // No level for an organization. SCL and members at large are not a
+        // middle or a high school, and `schools.level` only carries 'HS' for
+        // them because the column is NOT NULL. See docs/TODO.md.
+        left: [school.kind === "chapter" ? school.level : null, school.city]
+          .filter(Boolean).join(" · "),
       }),
 
       asChair

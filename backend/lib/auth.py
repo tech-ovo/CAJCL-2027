@@ -27,7 +27,7 @@ import hashlib
 import hmac
 import os
 import secrets
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from . import clock, codes
 from .db import Tx
@@ -118,6 +118,10 @@ class Principal:
     impersonator_person_id: int | None = None
     impersonator_name: str | None = None
     impersonation_can_write: bool = False
+    # Set when `last_seen_at` has gone stale. The caller writes it, in its own
+    # transaction, AFTER authentication -- so the authenticated path itself
+    # never takes the single write lock. See authenticate().
+    needs_touch: bool = False
     row: dict = field(default_factory=dict)
 
     @property
@@ -362,7 +366,13 @@ def _principal_from_person(tx: Tx, person: dict, *, session_id: int | None = Non
 # ---------------------------------------------------------------------------
 
 def authenticate(tx: Tx, token: str | None, *, touch: bool = True) -> Principal:
-    """Resolve a session token to a Principal. Raises AuthError if it will not."""
+    """Resolve a session token to a Principal. Raises AuthError if it will not.
+
+    READ ONLY. If the session's `last_seen_at` has gone stale, the returned
+    Principal carries `needs_touch`, and the caller writes it separately -- see
+    `_authenticate` in api.py. Authentication must not take the write lock,
+    because it happens on every single request.
+    """
     if not token:
         raise AuthError("Sign in to see this page.")
 
@@ -379,14 +389,22 @@ def authenticate(tx: Tx, token: str | None, *, touch: bool = True) -> Principal:
     if clock.is_past(session["expires_at"]):
         raise AuthError("That session has expired. Sign in again.")
 
-    if touch:
-        # Only when it has actually gone stale. See the comment on the query:
-        # touching on every request made a write out of every page load, and a
-        # single-writer database eventually says no.
-        now = clock.now_iso()
-        tx.run("auth.session_touch",
-               (now, session["session_id"], clock.plus_minutes(-SESSION_TOUCH_MINUTES)))
-        tx.mark_silent("session.touch")
+    # WHETHER the session needs touching is decided HERE, in Python, from a row
+    # already read. The caller does the write, in its own transaction, only if
+    # the answer is yes.
+    #
+    # This used to run the UPDATE unconditionally, inside a WRITE transaction
+    # opened for every authenticated request. Narrowing the statement with a
+    # `last_seen_at <` clause stopped it changing a row -- but an UPDATE that
+    # matches nothing still takes the write lock, and libSQL has one writer. So
+    # every request queued behind every other request for a column nobody reads
+    # in real time, and two clicks in quick succession returned SQLITE_BUSY to
+    # somebody standing at a check-in desk.
+    #
+    # Now the common path is a pure read and takes no lock at all.
+    stale = (touch and (
+        not session["last_seen_at"]
+        or session["last_seen_at"] < clock.plus_minutes(-SESSION_TOUCH_MINUTES)))
 
     impersonator = None
     if session["impersonator_person_id"]:
@@ -396,7 +414,7 @@ def authenticate(tx: Tx, token: str | None, *, touch: bool = True) -> Principal:
             "last_name": session["impersonator_last_name"],
         }
 
-    return _principal_from_person(
+    principal = _principal_from_person(
         tx,
         {
             "id": session["person_id"],
@@ -424,6 +442,20 @@ def authenticate(tx: Tx, token: str | None, *, touch: bool = True) -> Principal:
         impersonator=impersonator,
         can_write=bool(session["impersonation_can_write"]),
     )
+    return replace(principal, needs_touch=stale)
+
+
+def touch_session(tx: Tx, session_id: int) -> None:
+    """Record that this session was used. Its own transaction, on purpose.
+
+    Called AFTER authentication and only when the timestamp has actually gone
+    stale, so the request that just authenticated did not have to hold the
+    single write lock to get there.
+    """
+    tx.run("auth.session_touch",
+           (clock.now_iso(), session_id,
+            clock.plus_minutes(-SESSION_TOUCH_MINUTES)))
+    tx.mark_silent("session.touch")
 
 
 def logout(tx: Tx, principal: Principal) -> None:

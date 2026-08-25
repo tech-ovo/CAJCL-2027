@@ -45,6 +45,9 @@ INSERT INTO sessions (
 SELECT sess.id AS session_id, sess.person_id, sess.impersonator_person_id,
        sess.impersonation_can_write, sess.expires_at, sess.revoked_at,
        sess.created_at AS session_created_at,
+       -- Read so that authenticate() can decide IN PYTHON whether this session
+       -- needs touching, and skip taking the write lock when it does not.
+       sess.last_seen_at,
        p.school_id, p.person_type, p.adult_type, p.first_name, p.middle_name,
        p.last_name, p.suffix, p.status, p.code_prefix, p.forms_unlocked,
        p.latin_level, p.grade, p.latin_knowledge, p.meal, p.email, p.cell_phone,
