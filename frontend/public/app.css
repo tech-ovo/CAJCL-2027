@@ -837,3 +837,13 @@ th[aria-sort] { color: var(--text); }
      already carried by the order. */
   .nav__divider { display: none; }
 }
+
+/* The waking indicator on a page that is ALREADY readable. Small, in place,
+ * and never at the top: the welcome page is complete before any request is
+ * made, so this explains a slow number rather than replacing the page. */
+.waking--quiet {
+  font-family: var(--font-sans); font-size: var(--size-xs);
+  letter-spacing: var(--tracking-label); text-transform: uppercase;
+  color: var(--text-muted);
+  background: none; border: 0; padding: 0; margin: var(--space-3) 0 0;
+}

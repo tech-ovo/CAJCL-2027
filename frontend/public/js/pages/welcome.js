@@ -36,14 +36,36 @@ export async function welcomePage(host) {
   const stats = document.getElementById("stats");
   if (!stats) return;
 
+  /* A quiet note, in the stats block, only if the request is slow.
+   *
+   * The page is already complete and readable — the numbers on it were baked
+   * in at build time — so this must never clear anything or take the top of
+   * the screen. But a visitor watching a stale figure for eight seconds with
+   * no explanation concludes the site is broken, which is worse than a line
+   * of small text saying what is happening.
+   *
+   * Nothing at all is shown for a fast response, which is the normal case
+   * once the server is warm.
+   */
+  const note = el("p", { class: "waking waking--quiet",
+                         role: "status", "aria-live": "polite",
+                         style: "grid-column: 1 / -1" },
+    el("span", { class: "waking__dot", "aria-hidden": "true" }),
+    el("span", {}, "Waking up the server, so these numbers may be a few days old…"));
+
+  const slow = setTimeout(() => add(stats, note), 1200);
+  const done = () => { clearTimeout(slow); note.remove(); };
+
   try {
     const live = await api.get("/public/stats");
+    done();
     stats.classList.remove("stat--stale");
     setStat("schools_hs", live.schools_hs);
     setStat("schools_ms", live.schools_ms);
     setStat("delegates", live.delegates);
     setStat("adults", live.adults);
   } catch (ignored) {
+    done();
     // Keep the snapshot. Say so quietly rather than showing an error on a page
     // that is otherwise perfectly readable.
     add(stats, el("p", { class: "label", style: "grid-column: 1 / -1" },

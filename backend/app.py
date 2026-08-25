@@ -418,7 +418,24 @@ def doctor():
 
 @app.local_entrypoint()
 def setup(reset: bool = False, seed: bool = True):
-    """Prepare the production database without installing anything locally."""
+    """Prepare the production database without installing anything locally.
+
+    USE --detach IF THE CONNECTION IS AT ALL UNRELIABLE:
+
+        modal run --detach backend/app.py::setup --reset
+
+    Seeding is about 1,600 statements. Against a local file that is under a
+    second; against a hosted database it is one network round trip each, so
+    one to two minutes. `modal run` ties the app's life to the client
+    connection, and a laptop that drops for sixty seconds in the middle takes
+    the whole run down with it -- half-seeded, which is what an interrupted
+    reset leaves behind.
+
+    `--detach` cuts that tie. The run continues on Modal whether or not the
+    laptop is still listening, and `modal app logs cajcl-2027` shows how it
+    went. The codes are then printed by that log rather than returned here, so
+    read them there.
+    """
     import pathlib
 
     print(migrate_database.remote())

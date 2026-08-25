@@ -116,6 +116,7 @@ ROUTES = [
      "/admin/announcements/1/active", {"active": False}),
     ("sponsor.people.regenerate_many", "POST", "/sponsor/regenerate-codes",
      {"person_ids": ["{person}"]}),
+    ("admin.overview", "GET", "/admin/overview", None),
     ("admin.academics.counts", "GET", "/admin/academics/counts", None),
     ("admin.academics.item", "GET", "/admin/academics/item/1", None),
     ("admin.academics.sheet", "GET", "/admin/academics/item/1/sheet", None),

@@ -131,3 +131,10 @@ SET first_name = ?, middle_name = ?, last_name = ?,
     person_type = ?, adult_type = ?, adult_type_other = ?,
     board_title = ?, updated_at = ?
 WHERE id = ?;
+
+-- name: people.set_meal
+-- The seed, recording the meal a delegate chose when they submitted their
+-- activity sheet. The application sets this through forms.save_activity_sheet
+-- along with everything else on that form; this exists so the seeded data can
+-- reach the same state rather than a state the application cannot produce.
+UPDATE people SET meal = ?, updated_at = ? WHERE id = ?;

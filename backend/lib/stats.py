@@ -116,6 +116,14 @@ def recompute_school(tx: Tx, school_id: int, *, settings: dict) -> dict:
         "adults_cancelled_paid": counts.get("adults_cancelled_paid") or 0,
         "delegates_complete": counts.get("delegates_complete") or 0,
         "adults_complete": counts.get("adults_complete") or 0,
+        # Counted by the same query, over rows it was already reading. See
+        # migration 012 for why these are stored rather than aggregated live.
+        "meal_regular": counts.get("meal_regular") or 0,
+        "meal_vegetarian": counts.get("meal_vegetarian") or 0,
+        "meal_gluten_free": counts.get("meal_gluten_free") or 0,
+        "meal_unanswered": counts.get("meal_unanswered") or 0,
+        "adults_sponsors": counts.get("adults_sponsors") or 0,
+        "adults_chaperones": counts.get("adults_chaperones") or 0,
     }
 
     delegates_billable, adults_billable = billable_counts(numbers)
@@ -144,6 +152,9 @@ def recompute_school(tx: Tx, school_id: int, *, settings: dict) -> dict:
         numbers["adults_active"], numbers["adults_cancelled"],
         numbers["adults_cancelled_paid"],
         numbers["delegates_complete"], numbers["adults_complete"],
+        numbers["meal_regular"], numbers["meal_vegetarian"],
+        numbers["meal_gluten_free"], numbers["meal_unanswered"],
+        numbers["adults_sponsors"], numbers["adults_chaperones"],
         discount, owed, paid, clock.now_iso(),
     ))
 

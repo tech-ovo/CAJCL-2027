@@ -38,7 +38,23 @@ SELECT
   SUM(CASE WHEN p.person_type = 'adult' AND p.status = 'active'
             AND (fs.status = 'submitted' OR p.adult_type = 'scl')
             AND pf_a.received = 1
-           THEN 1 ELSE 0 END) AS adults_complete
+           THEN 1 ELSE 0 END) AS adults_complete,
+
+  -- Meals, for the caterer, and adult kinds, for the chairs. Counted here
+  -- because these rows are already being read; see migration 012 for why they
+  -- are not a live GROUP BY.
+  --
+  -- ACTIVE ONLY. Somebody who withdrew is not eating, whether or not their
+  -- chapter paid for them -- the one place cancelled_paid parts company with
+  -- the billing columns above.
+  SUM(CASE WHEN p.status = 'active' AND p.meal = 'regular'     THEN 1 ELSE 0 END) AS meal_regular,
+  SUM(CASE WHEN p.status = 'active' AND p.meal = 'vegetarian'  THEN 1 ELSE 0 END) AS meal_vegetarian,
+  SUM(CASE WHEN p.status = 'active' AND p.meal = 'gluten_free' THEN 1 ELSE 0 END) AS meal_gluten_free,
+  SUM(CASE WHEN p.status = 'active' AND (p.meal IS NULL OR p.meal = '')
+           THEN 1 ELSE 0 END) AS meal_unanswered,
+
+  SUM(CASE WHEN p.status = 'active' AND p.adult_type = 'sponsor'   THEN 1 ELSE 0 END) AS adults_sponsors,
+  SUM(CASE WHEN p.status = 'active' AND p.adult_type = 'chaperone' THEN 1 ELSE 0 END) AS adults_chaperones
 FROM people p
 LEFT JOIN form_submissions fs
        ON fs.person_id = p.id
@@ -64,8 +80,10 @@ INSERT INTO school_stats (
   school_id, delegates_active, delegates_cancelled, delegates_cancelled_paid,
   adults_active, adults_cancelled, adults_cancelled_paid,
   delegates_complete, adults_complete,
+  meal_regular, meal_vegetarian, meal_gluten_free, meal_unanswered,
+  adults_sponsors, adults_chaperones,
   discount_cents, amount_owed_cents, amount_paid_cents, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (school_id) DO UPDATE SET
   delegates_active         = excluded.delegates_active,
   delegates_cancelled      = excluded.delegates_cancelled,
@@ -75,6 +93,12 @@ ON CONFLICT (school_id) DO UPDATE SET
   adults_cancelled_paid    = excluded.adults_cancelled_paid,
   delegates_complete       = excluded.delegates_complete,
   adults_complete          = excluded.adults_complete,
+  meal_regular             = excluded.meal_regular,
+  meal_vegetarian          = excluded.meal_vegetarian,
+  meal_gluten_free         = excluded.meal_gluten_free,
+  meal_unanswered          = excluded.meal_unanswered,
+  adults_sponsors          = excluded.adults_sponsors,
+  adults_chaperones        = excluded.adults_chaperones,
   discount_cents           = excluded.discount_cents,
   amount_owed_cents        = excluded.amount_owed_cents,
   amount_paid_cents        = excluded.amount_paid_cents,
@@ -125,5 +149,23 @@ SELECT s.id, s.name, s.level, s.city, s.status, s.billing_exempt,
        ss.amount_owed_cents, ss.amount_paid_cents, ss.updated_at
 FROM schools s
 LEFT JOIN school_stats ss ON ss.school_id = s.id
+WHERE s.kind = 'chapter'
+ORDER BY s.name;
+
+
+-- name: stats.registration_overview
+-- The registration dashboard: every chapter, who is coming, how far along they
+-- are, and what they owe. Reads school_stats -- about fifty rows -- never
+-- `people`. Everything here was counted inside the transaction that changed it.
+SELECT s.id AS school_id, s.name AS school_name, s.level, s.city,
+       s.billing_exempt, s.status,
+       ss.delegates_active, ss.adults_active,
+       ss.adults_sponsors, ss.adults_chaperones,
+       ss.delegates_complete, ss.adults_complete,
+       ss.meal_regular, ss.meal_vegetarian, ss.meal_gluten_free,
+       ss.meal_unanswered,
+       ss.discount_cents, ss.amount_owed_cents, ss.amount_paid_cents
+FROM schools s
+JOIN school_stats ss ON ss.school_id = s.id
 WHERE s.kind = 'chapter'
 ORDER BY s.name;

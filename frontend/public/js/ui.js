@@ -169,14 +169,27 @@ export function button(text, { variant = "", ...attrs } = {}) {
  * Feedback
  * ----------------------------------------------------------------------- */
 
-/** A summary of blocking errors, announced politely and focusable. */
+/**
+ * A summary of blocking errors, announced politely and focusable.
+ *
+ * ONE ERROR GETS NO HEADING AND NO BULLET. "There is one thing to fix",
+ * followed by a single bullet, is two lines of packaging around one sentence —
+ * and on the sign-in form, where the only thing that can ever be wrong is the
+ * code, the heading was pure ceremony. A list earns its shape when there is
+ * more than one thing in it.
+ */
 export function errorSummary(errors) {
-  if (!errors || !errors.length) return null;
-  const node = el("div", { class: "form-errors", role: "alert", tabindex: "-1" },
-    el("h2", {}, errors.length === 1
-      ? "There is one thing to fix"
-      : `There are ${errors.length} things to fix`),
-    el("ul", {}, ...errors.map((message) => el("li", {}, message))));
+  const list = (errors || []).filter(Boolean);
+  if (!list.length) return null;
+
+  const node = el("div", { class: "form-errors", role: "alert", tabindex: "-1" });
+  if (list.length === 1) {
+    add(node, el("p", { style: "margin:0" }, list[0]));
+  } else {
+    add(node,
+      el("h2", {}, `There are ${list.length} things to fix`),
+      el("ul", {}, ...list.map((message) => el("li", {}, message))));
+  }
   requestAnimationFrame(() => node.focus());
   return node;
 }

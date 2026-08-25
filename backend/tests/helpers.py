@@ -108,7 +108,11 @@ class Fixture:
 
             self.delegate_id = self._person(
                 tx, "delegate", self.uni_id, first="Dana", last="Delegate",
-                role="delegate", grade=10, latin_level="HS-2", meal="regular",
+                # NO MEAL. It is asked for on the activity sheet, and Dana has
+                # not submitted one -- so a meal here would be a state the
+                # application cannot produce, in the fixture that most of the
+                # suite reasons about.
+                role="delegate", grade=10, latin_level="HS-2",
                 guardian_name="Guardian One", guardian_phone="555-0101")
             self.other_delegate_id = self._person(
                 tx, "other_delegate", self.other_id, first="Rory", last="Rival",

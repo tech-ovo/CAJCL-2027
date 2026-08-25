@@ -290,3 +290,28 @@ def test_no_submitted_sheet_is_empty(fx):
         "these delegates have a submitted sheet and no selections: "
         + ", ".join(f"{r['first_name']} {r['last_name']} ({r['school']})"
                     for r in empty[:8]))
+
+
+def test_a_meal_is_only_recorded_where_a_form_was_submitted(fx):
+    """Meal preference is asked for ON the activity sheet.
+
+    The seed used to set it at creation, so every delegate had answered before
+    they had opened anything — which made the registration dashboard's "still
+    to come" figure permanently zero, and hid the one thing that number exists
+    to surface.
+    """
+    with fx.db.read() as tx:
+        rows = tx._backend.execute("""
+            SELECT p.id, p.first_name, p.last_name
+            FROM people p
+            LEFT JOIN form_submissions f
+                   ON f.person_id = p.id AND f.form_type = 'student_activity'
+            WHERE p.person_type = 'delegate'
+              AND p.status = 'active'
+              AND p.meal IS NOT NULL AND p.meal != ''
+              AND (f.status IS NULL OR f.status != 'submitted')
+        """, ())
+
+    assert rows == [], (
+        "these delegates have a meal but no submitted sheet: "
+        + ", ".join(f"{r['first_name']} {r['last_name']}" for r in rows[:8]))

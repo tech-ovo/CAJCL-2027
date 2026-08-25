@@ -15,6 +15,17 @@ AGAINST**
 
 ---
 
+## Straight after the demonstration, in this order
+
+Both were deliberately deferred: each one breaks the deployed site until a
+reset follows it, which is not a thing to do five days before showing it to a
+board. `docs/DEPLOY.md`, "After the demonstration", has the reset commands.
+
+| | What | Hours | Notes |
+| --- | --- | --- | --- |
+| AFTER 29 AUG | Merge `010_welcome_wording` and `011_board_title` into the migrations they correct | 1 | Then delete both files and re-run `scripts/checksum_migrations.py`. **The deploy will refuse to start until the database is reset**, because the hashes of `001` and `005` change — so do it in the same sitting as the reset, not before. The reasoning that lives in those two files belongs in `RUNBOOK.md`, not in a migration comment. |
+| AFTER 29 AUG | A sponsor serving more than one chapter | 3 | `people.school_id` is one column, so this needs a grant table: a primary school, plus rows saying which others that person may manage. Touches `auth.require_school`, which is the most safety-critical code here — do it on its own, not alongside anything else. Has never happened; this is future-proofing. |
+
 ## Small
 
 | | What | Hours | Notes |

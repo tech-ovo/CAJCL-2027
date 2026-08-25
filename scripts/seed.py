@@ -193,6 +193,13 @@ class Seeder:
     def run(self) -> dict:
         days_ago = lambda n: clock.plus_days(-n)
 
+        # Printed as it goes, because against a hosted database this is one to
+        # two minutes of network round trips and silence for that long looks
+        # exactly like a hang. Modal captures stdout, so these lines are also
+        # what `modal app logs` shows after a detached run.
+        def step(message: str) -> None:
+            print(f"  seed: {message}", flush=True)
+
         # THERE IS NO STATE BOARD CHAPTER ANY MORE.
         #
         # It existed because `people.school_id` is NOT NULL and the board had
@@ -209,6 +216,7 @@ class Seeder:
         # database still has somebody who can open Settings without anything
         # else having to be run first.
 
+        step("the host chapter")
         # --- the host chapter ---------------------------------------------
         with self.db.tx() as tx:
             uni = self._school(tx, "University High School", "HS", "Irvine",
@@ -269,10 +277,15 @@ class Seeder:
                      entity_type="school", entity_id=uni, ts=days_ago(52))
 
         self.uni_id = uni
+        step("University High School delegates")
         self._seed_uni_delegates(uni, days_ago)
+        step("the other chapters")
         self._seed_other_chapters(days_ago)
+        step("SCL, the chapter that is not billed")
         self._seed_scl(days_ago)
+        step("payments")
         self._seed_payment(uni, days_ago)
+        step("done")
         self._finish()
         return self.codes
 
@@ -290,7 +303,10 @@ class Seeder:
                     tx, uni, first, middle, last, role="delegate", created=created,
                     grade=self.rng.randint(9, 12),
                     latin_level=self.rng.choice(HS_LEVELS),
-                    meal=self.rng.choice(MEALS),
+                    # NO MEAL at creation. It is asked for on the activity
+                    # sheet, so a delegate who has not submitted one has not
+                    # answered -- and the dashboard's "still to come" figure is
+                    # only meaningful if the data can actually produce it.
                     guardian_name=guardian_name, guardian_phone=guardian_phone,
                     raw=f"{last}, {first} {middle}".strip())
                 ids.append(pid)
@@ -340,6 +356,8 @@ class Seeder:
                         tx.insert("forms.add_selection", (pid, item["id"], when))
                     for item in self.rng.sample(other, self.rng.randint(0, 4)):
                         tx.insert("forms.add_selection", (pid, item["id"], when))
+                    tx.run("people.set_meal",
+                           (self.rng.choice(MEALS), when, pid))
                     tx.run("forms.upsert_submission",
                            (pid, "student_activity", "submitted", when, when))
                     tx.audit("form.submit",
@@ -427,7 +445,6 @@ class Seeder:
                         tx, school, dfirst, dmiddle, dlast, role="delegate",
                         created=created, grade=self.rng.randint(*grades),
                         latin_level=self.rng.choice(levels),
-                        meal=self.rng.choice(MEALS),
                         guardian_name=guardian_name, guardian_phone=guardian_phone)
                     roster_ids.append(pid)
 
@@ -484,6 +501,8 @@ class Seeder:
                             tx.insert("forms.add_selection",
                                       (pid, item["id"], when))
 
+                        tx.run("people.set_meal",
+                               (self.rng.choice(MEALS), when, pid))
                         tx.run("forms.upsert_submission",
                                (pid, "student_activity", "submitted", when, when))
                         for form_type in ("student_waiver", "student_medical"):

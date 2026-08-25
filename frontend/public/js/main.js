@@ -27,6 +27,7 @@ import { dashboardPage } from "./pages/dashboard.js";
 import { adminPage } from "./pages/admin.js";
 import { auditPage } from "./pages/audit.js";
 import { academicsPage } from "./pages/academics.js";
+import { overviewPage } from "./pages/overview.js";
 import { accountPage } from "./pages/account.js";
 
 export const state = {
@@ -49,6 +50,7 @@ const ROUTES = [
   [/^\/invoice$/,                invoicePage,       { scope: "sponsor" }],
   [/^\/activity-sheet$/,         activitySheetPage, { scope: "delegate" }],
   [/^\/adult-sheet$/,            adultSheetPage,    {}],
+  [/^\/overview$/,               overviewPage,      { scope: "registration" }],
   [/^\/dashboard$/,              dashboardPage,     { scope: "registration" }],
   [/^\/entries$/,                academicsPage,     { scope: ["academics", "awards"] }],
   [/^\/admin$/,                  adminPage,         { scope: "*" }],
@@ -312,7 +314,10 @@ function renderNav() {
     }
 
     const administrative = [];
-    if (hasScope("registration")) administrative.push(["#/dashboard", "Chapters"]);
+    if (hasScope("registration")) {
+      administrative.push(["#/overview", "Registration"],
+                          ["#/dashboard", "Chapters"]);
+    }
     if (hasScope("academics") || hasScope("awards")) {
       administrative.push(["#/entries", "Entries"]);
     }

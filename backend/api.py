@@ -1012,6 +1012,65 @@ def unlock_forms(person_id: int, request: Request, payload: dict = Body(default=
     return {"ok": True, "unlocked": unlocked}
 
 
+@app.get("/admin/overview")
+def registration_overview(principal: auth.Principal = guard("admin.overview",
+                                                            "registration",
+                                                            school_rule="any")):
+    """Everything a registration chair wants on one screen.
+
+    Reads `school_stats` -- about fifty rows -- and never `people`. Every
+    number here was counted inside the transaction that changed it; see
+    migration 012.
+    """
+    with database().read() as tx:
+        rows = [dict(r) for r in tx.all("stats.registration_overview")]
+
+    totals = {
+        "chapters": 0, "chapters_started": 0, "chapters_paid": 0,
+        "delegates": 0, "adults": 0, "sponsors": 0, "chaperones": 0,
+        "other_adults": 0, "complete": 0, "people": 0,
+        "meal_regular": 0, "meal_vegetarian": 0, "meal_gluten_free": 0,
+        "meal_unanswered": 0,
+        "owed_cents": 0, "paid_cents": 0, "outstanding_cents": 0,
+    }
+
+    for row in rows:
+        row["other_adults"] = max(0, row["adults_active"]
+                                  - row["adults_sponsors"]
+                                  - row["adults_chaperones"])
+        row["people"] = row["delegates_active"] + row["adults_active"]
+        row["complete"] = row["delegates_complete"] + row["adults_complete"]
+        row["balance_cents"] = row["amount_owed_cents"] - row["amount_paid_cents"]
+        row["has_sponsor"] = row["adults_sponsors"] > 0
+
+        if row["status"] != "active":
+            continue
+        totals["chapters"] += 1
+        if row["people"]:
+            totals["chapters_started"] += 1
+        # An exempt chapter owes nothing, so "paid" is not a useful thing to
+        # say about it. Counting it as unpaid would make the figure read as a
+        # problem that cannot be solved.
+        if row["billing_exempt"] or row["balance_cents"] <= 0:
+            totals["chapters_paid"] += 1
+
+        for key in ("delegates_active", "adults_active", "adults_sponsors",
+                    "adults_chaperones", "other_adults", "complete", "people",
+                    "meal_regular", "meal_vegetarian", "meal_gluten_free",
+                    "meal_unanswered"):
+            target = {"delegates_active": "delegates", "adults_active": "adults",
+                      "adults_sponsors": "sponsors",
+                      "adults_chaperones": "chaperones"}.get(key, key)
+            totals[target] += row[key]
+
+        totals["owed_cents"] += row["amount_owed_cents"]
+        totals["paid_cents"] += row["amount_paid_cents"]
+        if not row["billing_exempt"]:
+            totals["outstanding_cents"] += max(0, row["balance_cents"])
+
+    return {"chapters": rows, "totals": totals}
+
+
 @app.get("/admin/academics/counts")
 def academics_counts(principal: auth.Principal = guard("admin.academics.counts",
                                                        "academics", "awards",
