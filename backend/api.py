@@ -1012,6 +1012,127 @@ def unlock_forms(person_id: int, request: Request, payload: dict = Body(default=
     return {"ok": True, "unlocked": unlocked}
 
 
+@app.get("/admin/checkin")
+def checkin_board(principal: auth.Principal = guard("admin.checkin", "registration",
+                                                    school_rule="any")):
+    """The Friday desk.
+
+    Chapters arrive after school, fifty of them, in about ninety minutes.
+    Everything here is per CHAPTER: they arrive together, in a bus, and ticking
+    sixty individual boxes with a queue behind you is not a thing anybody does.
+
+    Not-yet-arrived chapters sort first, because the desk works down a list of
+    who is still outstanding.
+    """
+    with database().read() as tx:
+        rows = [dict(r) for r in tx.all("stats.checkin_board")]
+
+    arrived = sum(1 for r in rows if r["arrived_at"])
+    return {
+        "chapters": rows,
+        "totals": {
+            "chapters": len(rows),
+            "arrived": arrived,
+            "waiting": len(rows) - arrived,
+            "people_arrived": sum(r["delegates_active"] + r["adults_active"]
+                                  for r in rows if r["arrived_at"]),
+        },
+    }
+
+
+@app.post("/admin/checkin/{school_id}")
+def checkin_school(school_id: int, request: Request, payload: dict = Body(...),
+                   principal: auth.Principal = guard("admin.checkin.mark",
+                                                     "registration",
+                                                     school_rule="any",
+                                                     writes=True)):
+    """Mark a chapter arrived, or un-mark it, and save its note.
+
+    Un-marking has to be possible: the commonest mistake at a desk is ticking
+    the row above the one you meant.
+
+    The time is the server's, not the client's. A phone with the wrong clock
+    would otherwise write a check-in time nobody can reconcile with anything.
+    """
+    with database().tx(request_id=request_id(request)) as tx:
+        school = tx.one("schools.get", (school_id,))
+        if school is None:
+            raise auth.ForbiddenError("no such chapter")
+
+        now = clock.now_iso()
+        changed = []
+
+        if "arrived" in payload:
+            arrived_at = now if payload.get("arrived") else None
+            tx.run("stats.set_arrived", (arrived_at, now, school_id))
+            changed.append("arrived_at")
+
+        if "note" in payload:
+            note = (payload.get("note") or "").strip() or None
+            tx.run("schools.set_checkin_note", (note, now, school_id))
+            changed.append("checkin_note")
+
+        if not changed:
+            raise catalog.ValidationError(["Nothing to record."])
+
+        summary = (f"{principal.display_name} "
+                   + ("marked " + school["name"] + " arrived"
+                      if payload.get("arrived")
+                      else ("un-marked " + school["name"] + " as arrived"
+                            if "arrived" in payload
+                            else "noted something about " + school["name"]))
+                   + ".")
+        tx.audit("checkin.update", summary, school_id=school_id,
+                 actor_person_id=principal.person_id,
+                 impersonator_person_id=principal.impersonator_person_id,
+                 entity_type="school", entity_id=school_id,
+                 changed_fields=changed)
+
+    with database().read() as tx:
+        row = dict(tx.one("schools.get", (school_id,)))
+        stats_row = dict(tx.one("stats.for_school", (school_id,)) or {})
+    return {"ok": True, "arrived_at": stats_row.get("arrived_at"),
+            "note": row.get("checkin_note")}
+
+
+@app.post("/admin/people/{person_id}/waive-activity-sheet")
+def waive_activity_sheet(person_id: int, request: Request,
+                         payload: dict = Body(...),
+                         principal: auth.Principal = guard(
+                             "admin.people.waive", "registration",
+                             school_rule="any", writes=True)):
+    """A delegate added at the desk to replace somebody who could not come.
+
+    Their waiver and medical are still required -- those are safety documents
+    and nobody is exempt. Their activity sheet is waived, because the tests
+    were printed and the food ordered weeks ago and there is nothing left for
+    their answers to change.
+
+    They are excluded from the academic counts entirely: they are entered in
+    nothing, so a proctor's sheet must not carry their name.
+    """
+    waived = 1 if payload.get("waived", True) else 0
+    with database().tx(request_id=request_id(request)) as tx:
+        person = tx.one("people.get", (person_id,))
+        if person is None:
+            raise auth.ForbiddenError("no such person")
+
+        tx.run("people.waive_activity_sheet", (waived, clock.now_iso(), person_id))
+        name = f"{person['first_name']} {person['last_name']}"
+        tx.audit("person.update",
+                 f"{principal.display_name} "
+                 + ("waived" if waived else "un-waived")
+                 + f" {name}'s activity sheet.",
+                 actor_person_id=principal.person_id,
+                 impersonator_person_id=principal.impersonator_person_id,
+                 school_id=person["school_id"],
+                 entity_type="person", entity_id=person_id,
+                 changed_fields=["activity_sheet_waived"])
+        stats.recompute(tx, person["school_id"],
+                        settings=settings.fee_settings(tx))
+    return {"ok": True, "waived": bool(waived)}
+
+
 @app.get("/admin/overview")
 def registration_overview(principal: auth.Principal = guard("admin.overview",
                                                             "registration",
@@ -1090,8 +1211,12 @@ def academics_counts(principal: auth.Principal = guard("admin.academics.counts",
 
     for row in rows:
         row["chosen_hs"] = row["chosen"] - row["chosen_ms"]
+    with database().read() as tx2:
+        deadline = settings.get(tx2, "deadline.forms_lock")
+
     return {
         "items": rows,
+        "deadline": deadline,
         "totals": {
             "items_offered": len(rows),
             "entries": sum(r["chosen"] for r in rows),

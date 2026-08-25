@@ -16,6 +16,15 @@ import { add, el, clear, tabula, field, select, button, errorSummary,
          renderMarkdown, localDate, personNumber, guardUnsaved,
          draft } from "../ui.js";
 
+/* A "No meal — I am bringing my own" option belongs at the END of this list,
+ * never as the default: it is the one answer with a consequence nobody can
+ * undo on the day. It is NOT here yet, because `people.meal` carries
+ * CHECK (meal IN ('regular','vegetarian','gluten_free')) and SQLite cannot
+ * alter a CHECK — a table rebuild is the only way, and the pragmas that
+ * needs are refused by Turso.
+ *
+ * It lands with the post-demonstration reset, when 001_core.sql is edited
+ * directly. See docs/TODO.md. */
 const MEALS = [["", "Choose one"], ["regular", "Regular"],
                ["vegetarian", "Vegetarian"], ["gluten_free", "Gluten free"]];
 

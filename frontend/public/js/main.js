@@ -28,6 +28,7 @@ import { adminPage } from "./pages/admin.js";
 import { auditPage } from "./pages/audit.js";
 import { academicsPage } from "./pages/academics.js";
 import { overviewPage } from "./pages/overview.js";
+import { checkinPage } from "./pages/checkin.js";
 import { accountPage } from "./pages/account.js";
 
 export const state = {
@@ -51,6 +52,7 @@ const ROUTES = [
   [/^\/activity-sheet$/,         activitySheetPage, { scope: "delegate" }],
   [/^\/adult-sheet$/,            adultSheetPage,    {}],
   [/^\/overview$/,               overviewPage,      { scope: "registration" }],
+  [/^\/check-in$/,               checkinPage,       { scope: "registration" }],
   [/^\/dashboard$/,              dashboardPage,     { scope: "registration" }],
   [/^\/entries$/,                academicsPage,     { scope: ["academics", "awards"] }],
   [/^\/admin$/,                  adminPage,         { scope: "*" }],
@@ -153,12 +155,22 @@ async function route() {
     if (!options.public) {
       await ensureSession();
       if (!state.me) { location.hash = "#/sign-in"; return; }
+
+      // THE NAV IS DRAWN FIRST, before anything can return early.
+      //
+      // It used to come after the scope check, so a signed-in person refused a
+      // page was left looking at the SIGNED-OUT navigation — "Welcome" and
+      // "Sign in" — with no way to reach anything and every reason to believe
+      // signing in had failed.
+      renderNav();
+
       // `scope` may be a list: some pages are open to more than one chair.
       // The server's guard already allows both; without this the route was
       // narrower than the endpoint, so an awards chair was refused a page the
       // API would happily have served them.
       const needed = [].concat(options.scope || []);
       if (needed.length && !needed.some(hasScope)) {
+        renderBanners();
         renderNoAccess(needed.join(" or "));
         return;
       }
@@ -223,10 +235,28 @@ export function landingFor(person) {
   const scopes = person.scopes || [];
   const can = (scope) => scopes.includes("*") || scopes.includes(scope);
 
+  // Their own form comes first, whatever else they do here. Matched on the
+  // ROLE rather than the scope: `*` says yes to everything, and would send a
+  // delegate administrator to a sponsor's roster instead of their own sheet.
+  const roles = person.roles || [];
   if (person.person_type === "delegate") return "#/activity-sheet";
-  if (can("sponsor")) return "#/roster";
+  if (roles.includes("sponsor")) return "#/roster";
   if (person.person_type === "adult") return "#/adult-sheet";
+  if (can("registration")) return "#/overview";
   return "#/";
+}
+
+/**
+ * Does this person hold a role BY NAME, rather than a scope that covers it?
+ *
+ * `hasScope` answers "may they", and `*` says yes to everything — right for
+ * authorisation, wrong for navigation. An administrator may open any roster;
+ * that does not make their own chapter's roster their job. The sponsor still
+ * runs the chapter, and a chair who needs to change something signs in as
+ * them from Chapters, which the audit log records.
+ */
+export function holdsRole(role) {
+  return !!state.me && (state.me.roles || []).includes(role);
 }
 
 export function adopt(person) {
@@ -309,14 +339,15 @@ function renderNav() {
       // sat there reading "Not yet" with no way to reach it.
       add(nav, link("#/adult-sheet", "Registration"));
     }
-    if (hasScope("sponsor")) {
+    if (holdsRole("sponsor")) {
       add(nav, link("#/roster", "Roster"), link("#/invoice", "Invoice"));
     }
 
     const administrative = [];
     if (hasScope("registration")) {
       administrative.push(["#/overview", "Registration"],
-                          ["#/dashboard", "Chapters"]);
+                          ["#/dashboard", "Chapters"],
+                          ["#/check-in", "Check-in"]);
     }
     if (hasScope("academics") || hasScope("awards")) {
       administrative.push(["#/entries", "Entries"]);
@@ -441,11 +472,18 @@ async function loadAnnouncements() {
 
 function renderNoAccess(scope) {
   clear(appNode());
-  add(appNode(), 
+  add(appNode(),
     el("h1", {}, "You do not have access to that page"),
-    el("p", {}, "Your account does not carry the permission this page needs " +
-                `(${scope}). If you think it should, ask a convention president.`),
-    el("a", { class: "btn", href: "#/" }, "Back to the welcome page"));
+    el("p", {}, "You are signed in — this page just needs a permission your "
+              + `account does not carry (${scope}).`),
+    el("p", {}, "If it should, write to ",
+      el("a", { href: "mailto:state@uhsjcl.org" }, "state@uhsjcl.org"),
+      " and say which page you were trying to open. A convention president can "
+      + "grant it in a minute, and you will not need a new code."),
+    el("div", { class: "btn-row" },
+      el("a", { class: "btn btn--primary", href: landingFor(state.me) },
+        "Go to your own page"),
+      el("a", { class: "btn", href: "#/" }, "Back to the welcome page")));
 }
 
 function renderFailure(error) {

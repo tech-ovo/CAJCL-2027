@@ -74,12 +74,18 @@ def load(path: pathlib.Path) -> list[dict]:
         raise BoardError(f"{path.name} should hold a list of people.")
 
     for index, person in enumerate(people, start=1):
-        for required in ("first", "last", "title", "roles"):
+        for required in ("first", "last", "title"):
             if not person.get(required):
                 raise BoardError(
                     f"entry {index} in {path.name} has no {required!r}.")
-        if not isinstance(person["roles"], list):
-            raise BoardError(f"entry {index}: 'roles' should be a list.")
+        # `roles` must be PRESENT but may be empty. Somebody with a title and
+        # no permissions is a real thing -- an awards chair, before the awards
+        # pages exist -- and giving them a role that reaches nothing, so the
+        # file does not look wrong, is how a permission ends up granted for no
+        # reason and never taken away.
+        if "roles" not in person or not isinstance(person["roles"], list):
+            raise BoardError(
+                f"entry {index}: 'roles' should be a list, and [] is allowed.")
     return people
 
 
@@ -117,8 +123,41 @@ def _find(tx, school_id: int, first: str, last: str) -> dict | None:
     return None
 
 
-def _set_roles(tx, person_id: int, wanted: list[str], now: str) -> list[str]:
-    """Bring a person's roles into line with the file. Returns what changed."""
+# What somebody IS, as opposed to what they have been asked to do.
+#
+# `board.json` declares convention roles -- admin, registration_chair. It says
+# nothing about being a delegate, because everybody in it is one by default and
+# saying so in every entry would be noise.
+#
+# Reconciling roles to exactly the file therefore REVOKED these, and a
+# registration chair lost the `delegate` role that lets them open their own
+# activity sheet. They could run the convention and not fill in their own form:
+# the button was there, and it led to "You do not have access".
+IDENTITY_ROLES = {
+    "delegate": "delegate",          # person_type
+    "sponsor": "sponsor",            # adult_type
+}
+
+
+def _identity_role(person_type: str, adult_type: str | None) -> str | None:
+    if person_type == "delegate":
+        return "delegate"
+    if adult_type == "sponsor":
+        return "sponsor"
+    return None
+
+
+def _set_roles(tx, person_id: int, wanted: list[str], now: str,
+               *, keep: str | None = None) -> list[str]:
+    """Bring a person's roles into line with the file. Returns what changed.
+
+    `keep` is the identity role, which is granted if missing and never revoked
+    however the file is written.
+    """
+    wanted = list(wanted)
+    if keep and keep not in wanted:
+        wanted.append(keep)
+
     have = {row["key"] for row in tx.all("people.roles_of", (person_id,))}
     changes = []
 
@@ -236,7 +275,8 @@ def run(db, people: list[dict], *,
                 tx.run("people.set_board_title", (title, now, person_id))
                 action = "created"
 
-            changed = _set_roles(tx, person_id, roles, now)
+            changed = _set_roles(tx, person_id, roles, now,
+                                 keep=_identity_role(person_type, adult_type))
 
             code = None
             if not existing or new_codes:
@@ -337,6 +377,14 @@ def export(db) -> list[dict]:
     out = []
     for person in people:
         roles = [k for k in (person["role_keys"] or "").split(",") if k]
+        # `delegate` and `chapter_leader` are NOT written back: they follow
+        # from what somebody is, and a file listing them would make them look
+        # like something a person chose.
+        #
+        # `sponsor` IS written back, and the distinction matters. In this file
+        # it is a declaration -- "make this person their chapter's sponsor" --
+        # and `adult_type` is derived from it. Dropping it produced a file that
+        # re-imported the sponsors as ordinary adults.
         roles = [r for r in roles if r not in ("delegate", "chapter_leader")]
 
         # A chapter's sponsor is not, by itself, somebody this file provisions.

@@ -622,6 +622,60 @@ suddenly climbs, run:
 python scripts/check_query_plans.py
 ```
 
+### Can we just rotate to a new database to reset the counter?
+
+**No, and it is worth understanding why not** — because it is the obvious move
+and it does not work.
+
+A new database is an EMPTY database. Pointing the site at one does not carry
+the registration across; it throws it away. Getting the data over means an
+export and an import, during which the site is answering from neither. That is
+a disaster-recovery procedure, not a way to buy quota.
+
+**And the read limit is a plan limit, not a per-database one.** Creating a
+second database under the same organisation divides the same allowance rather
+than doubling it. If you ever need to confirm the current figure, the Turso
+dashboard states it per plan.
+
+**What actually protects the allowance** is that nothing here can scan. Every
+question lives in `backend/queries/`, every one has its plan checked by CI, and
+the public welcome page costs a single row read because its numbers are baked
+into the page at build time. A flood of anonymous traffic hits Modal's compute,
+not Turso's read counter.
+
+If you are genuinely under attack: take the site off the internet by removing
+the custom domain from GitHub Pages, or set `min_containers=0` and let Modal's
+own limits absorb it. Neither loses data.
+
+### What the staging database is for
+
+`docs/DEPLOY.md` step 1 has you create `cajcl-2027-staging` and then never
+mentions it again. Here is where it goes.
+
+It is for trying something that could destroy data — a migration you are unsure
+of, a bulk edit, a script written at midnight — against a copy, so that finding
+out you were wrong costs nothing:
+
+```bash
+turso db shell cajcl-2027 ".dump" > snapshot.sql       # from WSL
+turso db shell cajcl-2027-staging < snapshot.sql
+```
+
+Then point a **local** run at it and do the dangerous thing:
+
+```powershell
+$env:TURSO_DATABASE_URL = "libsql://cajcl-2027-staging-<org>.turso.io"
+$env:TURSO_AUTH_TOKEN   = "<a token for the staging database>"
+python -m backend.lib.migrate
+```
+
+**Never point the deployed app at staging.** The Modal secret holds the
+production URL and should keep holding it; staging is reached by setting those
+two variables in one terminal, for one command, and then closing it.
+
+Empty it and re-dump whenever you need it. It costs nothing, and a stale copy
+is worse than none because it invites conclusions about data that has moved on.
+
 ---
 
 ## 12. When something is broken

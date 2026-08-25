@@ -24,12 +24,14 @@ SELECT c.name          AS category,
        (SELECT COUNT(*)
           FROM activity_selections s
           JOIN people p ON p.id = s.person_id
-         WHERE s.item_id = i.id AND p.status = 'active')       AS chosen,
+         WHERE s.item_id = i.id AND p.status = 'active'
+           AND p.activity_sheet_waived = 0)       AS chosen,
        (SELECT COUNT(*)
           FROM activity_selections s
           JOIN people p ON p.id = s.person_id
           JOIN schools sc ON sc.id = p.school_id
          WHERE s.item_id = i.id AND p.status = 'active'
+           AND p.activity_sheet_waived = 0
            AND sc.level = 'MS')                                AS chosen_ms,
        (SELECT COUNT(*)
           FROM chapter_entries e
@@ -51,6 +53,7 @@ FROM activity_selections s
 JOIN people p  ON p.id = s.person_id
 JOIN schools sc ON sc.id = p.school_id
 WHERE s.item_id = ? AND p.status = 'active'
+  AND p.activity_sheet_waived = 0
 GROUP BY sc.id
 ORDER BY sc.name;
 
@@ -63,6 +66,7 @@ FROM activity_selections s
 JOIN people p   ON p.id = s.person_id
 JOIN schools sc ON sc.id = p.school_id
 WHERE s.item_id = ? AND p.status = 'active'
+  AND p.activity_sheet_waived = 0
 ORDER BY sc.name, p.last_name, p.first_name;
 
 -- name: academics.item

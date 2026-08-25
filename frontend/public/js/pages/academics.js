@@ -12,7 +12,7 @@
 
 import * as api from "../api.js";
 import { add, el, clear, table, button, loadingRows, fullName,
-         emptyState } from "../ui.js";
+         emptyState, localDate } from "../ui.js";
 import { openPrintView } from "./roster.js";
 
 export async function academicsPage(host) {
@@ -33,8 +33,7 @@ export async function academicsPage(host) {
         el("div", { class: "span-8" },
           el("h1", {}, "Entries"),
           el("p", { class: "lede" },
-            "How many delegates have chosen each test and activity. Open a row "
-            + "to see which chapters they come from, and who.")),
+            "Open a row to see which chapters, and who.")),
         el("div", { class: "span-4" },
           el("div", { class: "totals" },
             el("div", { class: "totals__row" },
@@ -47,10 +46,7 @@ export async function academicsPage(host) {
               el("span", {}, "Individual entries"),
               el("span", { class: "mono" }, totals.entries))))),
 
-      el("p", { class: "small muted" },
-        "Counts exclude cancelled delegates — nobody prints a paper for a "
-        + "student who withdrew. Figures move as delegates edit their sheets, "
-        + "right up to the deadline."),
+      el("p", { class: "small muted" }, deadlineNote()),
 
       searchBox());
 
@@ -84,6 +80,15 @@ export async function academicsPage(host) {
       group.push(row);
     }
     flush();
+  }
+
+  function deadlineNote() {
+    const parts = ["Counts exclude cancelled delegates."];
+    if (data.deadline) {
+      const when = localDate(data.deadline);
+      if (when) parts.push(`Sheets close ${when}.`);
+    }
+    return parts.join(" ");
   }
 
   function searchBox() {
@@ -196,8 +201,7 @@ export async function academicsPage(host) {
                 render: (row) => row.latin_level || "—" },
             ], open.people, { caption: `Delegates entered in ${item.name}` }))
         : emptyState("Nobody yet",
-            "No delegate has chosen this. That is worth knowing early: an "
-            + "item nobody enters does not need a room, and one nobody can "
-            + "find may be gated to the wrong Latin level."));
+            "An item nobody enters needs no room — and one nobody can find "
+            + "may be gated to the wrong Latin level."));
   }
 }

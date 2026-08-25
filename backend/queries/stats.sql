@@ -29,8 +29,12 @@ SELECT
   SUM(CASE WHEN p.person_type = 'adult'    AND p.status = 'cancelled'      THEN 1 ELSE 0 END) AS adults_cancelled,
   SUM(CASE WHEN p.person_type = 'adult'    AND p.status = 'cancelled_paid' THEN 1 ELSE 0 END) AS adults_cancelled_paid,
 
+  -- A delegate whose activity sheet is WAIVED counts as complete once their
+  -- paper is in. They were added at the desk on the Friday; there is no sheet
+  -- for them to submit, and leaving them permanently unfinished would send a
+  -- chair chasing somebody who cannot act. The paper is still required.
   SUM(CASE WHEN p.person_type = 'delegate' AND p.status = 'active'
-            AND fs.status = 'submitted'
+            AND (fs.status = 'submitted' OR p.activity_sheet_waived = 1)
             AND pf_w.received = 1
             AND pf_m.received = 1
            THEN 1 ELSE 0 END) AS delegates_complete,
@@ -114,14 +118,24 @@ ON CONFLICT (school_id) DO UPDATE SET
 -- number shown to the public.
 INSERT INTO public_stats_cache (id, schools_ms, schools_hs, delegates, adults, updated_at)
 SELECT 1,
-       COALESCE(SUM(CASE WHEN s.level = 'MS' THEN 1 ELSE 0 END), 0),
-       COALESCE(SUM(CASE WHEN s.level = 'HS' THEN 1 ELSE 0 END), 0),
+       -- CHAPTERS are counted, and a chapter is a school. A school sending
+       -- both a middle and a high school delegation sends two. SCL and
+       -- members at large are neither, so they are organizations -- and
+       -- counting them here made the chapter figure wrong and listed SCL as
+       -- a high school.
+       COALESCE(SUM(CASE WHEN s.kind = 'chapter' AND s.level = 'MS'
+                         THEN 1 ELSE 0 END), 0),
+       COALESCE(SUM(CASE WHEN s.kind = 'chapter' AND s.level = 'HS'
+                         THEN 1 ELSE 0 END), 0),
+       -- PEOPLE are counted wherever they come from. Somebody attending
+       -- without a chapter behind them is still attending, and leaving them
+       -- out understated the convention.
        COALESCE(SUM(ss.delegates_active), 0),
        COALESCE(SUM(ss.adults_active), 0),
        ?
 FROM schools s
 JOIN school_stats ss ON ss.school_id = s.id
-WHERE s.kind = 'chapter' AND s.status = 'active'
+WHERE s.status = 'active'
 ON CONFLICT (id) DO UPDATE SET
   schools_ms = excluded.schools_ms,
   schools_hs = excluded.schools_hs,
@@ -169,3 +183,23 @@ FROM schools s
 JOIN school_stats ss ON ss.school_id = s.id
 WHERE s.kind = 'chapter'
 ORDER BY s.name;
+
+-- name: stats.checkin_board
+-- The Friday desk. Every chapter, whether it has arrived, and its note.
+--
+-- Reads school_stats and schools -- about fifty rows -- so it can be refreshed
+-- as often as somebody wants without thinking about it. Organizations are
+-- included: SCL and members at large arrive too, and turning them away because
+-- they are not a chapter would be absurd.
+SELECT s.id AS school_id, s.name AS school_name, s.level, s.kind,
+       s.checkin_note,
+       ss.arrived_at,
+       ss.delegates_active, ss.adults_active,
+       ss.delegates_complete, ss.adults_complete
+FROM schools s
+JOIN school_stats ss ON ss.school_id = s.id
+WHERE s.status = 'active'
+ORDER BY ss.arrived_at IS NOT NULL, s.name;
+
+-- name: stats.set_arrived
+UPDATE school_stats SET arrived_at = ?, updated_at = ? WHERE school_id = ?;

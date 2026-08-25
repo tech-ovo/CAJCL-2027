@@ -139,8 +139,12 @@ def recompute_school(tx: Tx, school_id: int, *, settings: dict) -> dict:
         discount_cents=discount,
     )
 
-    # An organization (the state board) is not a chapter. It has no roster and
-    # no invoice, and its people must never reach a number shown to the public.
+    # An organization is not a chapter: SCL, members at large. They have no
+    # invoice, because there is no school to send one to.
+    #
+    # Their PEOPLE still count -- they are attending -- which is why
+    # stats.recompute_public sums delegates and adults across every active
+    # school and counts only chapters as chapters.
     if school["kind"] != "chapter":
         owed = 0
         discount = 0

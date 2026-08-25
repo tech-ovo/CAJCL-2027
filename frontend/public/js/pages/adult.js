@@ -16,6 +16,7 @@ import * as api from "../api.js";
 import { add, el, clear, tabula, field, input, select, button, errorSummary,
          renderMarkdown, personNumber, guardUnsaved, draft } from "../ui.js";
 
+// See the note in activity.js: a "no meal" option lands with the reset.
 const MEALS = [["", "Choose one"], ["regular", "Regular"],
                ["vegetarian", "Vegetarian"], ["gluten_free", "Gluten free"]];
 

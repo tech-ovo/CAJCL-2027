@@ -88,6 +88,10 @@ export async function request(path,
       signal: controller.signal,
     });
 
+    // ANY answer means the server is up, including a 403 or a 404. What the
+    // next wait is about is loading, not waking.
+    serverIsAwake = true;
+
     let payload = null;
     const text = await response.text();
     if (text) {
@@ -136,6 +140,12 @@ export async function getText(path) {
 
 /* ------------------------------------------------------------------------ */
 
+// Set the first time any request comes back. Modal sleeps when idle, so the
+// FIRST wait really is the server waking up -- but every wait after that is
+// just a page loading, and saying "Waking up the server" twice in ten seconds
+// makes a working site look broken.
+let serverIsAwake = false;
+
 function startColdStartLadder(host, controller) {
   const node = el("div", { class: "waking", role: "status", "aria-live": "polite" });
   let failed = false;
@@ -144,7 +154,7 @@ function startColdStartLadder(host, controller) {
     clear(host);
     add(node, 
       el("span", { class: "waking__dot", "aria-hidden": "true" }),
-      el("span", {}, "Waking up the server…")
+      el("span", {}, serverIsAwake ? "Loading…" : "Waking up the server…")
     );
     add(host, node);
   }, WAKING_MS);

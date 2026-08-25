@@ -24,6 +24,7 @@ board. `docs/DEPLOY.md`, "After the demonstration", has the reset commands.
 | | What | Hours | Notes |
 | --- | --- | --- | --- |
 | AFTER 29 AUG | Merge `010_welcome_wording` and `011_board_title` into the migrations they correct | 1 | Then delete both files and re-run `scripts/checksum_migrations.py`. **The deploy will refuse to start until the database is reset**, because the hashes of `001` and `005` change — so do it in the same sitting as the reset, not before. The reasoning that lives in those two files belongs in `RUNBOOK.md`, not in a migration comment. |
+| AFTER 29 AUG | A "no meal" option | 0.5 | For somebody bringing their own for an allergy. Last in the list, never the default. Blocked today because `people.meal` carries `CHECK (meal IN ('regular','vegetarian','gluten_free'))`, SQLite cannot alter a CHECK, and the pragmas a table rebuild needs are refused by Turso. **Trivial the moment `001_core.sql` is edited directly** — do it in the same sitting as the merge. |
 | AFTER 29 AUG | A sponsor serving more than one chapter | 3 | `people.school_id` is one column, so this needs a grant table: a primary school, plus rows saying which others that person may manage. Touches `auth.require_school`, which is the most safety-critical code here — do it on its own, not alongside anything else. Has never happened; this is future-proofing. |
 
 ## Small
@@ -55,6 +56,14 @@ outside a signed-in session, and everybody else is added from Settings → Roles
 string, so changing it breaks a code — but a chapter move does not touch it.
 Only a change in what somebody *is* (a sponsor becoming a chaperone) forces a
 reissue and a reprinted sheet.
+
+## Asked for, not yet built
+
+| | What | Hours | Notes |
+| --- | --- | --- | --- |
+| SOON | Check-in screen | 6 | Friday afternoon, after school, fifty chapters at once. One row per chapter: arrived, time, notes. Notes placeholder asks about a catapult, a chariot, and how many Certamen machines. Also add and remove people at the desk — a last-minute replacement still needs waiver and medical marked, but their activity sheet is waived. Needs a schema field for that waiver, and a decision on what "removed at check-in" means for the invoice (it does not change). |
+| SOON | Split Entries into Academics and Activities | 2 | One page listing fifty items serves two different chairs. The category is already on every row; this is a tab, not a query. |
+| SOON | Four-digit test IDs, editable by Academic Chairs | 3 | A number per test, entered on a **subset** of Settings → Values — which means a scoped settings view, since `academics` scope must not reach the fee or the deadlines. That gating is the real work; the column is trivial. |
 
 ## Awards and academics
 

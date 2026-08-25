@@ -138,3 +138,13 @@ WHERE id = ?;
 -- along with everything else on that form; this exists so the seeded data can
 -- reach the same state rather than a state the application cannot produce.
 UPDATE people SET meal = ?, updated_at = ? WHERE id = ?;
+
+-- name: people.waive_activity_sheet
+-- A delegate added at the desk to replace somebody who could not come.
+--
+-- Their waiver and medical are still required -- those are safety documents --
+-- but their activity sheet is waived, because the tests were printed and the
+-- food ordered weeks ago and there is nothing left for their answers to
+-- change. Without this they would sit in their chapter's completion figure as
+-- permanently unfinished.
+UPDATE people SET activity_sheet_waived = ?, updated_at = ? WHERE id = ?;

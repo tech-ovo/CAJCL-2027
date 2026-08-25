@@ -54,3 +54,7 @@ SELECT id, name, level, kind, city, billing_exempt, discount_cents,
        discount_reason, drive_folder_id, status, notes
 FROM schools
 ORDER BY name;
+
+-- name: schools.set_checkin_note
+-- What a chapter brought, written at the desk. One note per chapter.
+UPDATE schools SET checkin_note = ?, updated_at = ? WHERE id = ?;

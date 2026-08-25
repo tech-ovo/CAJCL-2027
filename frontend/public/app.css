@@ -847,3 +847,61 @@ th[aria-sort] { color: var(--text); }
   color: var(--text-muted);
   background: none; border: 0; padding: 0; margin: var(--space-3) 0 0;
 }
+
+/* A stat is a stack: value, label, and sometimes a note under it. Only the
+ * value was block-level, so the label and the note ran together on one line —
+ * "CHAPTERS13 of 13 have started". */
+.stat > .label,
+.stat > .small { display: block; }
+.stat > .small { margin-top: var(--space-1); line-height: 1.35; }
+
+/* ===========================================================================
+ * Check-in — the Friday desk
+ * ========================================================================
+ * Used standing up, on a phone, with a queue in front of it. Every target is
+ * large, the whole row reads as one unit, and an arrived chapter is obvious
+ * from across the desk. */
+
+.checkin { display: grid; gap: var(--space-3); margin-top: var(--space-4); }
+
+.checkin__row {
+  display: grid;
+  grid-template-columns: auto 1fr minmax(10rem, 18rem);
+  gap: var(--space-4);
+  align-items: start;
+  padding: var(--space-3);
+  border: var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-bg);
+}
+.checkin__row.is-here { border-color: var(--status-done); background: var(--tint); }
+
+/* 3rem square. A tick box at a desk is aimed at with a thumb, at speed, by
+ * somebody looking at the person in front of them rather than the screen. */
+.checkin__tick {
+  width: 3rem; height: 3rem; flex: none;
+  border: var(--border-strong); border-radius: var(--radius);
+  background: var(--panel-bg); cursor: pointer;
+  font-size: var(--size-lg); line-height: 1; color: var(--status-done);
+  font-family: var(--font-sans);
+}
+.checkin__tick.is-here {
+  background: var(--status-done); color: var(--white);
+  border-color: var(--status-done);
+}
+.checkin__tick:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+.checkin__who p { margin: 0; max-width: none; }
+.checkin__name { font-family: var(--font-sans); font-weight: var(--weight-semi); }
+.checkin__when { min-height: 1.2em; }
+
+.checkin__note {
+  font-size: var(--size-sm); resize: vertical; min-height: 3rem;
+}
+
+@media (max-width: 40rem) {
+  /* The note drops below the name rather than squeezing to nothing. The tick
+   * stays beside the name, because that pairing is the whole interaction. */
+  .checkin__row { grid-template-columns: auto 1fr; }
+  .checkin__note { grid-column: 1 / -1; }
+}

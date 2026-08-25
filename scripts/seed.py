@@ -511,11 +511,28 @@ class Seeder:
                                        (pid, form_type, 1, sponsor_id, when))
 
     def _seed_scl(self, days_ago) -> None:
-        """The exempt chapter, so the zero-invoice path is demonstrated rather
-        than merely believed."""
+        """SCL and members at large: people who attend without a chapter.
+
+        NOT A CHAPTER, and the distinction is not pedantry. A chapter is a
+        school -- and a school that sends both a middle and a high school
+        delegation sends two of them. SCL is neither, and "members at large"
+        are not even one organisation; they are individuals who registered
+        without a school behind them.
+
+        Filing them as chapters made the chapter count wrong and listed SCL as
+        a high school. They are `kind = 'organization'`, which keeps them out
+        of the chapter count and off the chair dashboard as a delegation --
+        while their PEOPLE still count toward the convention's attendance,
+        because they are attending.
+
+        The zero-invoice path is still demonstrated here: `billing_exempt`
+        remains the reason nothing is owed, and it is a flag rather than a name
+        check, so it keeps working when somebody types "S.C.L."
+        """
         with self.db.tx() as tx:
             created = days_ago(56)
-            scl = self._school(tx, "SCL", "HS", "Statewide", exempt=1, created=created)
+            scl = self._school(tx, "SCL", "HS", "Statewide", exempt=1,
+                               kind="organization", created=created)
             tx.audit("school.create",
                      "Mark Michalak added SCL, which is not billed for the convention.",
                      school_id=scl, entity_type="school", entity_id=scl, ts=created)
