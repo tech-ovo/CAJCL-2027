@@ -116,6 +116,68 @@ need to think about it again.
 
 ---
 
+## After the demonstration: turning it into the real thing
+
+The database the board saw on August 29th is full of invented chapters. This is
+how it becomes the one registration actually runs on. Half an hour, and there
+is nothing subtle in it.
+
+### 1. Decide whether to start from scratch
+
+Two honest options, and the second is more interesting than it sounds.
+
+**Wipe and re-provision** is the ordinary path:
+
+```powershell
+modal run backend/app.py::setup --reset      # empty, then the tables
+modal run backend/app.py::board              # the board, with new codes
+```
+
+`--reset` drops everything, so **the demonstration chapters, delegates and
+codes all go**, which is the point. The board's codes go with them and are
+reissued.
+
+**Or run it the way a chapter will.** Reduce `board.json` to one person —
+yourself, as the host chapter's sponsor with `admin` — reset, provision, and
+then add everybody else from **Settings → Roles** in the browser. That is
+exactly the path next year's commissioners take, and doing it once now is the
+cheapest possible test of whether it works. Half an hour, and you find out in
+August rather than next August.
+
+Either way, **print the codes and hand them out the same day.** They are shown
+once.
+
+### 2. Turn the demonstration banner off
+
+**Settings → Values → `ops.demo_mode`**, set to `0`. The "Demonstration data"
+banner disappears from every page. Do this only after the reset — a database
+still full of invented students should say so.
+
+### 3. Check the convention facts
+
+**Settings → Values.** Year, ordinal, dates, venue, hosts, theme, contact
+address, fees, both deadlines. Nothing here needs a deploy, and everything here
+is wrong by default the moment a detail changes.
+
+### 4. Then open registration
+
+`docs/SPONSOR-EMAIL.md` is the message, and the checklist at the bottom of it
+is the last thing to read before sending.
+
+### What about the migrations?
+
+**Leave them exactly as they are.** It is tempting to fold `010_welcome_wording`
+and `011_board_title` back into the files they correct, now that "nothing real
+depends on them" — but something does, from the moment the first reset runs.
+More importantly the habit is the thing being protected: a migration is never
+edited, and a year from now nobody will remember which ones were safe to
+squash.
+
+They cost nothing. Eleven small files run in a few milliseconds against an
+empty database, and each one is a readable record of a decision.
+
+---
+
 ## Reading this a year later
 
 This document says `cajcl-2027` a lot, and the 73rd convention is not 2027.
@@ -478,26 +540,39 @@ The demonstration data is entirely invented, so nobody real can sign in to it.
 Board members and chapter sponsors get accounts from a separate file that is
 **never committed**, because this repository is public.
 
-Create `board.json` in the project folder. Each entry needs a name, a title,
-and the roles that name carries. `school` and `city` are optional and default
-to the state board; give them for anyone who runs a chapter:
+Create `board.json` in the project folder. Each entry needs a name, a title, a
+school, and the roles that name carries.
+
+**Almost everybody on the board is a delegate**, so `"type"` defaults to
+`delegate` and only a sponsor or a chaperone needs `"type": "adult"`. A
+convention president is a student at their own chapter who also holds a
+convention role — one person, one account, one code, exactly like a chapter
+leader. Filing them as adults would give them the Adult Registration Form
+instead of the Student Activity Sheet every other delegate completes.
 
 ```json
 [
   {
-    "first": "Ada", "last": "Lovelace", "title": "Sponsor",
-    "school": "University High School", "roles": ["sponsor", "admin"]
+    "first": "Ada", "last": "Lovelace", "type": "adult", "title": "Sponsor",
+    "school": "University High School", "city": "Irvine",
+    "roles": ["sponsor", "admin"]
   },
   {
     "first": "Grace", "last": "Hopper", "title": "Convention President",
+    "school": "University High School", "city": "Irvine",
     "roles": ["admin"]
   },
   {
-    "first": "Katherine", "last": "Johnson", "title": "Registration Chair",
-    "roles": ["registration_chair"]
+    "first": "Katherine", "last": "Johnson", "title": "Awards Chair",
+    "school": "Woodbridge High School", "city": "Irvine",
+    "roles": ["awards_chair"]
   }
 ]
 ```
+
+`title` is what somebody is *called* — "Logistics Coordinator", "WHS
+Operations". `roles` is what they may *do*. Two people can hold `admin` and
+have different titles, and a title changes without any permission changing.
 
 The role keys are `admin`, `registration_chair`, `academics_chair`,
 `awards_chair`, and `sponsor`. `admin` is everything; the rest are what their

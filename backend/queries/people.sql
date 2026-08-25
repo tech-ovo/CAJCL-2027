@@ -101,7 +101,7 @@ DELETE FROM person_roles WHERE person_id = ? AND role_id = ?;
 -- carries the grade and Latin level this one has no business touching.
 UPDATE people
 SET first_name = ?, middle_name = ?, last_name = ?,
-    adult_type_other = ?, updated_at = ?
+    board_title = ?, updated_at = ?
 WHERE id = ?;
 
 -- name: people.with_prefix
@@ -114,6 +114,10 @@ JOIN schools s ON s.id = p.school_id
 WHERE p.code_prefix = ?
 ORDER BY s.name, p.last_name, p.first_name;
 
+-- name: people.set_board_title
+-- Just the title, for somebody who has only just been created.
+UPDATE people SET board_title = ?, updated_at = ? WHERE id = ?;
+
 -- name: people.set_board_identity
 -- What scripts/add_board.py reconciles for somebody already in the database.
 --
@@ -124,5 +128,6 @@ ORDER BY s.name, p.last_name, p.first_name;
 -- is the one path allowed to move it.
 UPDATE people
 SET first_name = ?, middle_name = ?, last_name = ?,
-    adult_type = ?, adult_type_other = ?, updated_at = ?
+    person_type = ?, adult_type = ?, adult_type_other = ?,
+    board_title = ?, updated_at = ?
 WHERE id = ?;

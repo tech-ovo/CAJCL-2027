@@ -184,6 +184,15 @@ strong { font-weight: 700; }
  * The threshold is applied in Python, not in CSS, because CSS cannot count
  * characters. See _packet_sheet. */
 .tabula .name--long { font-size: 15pt; }
+table.grid { width: 100%; border-collapse: collapse; margin: 10pt 0; }
+table.grid th, table.grid td {
+  border-bottom: 0.5pt solid #B9BEC6; padding: 5pt 4pt; text-align: left;
+  font-size: 10pt;
+}
+table.grid th { font-size: 8pt; letter-spacing: 0.08em; text-transform: uppercase; }
+table.grid .tick { width: 30pt; }
+table.grid td.tick { border: 0.5pt solid #102A56; height: 18pt; }
+table.grid .mid { text-align: center; width: 40pt; }
 .tabula .name--verylong { font-size: 12.5pt; }
 .tabula .row {
   display: flex; justify-content: space-between; align-items: baseline;
@@ -532,6 +541,65 @@ def invoice_context(tx: Tx, school: dict) -> dict:
                                   with_time=False)
         if settings.get_datetime(tx, "deadline.payment") else "",
     }
+
+
+def render_signin_sheet(tx: Tx, item: dict, people: list[dict]) -> str:
+    """A proctor's sign-in sheet for one test or activity.
+
+    Printed and carried into a room. It has to work with no power, no signal
+    and a pen -- which is why it is a list with a box beside each name rather
+    than anything cleverer.
+
+    Sorted by chapter, then surname, because delegates arrive in chapter
+    groups. Grade and Latin level are here so a proctor can spot somebody in
+    the wrong room before the paper goes out rather than after.
+    """
+    rows = []
+    for person in people:
+        name = " ".join(filter(None, [
+            person["first_name"], person.get("middle_name"),
+            person["last_name"], person.get("suffix")]))
+        rows.append(f"""
+  <tr>
+    <td class="tick"></td>
+    <td>{_esc(name)}</td>
+    <td>{_esc(person['school_name'])}</td>
+    <td class="mid">{_esc(person.get('grade') or '')}</td>
+    <td class="mid">{_esc(person.get('latin_level') or '')}</td>
+  </tr>""")
+
+    body = f"""
+<section class="sheet">
+  <div class="label rail">{_esc(convention_dates(tx))}</div>
+
+  <div class="tabula keep">
+    <div class="label">{_esc(item.get('category', '').upper())}</div>
+    <div class="name">{_esc(item['name'])}</div>
+    <div class="row">
+      <span class="mono label">{len(people)} entered</span>
+      <span class="mono label">Room _____________</span>
+    </div>
+  </div>
+
+  <p class="small">Tick each delegate as they arrive. A name not on this list
+  is not entered &mdash; send them to the registration desk rather than turning
+  them away, because a sponsor may have added them today.</p>
+
+  <table class="grid">
+    <thead>
+      <tr><th class="tick">Here</th><th>Name</th><th>Chapter</th>
+          <th class="mid">Grade</th><th class="mid">Latin</th></tr>
+    </thead>
+    <tbody>{''.join(rows)}</tbody>
+  </table>
+
+  <p class="small">Proctor ________________________________
+  &nbsp;&nbsp; Started _________ &nbsp;&nbsp; Collected _________</p>
+</section>"""
+
+    note = ('<div class="screen-note"><strong>Print view.</strong> '
+            'Use your browser&rsquo;s print command.</div>')
+    return _document(f"{item['name']} - sign-in sheet", note + body, _footer(tx))
 
 
 def render_invoice(tx: Tx, school: dict) -> str:

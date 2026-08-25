@@ -26,6 +26,7 @@ import { invoicePage } from "./pages/invoice.js";
 import { dashboardPage } from "./pages/dashboard.js";
 import { adminPage } from "./pages/admin.js";
 import { auditPage } from "./pages/audit.js";
+import { academicsPage } from "./pages/academics.js";
 import { accountPage } from "./pages/account.js";
 
 export const state = {
@@ -49,6 +50,7 @@ const ROUTES = [
   [/^\/activity-sheet$/,         activitySheetPage, { scope: "delegate" }],
   [/^\/adult-sheet$/,            adultSheetPage,    {}],
   [/^\/dashboard$/,              dashboardPage,     { scope: "registration" }],
+  [/^\/entries$/,                academicsPage,     { scope: ["academics", "awards"] }],
   [/^\/admin$/,                  adminPage,         { scope: "*" }],
   [/^\/audit$/,                  auditPage,         { scope: "*" }],
 ];
@@ -149,8 +151,13 @@ async function route() {
     if (!options.public) {
       await ensureSession();
       if (!state.me) { location.hash = "#/sign-in"; return; }
-      if (options.scope && !hasScope(options.scope)) {
-        renderNoAccess(options.scope);
+      // `scope` may be a list: some pages are open to more than one chair.
+      // The server's guard already allows both; without this the route was
+      // narrower than the endpoint, so an awards chair was refused a page the
+      // API would happily have served them.
+      const needed = [].concat(options.scope || []);
+      if (needed.length && !needed.some(hasScope)) {
+        renderNoAccess(needed.join(" or "));
         return;
       }
     } else if (api.token.get() && !state.me) {
@@ -199,6 +206,27 @@ async function ensureSession({ quiet = false } = {}) {
  * `sessions` is the one field not in that body. Only the account page wants it
  * and that page fetches /auth/me for itself.
  */
+/**
+ * Where somebody lands after signing in.
+ *
+ * NOT the welcome page. They have just typed a code or scanned a QR, which is
+ * an act with an intention behind it, and the welcome page answers none of
+ * them. A delegate wants their form; a sponsor wants their roster.
+ *
+ * Whatever this returns has to be a page that person can actually open, or the
+ * router bounces them straight back to the sign-in screen.
+ */
+export function landingFor(person) {
+  if (!person) return "#/";
+  const scopes = person.scopes || [];
+  const can = (scope) => scopes.includes("*") || scopes.includes(scope);
+
+  if (person.person_type === "delegate") return "#/activity-sheet";
+  if (can("sponsor")) return "#/roster";
+  if (person.person_type === "adult") return "#/adult-sheet";
+  return "#/";
+}
+
 export function adopt(person) {
   state.me = person || null;
   state.demoMode = !!(person && person.demo_mode);
@@ -234,7 +262,9 @@ async function magicLink(host, [raw]) {
       { code, via_magic_link: true }, { statusHost: host });
     api.token.set(result.token);
     adopt(result.person);
-    location.hash = "#/";
+    // A scanned QR is even more purposeful than a typed code: somebody has
+    // their sheet in their hand.
+    location.hash = landingFor(result.person);
     await route();
   } catch (error) {
     clear(host);
@@ -260,16 +290,39 @@ function renderNav() {
   add(nav, link("#/", "Welcome"));
 
   if (state.me) {
+    /* TWO GROUPS, AND THE ORDER IS THE POINT.
+     *
+     * First what this person has to DO -- their own registration, their
+     * chapter's roster. Then, set apart, what they can do because of a role
+     * they hold. A convention president is a delegate with an activity sheet
+     * to fill in like everybody else, and running the two together made their
+     * own form the seventh item in a row of eight.
+     */
+    if (state.me.person_type === "delegate") {
+      add(nav, link("#/activity-sheet", "Registration"));
+    } else if (state.me.person_type === "adult") {
+      // NOT gated on scope. This used to be hidden from anyone holding `*`,
+      // on the assumption that an administrator is not an attendee -- but a
+      // sponsor with admin rights is very much attending, and their own form
+      // sat there reading "Not yet" with no way to reach it.
+      add(nav, link("#/adult-sheet", "Registration"));
+    }
     if (hasScope("sponsor")) {
       add(nav, link("#/roster", "Roster"), link("#/invoice", "Invoice"));
     }
-    if (state.me.person_type === "delegate") {
-      add(nav, link("#/activity-sheet", "Registration"));
-    } else if (state.me.person_type === "adult" && !hasScope("*")) {
-      add(nav, link("#/adult-sheet", "Registration"));
+
+    const administrative = [];
+    if (hasScope("registration")) administrative.push(["#/dashboard", "Chapters"]);
+    if (hasScope("academics") || hasScope("awards")) {
+      administrative.push(["#/entries", "Entries"]);
     }
-    if (hasScope("registration")) add(nav, link("#/dashboard", "Chapters"));
-    if (hasScope("*")) add(nav, link("#/admin", "Settings"), link("#/audit", "Log"));
+    if (hasScope("*")) {
+      administrative.push(["#/admin", "Settings"], ["#/audit", "Log"]);
+    }
+    if (administrative.length) {
+      add(nav, el("span", { class: "nav__divider", "aria-hidden": "true" }));
+      add(nav, ...administrative.map(([href, text]) => link(href, text)));
+    }
 
     add(nav, el("span", { class: "nav__spacer" }));
     add(nav, link("#/account", state.me.first_name || "Account"));
@@ -283,13 +336,30 @@ function renderNav() {
   }
 }
 
-async function signOut() {
-  try { await api.post("/auth/logout", {}); } catch (ignored) { /* revoke anyway */ }
+function signOut() {
+  /* INSTANT, AND THE ORDER IS THE POINT.
+   *
+   * Forget the session here first, then leave. The server call is fired and
+   * NOT awaited: on a cold container it took several seconds, during which
+   * somebody who had just asked to be signed out was still looking at their
+   * own roster on a shared computer.
+   *
+   * Nothing is lost by not waiting. The token is already gone from this
+   * browser, so this device cannot use it either way. The request revokes it
+   * server-side so no OTHER device can — and if it never arrives, the session
+   * expires on its own and they can sign out again from the account page.
+   *
+   * `keepalive` is what makes that true: the browser finishes the request even
+   * though the page has already moved on.
+   */
   api.token.clear();
   api.adminToken.clear();
   state.me = null;
   location.hash = "#/";
-  await route();
+  route();
+
+  api.post("/auth/logout", {}, { keepalive: true })
+     .catch(() => { /* the token is gone from this browser regardless */ });
 }
 
 export async function endImpersonation() {

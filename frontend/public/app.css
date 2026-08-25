@@ -823,3 +823,17 @@ th[aria-sort] { color: var(--text); }
   font-family: var(--font-mono);
 }
 .input-prefix > input { border-radius: 0 var(--radius) var(--radius) 0; flex: 1; }
+
+/* Separates what a person has to do from what they may do because of a role.
+ * A convention president is a delegate with a form to fill in; their own
+ * registration should not be the seventh item in a row of eight. */
+.nav__divider {
+  width: 1px; align-self: stretch;
+  background: var(--rule);
+  margin: 0 var(--space-2);
+}
+@media (max-width: 40rem) {
+  /* Wrapped onto two lines the rule reads as a stray mark, and the grouping is
+     already carried by the order. */
+  .nav__divider { display: none; }
+}

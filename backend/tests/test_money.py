@@ -285,3 +285,89 @@ def test_money_is_always_integer_cents(fx):
     row = fx.stats_for(fx.uni_id)
     for key in ("amount_owed_cents", "amount_paid_cents", "discount_cents"):
         assert isinstance(row[key], int)
+
+
+# ---------------------------------------------------------------------------
+# INVARIANT 2: the counters move with the data
+# ---------------------------------------------------------------------------
+
+COUNTER_KEYS = ("delegates_active", "adults_active",
+                "delegates_cancelled_paid", "adults_cancelled_paid")
+
+
+def stored_vs_actual(db):
+    """Every school's stored counters, beside what the rows actually say.
+
+    `SUM(...)` over zero rows is NULL, not 0, so a chapter with nobody in it
+    reports None for every count while the stored value is a real 0. Both mean
+    the same thing; normalising here keeps that out of the assertions.
+    """
+    out = []
+    with db.read() as tx:
+        for school in tx.all("schools.all_including_organizations"):
+            stored = dict(tx.one("stats.for_school", (school["id"],)) or {})
+            actual = dict(tx.one("stats.count_school", (school["id"],)) or {})
+            out.append((
+                school["name"],
+                {k: stored.get(k) or 0 for k in COUNTER_KEYS},
+                {k: actual.get(k) or 0 for k in COUNTER_KEYS},
+            ))
+    return out
+
+
+def test_stored_counters_agree_with_the_rows(fx):
+    """Recomputing must be a no-op. If it is not, something wrote to `people`
+    without recomputing, and the difference is invisible until an invoice is
+    wrong.
+
+    This is how `scripts/add_board.py` was found charging a chapter for adults
+    it then left out of the amount owed: it inserted people and never called
+    stats.recompute, so `school_stats` held numbers from before. Nothing
+    failed. The arithmetic simply stopped agreeing with itself.
+    """
+    disagreements = []
+    for name, stored, actual in stored_vs_actual(fx.db):
+        for key in COUNTER_KEYS:
+            if stored.get(key, 0) != actual.get(key, 0):
+                disagreements.append(
+                    f"{name}.{key}: stored {stored.get(key)} != actual {actual.get(key)}")
+    assert disagreements == [], "\n".join(disagreements)
+
+
+def test_an_invoice_adds_up_to_what_is_owed(fx):
+    """The lines are computed from the counters and the total is read from
+    them, so the two can drift apart in exactly one way: stale counters."""
+    from backend.lib import printing
+
+    with fx.db.read() as tx:
+        for row in tx.all("schools.list"):
+            school = dict(tx.one("schools.get", (row["id"],)))
+            context = printing.invoice_context(tx, school)
+            if context["exempt"]:
+                assert context["amount_owed_cents"] == 0
+                continue
+            lines = sum(line["amount_cents"] for line in context["lines"])
+            expected = max(0, lines - context["discount_cents"])
+            assert expected == context["amount_owed_cents"], (
+                f"{school['name']}: lines add to {lines} less "
+                f"{context['discount_cents']} discount, but owed is "
+                f"{context['amount_owed_cents']}")
+
+
+def test_provisioning_the_board_keeps_the_counters_honest(fx):
+    """The specific path that was wrong."""
+    import scripts.add_board as add_board
+
+    add_board.run(fx.db, [
+        {"first": "Grace", "last": "Hopper", "title": "Convention President",
+         "school": "University High School", "roles": ["admin"]},
+        {"first": "Ada", "last": "Lovelace", "type": "adult", "title": "Sponsor",
+         "school": "University High School", "roles": ["sponsor"]},
+    ], create_schools=True)
+
+    disagreements = []
+    for name, stored, actual in stored_vs_actual(fx.db):
+        if stored.get("delegates_active", 0) != actual.get("delegates_active", 0) \
+           or stored.get("adults_active", 0) != actual.get("adults_active", 0):
+            disagreements.append(name)
+    assert disagreements == [], disagreements

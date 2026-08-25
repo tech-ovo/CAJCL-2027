@@ -193,35 +193,21 @@ class Seeder:
     def run(self) -> dict:
         days_ago = lambda n: clock.plus_days(-n)
 
-        with self.db.tx() as tx:
-            # The state board. An organization, not a chapter: it never appears
-            # in the public school count, on the chair dashboard, or in an
-            # invoice, and its people are not attendees of anything.
-            board = self._school(tx, "CAJCL State Board", "HS", "Irvine",
-                                 kind="organization", created=days_ago(74))
-
-            # The two technology commissioners, who are real and have said so.
-            #
-            # The convention presidents used to be here as invented people.
-            # They are not any more: the real ones exist, and they arrive with
-            # everybody else from board.json via scripts/add_board.py -- see
-            # docs/DEPLOY.md step 4b. Running that against a seeded database
-            # finds these two rather than duplicating them.
-            admins = [
-                ("Carl", "", "Liu", "Technology Commissioner"),
-                ("Timothy", "Wei", "Chen", "Technology Commissioner"),
-            ]
-            for first, middle, last, title in admins:
-                pid, code = self._person(
-                    tx, board, first, middle, last, person_type="adult",
-                    adult_type="other", role="admin", created=days_ago(74),
-                    email=f"{first.lower()}@uhsjcl.org", latin_knowledge="advanced")
-                self.codes[f"{title}: {first} {last}"] = code
-
-            tx.audit("school.create",
-                     "The state board was set up with two administrator accounts.",
-                     school_id=board, entity_type="school", entity_id=board,
-                     ts=days_ago(74))
+        # THERE IS NO STATE BOARD CHAPTER ANY MORE.
+        #
+        # It existed because `people.school_id` is NOT NULL and the board had
+        # to go somewhere. But almost everybody on the board is a STUDENT --
+        # a delegate at their own chapter who also holds a convention role,
+        # the same model as a chapter leader. Filing them in a pseudo-chapter
+        # separated them from the chapter they actually attend with, and gave
+        # them the adult form instead of their own activity sheet.
+        #
+        # The real board arrives from board.json, at their real schools. See
+        # scripts/add_board.py and docs/DEPLOY.md step 4b.
+        #
+        # The host chapter's sponsor below carries `admin`, so a freshly seeded
+        # database still has somebody who can open Settings without anything
+        # else having to be run first.
 
         # --- the host chapter ---------------------------------------------
         with self.db.tx() as tx:
@@ -241,6 +227,28 @@ class Seeder:
                     latin_knowledge="advanced", meal="regular",
                     cell_phone="555-0100")
                 self.codes[f"Sponsor: {first} {last} (University High School)"] = code
+
+                # The FIRST sponsor also holds `admin`, so a freshly seeded
+                # database has somebody who can open Settings without anything
+                # else having to be run. `_person` grants one role, and this
+                # person needs two -- granting it here rather than widening
+                # that helper for a single case.
+                #
+                # board.json says the same thing about this person, so running
+                # it afterwards finds them and changes nothing.
+                if self.uni_sponsor_id is None:
+                    admin_role = tx.one("roles.by_key", ("admin",))
+                    tx.run("people.grant_role",
+                           (pid, admin_role["id"], None, days_ago(69)))
+                    # NOT a second entry under "Administrator". It is one
+                    # person with one code, and listing them twice made the
+                    # printed sheet look as though two people shared a code.
+                    self.codes.pop(
+                        f"Sponsor: {first} {last} (University High School)", None)
+                    self.codes[
+                        f"Sponsor and administrator: {first} {last} "
+                        f"(University High School)"] = code
+
                 # The FIRST sponsor is the one the rest of the seed acts as.
                 # This used to test `first == "Mark"`, which broke silently the
                 # moment the name changed -- the attribute simply never got
@@ -435,9 +443,47 @@ class Seeder:
                          actor_person_id=sponsor_id, school_id=school,
                          entity_type="school", entity_id=school, ts=created)
 
+                # A SUBMITTED SHEET WITH NO SELECTIONS IS NOT A STATE THE
+                # APPLICATION CAN PRODUCE. Academic testing blocks below one
+                # choice, so a delegate cannot submit an empty sheet -- yet
+                # every chapter except the host used to get exactly that: a
+                # form_submissions row marked "submitted" and nothing chosen.
+                #
+                # It went unnoticed because nothing read the selections until
+                # the Entries page existed, which then showed every test being
+                # taken by one chapter. Demonstration data that cannot occur in
+                # production is worse than none: it hides the bugs it should be
+                # finding.
+                items = tx.all("catalog.items")
+                tests = [i for i in items
+                         if i["category_key"] == "academic_testing"]
+                other = [i for i in items
+                         if i["category_key"] in ("creative_arts", "ludi",
+                                                  "graphic_arts")
+                         and i["registration_scope"] == "individual"]
+
                 for pid in roster_ids:
                     if self.rng.random() < progress:
                         when = days_ago(self.rng.randint(3, 40))
+                        person = tx.one("people.get", (pid,))
+
+                        eligible = [
+                            t for t in tests
+                            if not t["eligible_latin_levels"]
+                            or person["latin_level"] in
+                               t["eligible_latin_levels"].split(",")
+                        ]
+                        if eligible:
+                            for item in self.rng.sample(
+                                    eligible, min(len(eligible),
+                                                  self.rng.randint(1, 3))):
+                                tx.insert("forms.add_selection",
+                                          (pid, item["id"], when))
+                        for item in self.rng.sample(other,
+                                                    self.rng.randint(0, 3)):
+                            tx.insert("forms.add_selection",
+                                      (pid, item["id"], when))
+
                         tx.run("forms.upsert_submission",
                                (pid, "student_activity", "submitted", when, when))
                         for form_type in ("student_waiver", "student_medical"):

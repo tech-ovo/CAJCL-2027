@@ -144,8 +144,11 @@ export async function activitySheetPage(host) {
               { onchange: (e) => { grade = e.target.value; touch(); } }),
           })),
           el("div", { class: "span-4" }, field({
+            // No help text. It said "this decides which tests you may take",
+            // which is one of several things it decides and not the delegate's
+            // problem -- and a third field with a line under it threw the row
+            // of three out of alignment.
             id: "latin", label: "Latin level", required: true,
-            help: "This decides which tests you may take.",
             control: select([["", "Choose one"],
                              ...levels.map((l) => [l, l, l === level])],
               { onchange: (e) => { level = e.target.value; touch(); regate(); } }),
@@ -240,8 +243,7 @@ export async function activitySheetPage(host) {
     const when = localDate(sheet.deadline);
     if (!when) return null;
     return el("p", { class: "deadline" },
-      el("span", { class: "label label--ink" }, "Due"),
-      ` ${when}. You can change your answers freely until then.`);
+      `Due ${when}. You can change your answers freely until then.`);
   }
 
   function categorySection(category) {

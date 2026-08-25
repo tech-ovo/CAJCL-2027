@@ -9,7 +9,7 @@
 import * as api from "../api.js";
 import { add, el, clear, field, input, button, errorSummary } from "../ui.js";
 import { checkSymbolOk, formatCode } from "../codes.js";
-import { state, route, adopt } from "../main.js";
+import { state, route, adopt, landingFor } from "../main.js";
 
 export async function signInPage(host) {
   let error = null;
@@ -63,7 +63,9 @@ export async function signInPage(host) {
           // The response already says who this is, so the next page renders
           // from it instead of asking again.
           adopt(result.person);
-          location.hash = "#/";
+          // Not the welcome page: somebody who has just typed a code has an
+          // intention, and the welcome page answers none of them.
+          location.hash = landingFor(result.person);
           await route();
         } catch (problem) {
           error = problem.message;

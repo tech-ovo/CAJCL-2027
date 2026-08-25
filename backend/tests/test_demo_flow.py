@@ -257,3 +257,36 @@ def test_the_public_page_needs_no_credential(fx, client):
     # The public endpoint is an explicit allowlist -- nothing operational leaks.
     assert not any(key.startswith("ops.") and key != "ops.demo_mode" for key in body)
     assert not any("fee" in key or "deadline" in key for key in body)
+
+
+def test_no_submitted_sheet_is_empty(fx):
+    """A delegate cannot submit an activity sheet with nothing chosen —
+    academic testing blocks below one selection — so demonstration data must
+    not contain one either.
+
+    Every chapter except the host used to get exactly that: a submission row
+    marked "submitted" and no selections at all. Nothing read the selections,
+    so nothing noticed, until the Entries page showed every test being taken by
+    a single chapter.
+
+    Demonstration data that cannot occur in production is worse than none: it
+    hides the bugs it should be finding.
+    """
+    with fx.db.read() as tx:
+        submitted = tx.all("audit.recent", (10 ** 9, 1))   # touch, keep it read-only
+        empty = tx._backend.execute("""
+            SELECT p.id, p.first_name, p.last_name, s.name AS school
+            FROM form_submissions f
+            JOIN people p  ON p.id = f.person_id
+            JOIN schools s ON s.id = p.school_id
+            WHERE f.form_type = 'student_activity'
+              AND f.status = 'submitted'
+              AND p.status = 'active'
+              AND NOT EXISTS (SELECT 1 FROM activity_selections a
+                               WHERE a.person_id = p.id)
+        """, ())
+
+    assert empty == [], (
+        "these delegates have a submitted sheet and no selections: "
+        + ", ".join(f"{r['first_name']} {r['last_name']} ({r['school']})"
+                    for r in empty[:8]))

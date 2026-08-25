@@ -65,7 +65,8 @@ export function setUnauthorizedHandler(fn) { onUnauthorized = fn; }
 /**
  * Make a request, showing the cold-start ladder in `statusHost` if one is given.
  */
-export async function request(path, { method = "GET", body, statusHost, signal } = {}) {
+export async function request(path,
+    { method = "GET", body, statusHost, signal, keepalive = false } = {}) {
   const headers = { "Accept": "application/json" };
   const auth = token.get();
   if (auth) headers["Authorization"] = `Bearer ${auth}`;
@@ -78,6 +79,9 @@ export async function request(path, { method = "GET", body, statusHost, signal }
 
   try {
     const response = await fetch(base() + path, {
+      // `keepalive` lets a request finish after the page has moved on. Used by
+      // sign-out, which must not make somebody wait on a shared computer.
+      keepalive,
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -114,7 +118,8 @@ export async function request(path, { method = "GET", body, statusHost, signal }
 }
 
 export const get = (path, opts) => request(path, { ...opts, method: "GET" });
-export const post = (path, body, opts) => request(path, { ...opts, method: "POST", body });
+export const post = (path, body, opts) =>
+  request(path, { ...opts, method: "POST", body });
 export const put = (path, body, opts) => request(path, { ...opts, method: "PUT", body });
 export const patch = (path, body, opts) => request(path, { ...opts, method: "PATCH", body });
 export const del = (path, opts) => request(path, { ...opts, method: "DELETE" });

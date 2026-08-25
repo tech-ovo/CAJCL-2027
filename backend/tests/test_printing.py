@@ -450,3 +450,47 @@ def test_the_size_thresholds_are_where_they_claim_to_be():
     assert _name_size("A" * 39) == " name--long"
     assert _name_size("A" * 60) == " name--long"
     assert _name_size("A" * 61) == " name--verylong"
+
+
+# ---------------------------------------------------------------------------
+# The proctor's sign-in sheet
+# ---------------------------------------------------------------------------
+
+def test_the_signin_sheet_lists_everyone_with_a_box_to_tick(fx):
+    """Carried into a room with no power, no signal and a pen."""
+    with fx.db.read() as tx:
+        item = dict(tx.one("academics.item", (1,)))
+        people = [dict(r) for r in tx.all("academics.item_people", (1,))]
+        html = printing.render_signin_sheet(tx, item, people)
+
+    assert item["name"] in html
+    assert "Room _____________" in html
+    assert 'class="tick"' in html
+    assert html.count('<td class="tick"></td>') == len(people)
+    for person in people:
+        assert person["last_name"] in html
+        assert person["school_name"] in html
+
+
+def test_the_signin_sheet_says_what_to_do_with_an_unexpected_delegate(fx):
+    """A name not on the list is the case a proctor will actually hit, because
+    a sponsor may have added somebody that morning. Turning them away is the
+    wrong answer and the sheet should not leave it to judgement."""
+    with fx.db.read() as tx:
+        item = dict(tx.one("academics.item", (1,)))
+        people = [dict(r) for r in tx.all("academics.item_people", (1,))]
+        html = printing.render_signin_sheet(tx, item, people)
+
+    assert "registration desk" in html
+    assert "rather than turning" in html
+
+
+def test_an_empty_item_still_prints_a_usable_sheet(fx):
+    """An item nobody entered is worth printing anyway: it is how a proctor
+    finds out the room is not needed, rather than waiting in it."""
+    with fx.db.read() as tx:
+        item = dict(tx.one("academics.item", (1,)))
+        html = printing.render_signin_sheet(tx, item, [])
+
+    assert "0 entered" in html
+    assert item["name"] in html

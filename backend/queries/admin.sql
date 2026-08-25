@@ -129,7 +129,8 @@ WHERE pr.person_id = ?;
 -- only ever called with an explicit school filter or a name prefix, so it never
 -- walks the whole table.
 SELECT p.id, p.first_name, p.middle_name, p.last_name,
-       p.person_type, p.adult_type, p.adult_type_other, p.status,
+       p.person_type, p.adult_type, p.adult_type_other, p.board_title,
+       p.status,
        p.school_id, s.name AS school_name
 FROM people p JOIN schools s ON s.id = p.school_id
 WHERE p.school_id = ?
@@ -150,7 +151,7 @@ LIMIT 200;
 -- person who holds both `sponsor` and `admin` appears once, with both.
 SELECT DISTINCT
        p.id, p.first_name, p.middle_name, p.last_name,
-       p.adult_type, p.adult_type_other, p.status,
+       p.adult_type, p.adult_type_other, p.board_title, p.status,
        p.school_id, s.name AS school_name,
        (SELECT group_concat(r2.key) FROM person_roles pr2
           JOIN roles r2 ON r2.id = pr2.role_id

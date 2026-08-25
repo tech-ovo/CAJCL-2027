@@ -142,7 +142,7 @@ def _set_roles(tx, person_id: int, wanted: list[str], now: str) -> list[str]:
 
 def run(db, people: list[dict], *,
         new_codes: bool = False, create_schools: bool = False) -> dict:
-    from backend.lib import auth, clock
+    from backend.lib import auth, clock, settings as settings_lib, stats
 
     results = []
 
@@ -154,18 +154,41 @@ def run(db, people: list[dict], *,
         roles = list(entry["roles"])
         school_name = (entry.get("school") or "").strip() or BOARD_SCHOOL
 
+        # MOST OF THE BOARD ARE STUDENTS.
+        #
+        # A convention president is a delegate at their own chapter who also
+        # holds a convention role -- exactly like a chapter leader. One person,
+        # one account, one code; the role is granted on top.
+        #
+        # Filing them as adults to make `adult_type_other` available for their
+        # title gave them the Adult Registration Form instead of the Student
+        # Activity Sheet, so a president could not complete the form every
+        # other delegate completes and their roster row read "Not yet" forever.
+        # `board_title` exists so the title has somewhere to live that is not
+        # an adult-only column.
+        #
+        # Delegate is the DEFAULT, because it is the common case. An entry says
+        # `"type": "adult"` only for a sponsor or a chaperone.
+        person_type = (entry.get("type") or "delegate").strip().lower()
+        if person_type not in ("delegate", "adult"):
+            raise BoardError(
+                f"{first} {last}: 'type' must be \"delegate\" or \"adult\", "
+                f"not {person_type!r}.")
+
         with db.tx() as tx:
             now = clock.now_iso()
             school_id = _school_id(tx, school_name, entry,
                                    create=create_schools)
             existing = _find(tx, school_id, first, last)
 
-            # A sponsor is filed as a sponsor; everyone else is 'other' with
-            # their actual title beside it, which is what the roster and the
-            # printed sheet show.
-            is_sponsor = "sponsor" in roles
-            adult_type = "sponsor" if is_sponsor else "other"
-            adult_type_other = None if is_sponsor else title
+            # A delegate has no adult_type at all -- the database refuses one.
+            if person_type == "delegate":
+                adult_type = None
+                adult_type_other = None
+            else:
+                is_sponsor = "sponsor" in roles
+                adult_type = "sponsor" if is_sponsor else "other"
+                adult_type_other = None if is_sponsor else title
 
             if existing:
                 person_id = existing["id"]
@@ -185,33 +208,39 @@ def run(db, people: list[dict], *,
                 # is the record, and the next run is where the two are
                 # reconciled.
                 if (existing.get("adult_type") != adult_type
-                        or existing.get("adult_type_other") != adult_type_other):
+                        or existing.get("adult_type_other") != adult_type_other
+                        or existing.get("board_title") != title
+                        or existing.get("person_type") != person_type):
                     tx.run("people.set_board_identity", (
-                        first, middle, last, adult_type, adult_type_other,
-                        now, person_id))
+                        first, middle, last, person_type, adult_type,
+                        adult_type_other, title, now, person_id))
                     changed_title = True
                 else:
                     changed_title = False
             else:
                 changed_title = False
+                # A delegate may not have an email address: the database
+                # refuses one, and several delegates are eleven.
+                email = entry.get("email") if person_type == "adult" else None
                 person_id = tx.insert("people.create", (
-                    school_id, "adult", adult_type, adult_type_other,
+                    school_id, person_type, adult_type, adult_type_other,
                     first, middle, last, None, None,
                     None, None, None, None,
-                    entry.get("email"), None, None,
+                    email, None, None,
                     None, None,
                     # Both replaced by issue_code below, in this same transaction. VOL is
                     # a valid placeholder; the real prefix depends on the scopes
                     # the roles grant, which are not attached yet.
                     f"pending-{school_id}-{first}-{last}-{now}",
                     "VOL", 1, now, now, now, None))
+                tx.run("people.set_board_title", (title, now, person_id))
                 action = "created"
 
             changed = _set_roles(tx, person_id, roles, now)
 
             code = None
             if not existing or new_codes:
-                prefix = auth.code_prefix_for("adult", adult_type)
+                prefix = auth.code_prefix_for(person_type, adult_type)
                 if existing:
                     tx.run("auth.session_revoke_all_for_person", (now, person_id))
                 code = auth.issue_code(tx, person_id, prefix)
@@ -223,6 +252,18 @@ def run(db, people: list[dict], *,
             tx.audit("person.create" if action == "created" else "person.update",
                      summary, school_id=school_id,
                      entity_type="person", entity_id=person_id)
+
+            # INVARIANT 2: the counters move with the data, in the same
+            # transaction. This was missing, and the effect was quiet and
+            # expensive: adding ten people to a chapter left `school_stats`
+            # holding the old numbers, so the invoice charged for adults it
+            # then did not include in the amount owed. Nothing failed; the
+            # arithmetic just stopped agreeing with itself.
+            #
+            # See backend/lib/db.py. Every path that writes to `people` owes
+            # this call.
+            stats.recompute(tx, school_id,
+                            settings=settings_lib.fee_settings(tx))
 
         results.append({
             "name": f"{first} {last}", "title": title, "school": school_name,
@@ -308,11 +349,16 @@ def export(db) -> list[dict]:
         entry = {
             "first": person["first_name"],
             "last": person["last_name"],
-            "title": (person["adult_type_other"]
+            "title": (person.get("board_title")
+                      or person["adult_type_other"]
                       or ("Sponsor" if person["adult_type"] == "sponsor"
                           else "Board member")),
             "roles": roles,
         }
+        # Written only when it is not the default, so a file exported and read
+        # back is the shape somebody would have typed.
+        if person.get("adult_type") is not None:
+            entry["type"] = "adult"
         if person["middle_name"]:
             entry["middle"] = person["middle_name"]
         if person["school_name"] != BOARD_SCHOOL:
@@ -322,18 +368,36 @@ def export(db) -> list[dict]:
 
 
 def report(result: dict) -> str:
+    """One line per person, code first. The same shape as demo-codes.txt.
+
+    EVERYBODY IS LISTED, including the people whose code did not change. A
+    report that showed only new codes looked like the run had missed somebody
+    — the usual case is adding one person to a board of twelve, which printed
+    one line and said nothing about the other eleven.
+    """
     lines = []
-    for row in result["people"]:
-        lines.append(f"{row['name']} - {row['title']} - {row['school']}")
-        lines.append(f"    {row['action']}"
-                     + (f", roles {' '.join(row['role_changes'])}"
-                        if row["role_changes"] else ""))
-        if row["code"]:
-            lines.append(f"    CODE  {row['code']}")
-        else:
-            lines.append("    code unchanged (use --new-codes to reissue)")
-        lines.append("")
+    for row in sorted(result["people"], key=lambda r: r["name"]):
+        code = row["code"] or "(unchanged)"
+        lines.append(f"{code:16}  —  {row['title']}: {row['name']}")
     return "\n".join(lines)
+
+
+def summarise(result: dict) -> str:
+    """What actually happened, printed under the list."""
+    people = result["people"]
+    issued = sum(1 for r in people if r["code"])
+    made = sum(1 for r in people if r["action"] == "created")
+    changed = sum(1 for r in people if r["role_changes"])
+
+    parts = [f"{len(people)} listed"]
+    if made:
+        parts.append(f"{made} added")
+    if changed:
+        parts.append(f"{changed} with roles changed")
+    parts.append(f"{issued} new code(s)" if issued else "no new codes")
+    if 0 < issued < len(people):
+        parts.append("the rest keep the codes they already have")
+    return ", ".join(parts) + "."
 
 
 def main() -> int:

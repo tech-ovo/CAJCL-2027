@@ -29,7 +29,7 @@ real schools. Agreed in principle; not done.
 
 | | What | Hours | Notes |
 | --- | --- | --- | --- |
-| SOON | Move board members into their real chapters | 3 | Yun Jen Yeh, Aurelian Shen and Mark Corrigan to Woodbridge; everyone else to University. Then delete `CAJCL State Board`. Moving a person does not change their prefix, so codes survive. |
+
 
 **The prefix is fully retired.** `ADM` is gone from `VALID_PREFIXES`, so those
 codes no longer sign anybody in, and `modal run backend/app.py::retire_adm_codes`
@@ -51,23 +51,20 @@ Nothing here is built. This is the largest remaining piece of the convention.
 
 | | What | Hours | Notes |
 | --- | --- | --- | --- |
-| BEFORE CONVENTION | Test-registration counts per chapter | 4 | "How many from each chapter sat Latin Grammar 2." One indexed query, one table. The obvious next dashboard. |
 | BEFORE CONVENTION | Score entry | 12 | Per test, per delegate. Needs an offline story: the gym has no wifi. |
 | BEFORE CONVENTION | Tabulation and placings | 10 | Ties, sweepstakes, per-chapter totals. Get the rules in writing from the awards chair **first**. |
 | BEFORE CONVENTION | Certamen brackets | 16 | Rounds, rooms, buzzer order. Consider not building this at all in year one. |
 | LATER | Printed award certificates | 4 | The print pipeline already exists; this is templates. |
 
-**Before any of it:** create accounts for Danny Yoo and Isa Baucum as Awards
-Chairs at University High School — add them to `board.json` with
-`"roles": ["awards_chair"]` and re-run `modal run backend/app.py::board`. That
-takes two minutes and unblocks the rest.
+Danny Yoo and Isa Baucum are in `board.json` as Awards Chairs at University
+High School, so **Entries** is already open to them.
 
 ## Known gaps in what already exists
 
 | | What | Hours | Notes |
 | --- | --- | --- | --- |
 | BEFORE CONVENTION | PDF generation, tested end to end | 3 | The print view works and is the same document. The PDF path has never been run against a real request. **Demo the print view.** |
-| BEFORE CONVENTION | Check-in screen | 6 | Friday morning, fifty chapters arriving at once. Wants to work on a phone with bad wifi. |
+| BEFORE CONVENTION | Check-in screen | 6 | Friday afternoon, fifty chapters arriving at once after school. Wants to work on a phone with bad wifi. |
 | SOON | Apps Script for Drive exports | 5 | Exports currently download to the browser. Only needed for contest submissions. |
 | LATER | Chapter team entries UI | 4 | The data model and endpoints exist. No screen. |
 

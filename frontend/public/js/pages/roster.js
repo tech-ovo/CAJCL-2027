@@ -50,8 +50,11 @@ export async function rosterPage(host, params = []) {
       tabula({
         label: "Chapter",
         name: school.name,
-        left: `${school.level} · ${school.city || ""}`,
-        right: personNumber(school.id),
+        // No number. `personNumber` is the number printed beside a PERSON, and
+        // putting a school's row id in the same place implied chapters are
+        // numbered in a way anybody uses. Nobody has ever referred to a
+        // chapter by a four-digit number.
+        left: [school.level, school.city].filter(Boolean).join(" · "),
       }),
 
       asChair
@@ -97,9 +100,20 @@ export async function rosterPage(host, params = []) {
             })
           : null,
         button("Preview packet", {
-          onclick: () => openPrintView(asChair
-            ? `/sponsor/packet?school_id=${schoolId}`
-            : "/sponsor/packet"),
+          // The warning used to be a paragraph under the button row, where
+          // nothing connected it to this button. Asked at the moment of
+          // clicking, it is unmissable and it is about the thing being done.
+          onclick: () => {
+            if (!confirm(
+              "This is a preview, not something to hand out.\n\n"
+              + "Access codes are stored scrambled and cannot be read back, "
+              + "so the sheets will show blocks where the codes would be.\n\n"
+              + "To give somebody a working sheet, use Issue new codes and "
+              + "print from the screen that follows.")) return;
+            openPrintView(asChair
+              ? `/sponsor/packet?school_id=${schoolId}`
+              : "/sponsor/packet");
+          },
         }),
         button(selecting ? "Cancel reissue" : "Issue new codes", {
           variant: selecting ? "btn--quiet" : "",
@@ -117,14 +131,6 @@ export async function rosterPage(host, params = []) {
               onclick: () => { showCancelled = !showCancelled; render(); },
             })
           : null),
-
-      el("p", { class: "small muted" },
-        el("strong", {}, "Preview only — do not hand these out. "),
-        "Access codes are stored scrambled and cannot be read back, so the "
-        + "sheets show blocks where the codes would be. To give somebody a "
-        + "working sheet, use ",
-        el("strong", {}, "Issue new codes"),
-        " and print from the screen that follows."),
 
       selecting ? reissueBar(people) : null,
 
@@ -328,6 +334,9 @@ export async function rosterPage(host, params = []) {
    * holds the actual title for a board member -- "Registration Chair" beats
    * "Other" for anyone reading the list. */
   function position(row) {
+    // The board title first: a convention president is a delegate, and
+    // "Delegate" is true but not what a chair scanning this list needs.
+    if (row.board_title) return row.board_title;
     if (row.person_type === "delegate") return "Delegate";
     if (row.adult_type_other) return row.adult_type_other;
     return {

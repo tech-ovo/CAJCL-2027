@@ -359,6 +359,74 @@ require a programmer.
 
 ---
 
+## 5b. Making a change stick
+
+**Start here before changing anything.** Most of what people want to change is
+not code, and the ones that are code have one rule that matters.
+
+### Which kind of change is this?
+
+| You want to change | Where | Deploy? |
+| --- | --- | --- |
+| Fees, deadlines, convention dates, venue, theme, ordinal | **Settings → Values** | No |
+| Any printed or displayed wording | **Settings → Printed wording** | No |
+| A banner on every page | **Settings → Announcements** | No |
+| Who holds which role | **Settings → Roles** | No |
+| Whether the site stays warm | **Settings → Operations** | No |
+| A new person on the board | `board.json`, then `modal run backend/app.py::board` | No |
+| Colours, fonts, page layout | `frontend/public/tokens.css` and `app.css` | Yes |
+| What a page says or does | the code | Yes |
+| A new table, column or index | a **new** migration | Yes |
+| The default data a future convention starts from | a **new** migration | Yes |
+
+The first six rows are the point of this system. If you find yourself editing
+code to change a fee or a sentence, stop — that is a bug in the dashboard, and
+worth fixing there instead.
+
+### The one rule about migrations
+
+**Never edit a migration that has already run. Not a statement, not a comment,
+not a space.**
+
+A migration is a record of what was done to a database that exists. Changing
+the file makes that record a lie, and the deploy will refuse to start:
+
+```
+005_seed_roles_settings.sql has already been applied but its contents
+have changed.
+```
+
+The hash covers the whole file, so correcting a typo in a comment breaks it
+exactly as thoroughly as rewriting a table would. This has happened twice here,
+both times over wording.
+
+**What to do instead**, whether you are fixing a typo or adding a column:
+
+1. `git checkout backend/migrations/00N_whatever.sql` — put it back.
+2. Write a new file: `011_says_what_it_does.sql`. The number is the next one up.
+3. Express the change as something that runs against a database that already
+   exists — `ALTER TABLE`, `CREATE INDEX IF NOT EXISTS`, an `UPDATE` with a
+   `WHERE` narrow enough not to clobber anybody's edits.
+4. `python scripts/checksum_migrations.py` and commit the manifest with it.
+5. `python -m pytest backend/tests` — this is caught locally now, not in CI.
+
+`backend/migrations/010_welcome_wording.sql` is a worked example of exactly
+this: two words of wording that had been changed the wrong way, moved into a
+migration that leaves a reworded copy alone.
+
+### Why the checksum exists at all
+
+Because the alternative is silent. Two databases that ran different versions of
+"the same" migration have different schemas and no way to tell. Refusing to
+start is the only safe response, and the deploy log says which file and why.
+
+`backend/migrations/CHECKSUMS.txt` brings the same check to your laptop, so the
+answer is `git checkout` before the commit rather than a failed deploy after
+it. `scripts/checksum_migrations.py` maintains it and refuses to record a file
+that has drifted since git first saw it.
+
+---
+
 ## 6. Deploying a change
 
 Push to `main`. A robot (GitHub Actions) runs the tests, updates the database

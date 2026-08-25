@@ -18,7 +18,7 @@
 -- because a person with both a student_activity and an adult_registration row
 -- would otherwise appear twice on their own sponsor's roster.
 SELECT p.id, p.first_name, p.middle_name, p.last_name, p.suffix,
-       p.person_type, p.adult_type, p.adult_type_other,
+       p.person_type, p.adult_type, p.adult_type_other, p.board_title,
        p.status, p.grade, p.latin_level, p.meal,
        p.cell_phone, p.email, p.latin_knowledge,
        p.guardian_name, p.guardian_phone,

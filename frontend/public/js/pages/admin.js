@@ -356,9 +356,9 @@ export async function adminPage(host) {
             { key: "name", label: "Name",
               render: (row) => cell(row, "name",
                 `${row.first_name} ${row.last_name}`) },
-            { key: "adult_type_other", label: "Position",
+            { key: "board_title", label: "Position",
               render: (row) => cell(row, "position",
-                row.adult_type_other || "—") },
+                row.board_title || row.adult_type_other || "—") },
             { key: "school_name", label: "Chapter" },
             { key: "role_names", label: "Roles",
               render: (row) => cell(row, "roles",
@@ -545,7 +545,7 @@ export async function adminPage(host) {
   function renamePerson(person) {
     const first = input({ value: person.first_name || "" });
     const last = input({ value: person.last_name || "" });
-    const title = input({ value: person.adult_type_other || "" });
+    const title = input({ value: person.board_title || person.adult_type_other || "" });
     let save = false;
 
     const form = el("form", { method: "dialog" });
@@ -578,10 +578,10 @@ export async function adminPage(host) {
       try {
         await api.patch(`/admin/people/${person.id}/name`, {
           first_name: first.value, last_name: last.value,
-          adult_type_other: title.value });
+          board_title: title.value });
         person.first_name = first.value.trim();
         person.last_name = last.value.trim();
-        person.adult_type_other = position;
+        person.board_title = position;
         if (!painted) render();          // the row was not on screen after all
       } catch (error) {
         // Put back what the server still believes, then say why.

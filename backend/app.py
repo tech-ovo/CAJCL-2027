@@ -49,7 +49,7 @@ secrets = [modal.Secret.from_name("cajcl-2027")]
 # controls whether the alarm clock rings, that controls what happens when it
 # does.
 #
-#     Friday morning of convention:  set True, `modal deploy`, then turn
+#     Friday of convention:          set True, `modal deploy`, then turn
 #                                    auto-export on in Settings > Operations
 #     Monday after:                  set False, `modal deploy`
 LIVE_GRADING = False
@@ -305,16 +305,18 @@ def board(file: str = "board.json", new_codes: bool = False,
     result = add_board_members.remote(people, new_codes=new_codes,
                                       create_schools=create_schools)
     text = add_board.report(result)
+    print()
     print(text)
+    print()
+    print(add_board.summarise(result))
 
-    issued = [row for row in result["people"] if row["code"]]
-    if issued:
-        pathlib.Path("board-codes.txt").write_text(
-            "Access codes for the convention board.\n"
-            "REAL PEOPLE. Do not commit this file; it is gitignored.\n"
-            "Each code is shown once and stored only as an HMAC.\n\n" + text,
-            encoding="utf-8")
-        print(f"{len(issued)} code(s) also written to board-codes.txt")
+    # Written every time, not only when a code was issued. The file is the
+    # list of who is on the board; one that appears only sometimes is one
+    # nobody trusts. People whose code did not change read "(unchanged)"
+    # rather than being left out — which is what made the file look as though
+    # it were missing members.
+    pathlib.Path("board-codes.txt").write_text(text + "\n", encoding="utf-8")
+    print("also written to board-codes.txt")
 
 
 @app.function(image=slim_image, secrets=secrets, timeout=900)
@@ -425,18 +427,22 @@ def setup(reset: bool = False, seed: bool = True):
 
     codes = seed_database.remote(reset=reset)
 
-    lines = [f"{label}\n    {code}" for label, code in codes.items()]
+    # One line each, code first, and nothing else on the page.
+    #
+    # This gets printed and read off in a hurry. A preamble is something to
+    # scroll past; a label on the line above its code is a place to lose. Code
+    # first because that is the column being read out. Sorted by PERSON,
+    # not by code: somebody looking at this sheet is looking for a name.
+    lines = [f"{code:16}  —  {label}"
+             for label, code in sorted(codes.items())]
     pathlib.Path("demo-codes.txt").write_text(
-        "Demonstration access codes - fabricated data, safe to lose.\n"
-        "Regenerated every time the seed runs.\n\n" + "\n".join(lines) + "\n",
-        encoding="utf-8")
+        "\n".join(lines) + "\n", encoding="utf-8")
 
     print()
-    print("ACCESS CODES FOR THE DEMO (also written to demo-codes.txt)")
-    print("Freshly generated: a reproducible credential is not a credential.")
-    print()
     for line in lines:
-        print("  " + line.replace("\n    ", "\n      "))
+        print("  " + line)
+    print()
+    print(f"{len(lines)} codes, also written to demo-codes.txt")
 
 
 # ---------------------------------------------------------------------------

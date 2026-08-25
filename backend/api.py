@@ -1012,6 +1012,61 @@ def unlock_forms(person_id: int, request: Request, payload: dict = Body(default=
     return {"ok": True, "unlocked": unlocked}
 
 
+@app.get("/admin/academics/counts")
+def academics_counts(principal: auth.Principal = guard("admin.academics.counts",
+                                                       "academics", "awards",
+                                                       school_rule="any")):
+    """How many delegates have registered for each test and activity.
+
+    THIS IS REGISTRATION DATA, NOT GRADING. It answers "how many papers do we
+    print, and how many rooms do we need", which is a question the Academics,
+    Activities and Athletics chairs have to answer weeks before anybody sits
+    anything. Scores, placings and Certamen are not built.
+
+    One indexed seek per catalog item -- about fifty -- rather than a scan of
+    every selection at the convention. See academics.sql.
+    """
+    with database().read() as tx:
+        rows = [dict(r) for r in tx.all("academics.item_counts")]
+
+    for row in rows:
+        row["chosen_hs"] = row["chosen"] - row["chosen_ms"]
+    return {
+        "items": rows,
+        "totals": {
+            "items_offered": len(rows),
+            "entries": sum(r["chosen"] for r in rows),
+            "chapter_entries": sum(r["chapter_entries"] for r in rows),
+        },
+    }
+
+
+@app.get("/admin/academics/item/{item_id}")
+def academics_item(item_id: int,
+                   principal: auth.Principal = guard("admin.academics.item",
+                                                     "academics", "awards",
+                                                     school_rule="any")):
+    """One item: which chapters, and who.
+
+    The names are what a proctor's sign-in sheet is made of, and they are
+    bounded by the number of people who chose this item rather than by the size
+    of the convention.
+    """
+    with database().read() as tx:
+        item = tx.one("academics.item", (item_id,))
+        if item is None:
+            raise auth.ForbiddenError("no such item")
+        chapters = [dict(r) for r in tx.all("academics.item_by_chapter", (item_id,))]
+        people = [dict(r) for r in tx.all("academics.item_people", (item_id,))]
+
+    return {
+        "item": dict(item),
+        "chapters": chapters,
+        "people": people,
+        "total": len(people),
+    }
+
+
 @app.get("/admin/audit")
 def audit_log(cursor: int | None = Query(default=None),
               school_id: int | None = Query(default=None),
@@ -1298,8 +1353,11 @@ def rename_person(person_id: int, request: Request, payload: dict = Body(...),
             raise auth.ForbiddenError("no such person")
 
         before = f"{person['first_name']} {person['last_name']}"
-        title = payload.get("adult_type_other")
-        title = title.strip() if isinstance(title, str) else person["adult_type_other"]
+        # `board_title`, not `adult_type_other`: almost everybody on the board
+        # is a delegate, and adult_type_other is an adult-only column that
+        # means something else entirely. See migration 011.
+        title = payload.get("board_title")
+        title = title.strip() if isinstance(title, str) else person["board_title"]
 
         tx.run("people.rename", (
             first, (payload.get("middle_name") or "").strip() or None, last,
@@ -1313,7 +1371,7 @@ def rename_person(person_id: int, request: Request, payload: dict = Body(...),
                  school_id=person["school_id"],
                  entity_type="person", entity_id=person_id,
                  changed_fields=["first_name", "middle_name", "last_name",
-                                 "adult_type_other"])
+                                 "board_title"])
     return {"ok": True, "name": after}
 
 
@@ -1587,6 +1645,20 @@ def packet(school_id: int | None = Query(default=None),
             auth.require_person_in_scope(tx, principal, one)
         return HTMLResponse(printing.render_packet(
             tx, school, only_person=person_id, only_people=chosen))
+
+
+@app.get("/admin/academics/item/{item_id}/sheet", response_class=HTMLResponse)
+def academics_sheet(item_id: int,
+                    principal: auth.Principal = guard("admin.academics.sheet",
+                                                      "academics", "awards",
+                                                      school_rule="any")):
+    """A proctor's sign-in sheet for one item. Printed and carried into a room."""
+    with database().read() as tx:
+        item = tx.one("academics.item", (item_id,))
+        if item is None:
+            raise auth.ForbiddenError("no such item")
+        people = [dict(r) for r in tx.all("academics.item_people", (item_id,))]
+        return HTMLResponse(printing.render_signin_sheet(tx, dict(item), people))
 
 
 @app.get("/sponsor/invoice.html", response_class=HTMLResponse)
