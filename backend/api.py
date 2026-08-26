@@ -24,7 +24,7 @@ import os
 import uuid
 from dataclasses import dataclass
 
-from fastapi import Body, Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi import Body, Depends, FastAPI, Header, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 
@@ -359,6 +359,32 @@ def _school_of(tx, principal: auth.Principal, school_id: int | None) -> dict:
     return dict(school)
 
 
+def _person_of(tx, principal: auth.Principal, person_id: int) -> dict:
+    """Resolve one person this request acts on, and check the caller may.
+
+    The scope check comes FIRST and is not optional. Every endpoint that names
+    a person in its path is one missing line away from letting a sponsor at one
+    chapter edit a delegate at another, and the two steps were written out by
+    hand at seven call sites. Here they cannot be separated.
+    """
+    auth.require_person_in_scope(tx, principal, person_id)
+    person = tx.one("people.get", (person_id,))
+    if person is None:
+        raise auth.ForbiddenError("no such person")
+    return dict(person)
+
+
+def _person_and_school(tx, principal: auth.Principal,
+                       person_id: int) -> tuple[dict, dict]:
+    """The same, plus the school they belong to -- which `roster` needs in
+    order to recount it after the change."""
+    person = _person_of(tx, principal, person_id)
+    school = tx.one("schools.get", (person["school_id"],))
+    if school is None:
+        raise auth.ForbiddenError("no such school")
+    return person, dict(school)
+
+
 @app.get("/sponsor/roster")
 def get_roster(school_id: int | None = Query(default=None),
                principal: auth.Principal = guard("sponsor.roster", "sponsor",
@@ -450,8 +476,7 @@ def edit_person(person_id: int, request: Request, payload: dict = Body(...),
                 principal: auth.Principal = guard("sponsor.people.edit", "sponsor",
                                                   "registration", writes=True)):
     with database().tx(request_id=request_id(request)) as tx:
-        auth.require_person_in_scope(tx, principal, person_id)
-        person = dict(tx.one("people.get", (person_id,)))
+        person = _person_of(tx, principal, person_id)
         now = clock.now_iso()
 
         if person["person_type"] == "delegate":
@@ -501,9 +526,7 @@ def cancel_person(person_id: int, request: Request,
                                                     "sponsor", "registration",
                                                     writes=True)):
     with database().tx(request_id=request_id(request)) as tx:
-        auth.require_person_in_scope(tx, principal, person_id)
-        person = dict(tx.one("people.get", (person_id,)))
-        school = dict(tx.one("schools.get", (person["school_id"],)))
+        person, school = _person_and_school(tx, principal, person_id)
         status = roster.cancel(tx, school, principal, person)
     return {"ok": True, "status": status}
 
@@ -514,9 +537,7 @@ def restore_person(person_id: int, request: Request,
                                                      "sponsor", "registration",
                                                      writes=True)):
     with database().tx(request_id=request_id(request)) as tx:
-        auth.require_person_in_scope(tx, principal, person_id)
-        person = dict(tx.one("people.get", (person_id,)))
-        school = dict(tx.one("schools.get", (person["school_id"],)))
+        person, school = _person_and_school(tx, principal, person_id)
         roster.restore(tx, school, principal, person)
     return {"ok": True}
 
@@ -532,9 +553,7 @@ def regenerate(person_id: int, request: Request,
     whose QR no longer works and no obvious way to produce a new one.
     """
     with database().tx(request_id=request_id(request)) as tx:
-        auth.require_person_in_scope(tx, principal, person_id)
-        person = dict(tx.one("people.get", (person_id,)))
-        school = dict(tx.one("schools.get", (person["school_id"],)))
+        person, school = _person_and_school(tx, principal, person_id)
         code = roster.regenerate_code(tx, school, principal, person)
     return {
         "code": code,
@@ -608,7 +627,8 @@ def regenerate_many(request: Request, payload: dict = Body(...),
 @app.post("/sponsor/people/{person_id}/chapter-leader")
 def set_chapter_leader(person_id: int, request: Request, payload: dict = Body(...),
                        principal: auth.Principal = guard("sponsor.chapter_leader",
-                                                         "sponsor", writes=True)):
+                                                         "sponsor", "registration",
+                                                         writes=True)):
     """Grant or revoke the chapter_leader ROLE on an existing account.
 
     A scope is never attached to a person directly. The only path is
@@ -617,8 +637,7 @@ def set_chapter_leader(person_id: int, request: Request, payload: dict = Body(..
     """
     grant = bool(payload.get("granted", True))
     with database().tx(request_id=request_id(request)) as tx:
-        auth.require_person_in_scope(tx, principal, person_id)
-        person = dict(tx.one("people.get", (person_id,)))
+        person = _person_of(tx, principal, person_id)
         if person["person_type"] != "delegate":
             raise catalog.ValidationError(["Only a delegate can be a chapter leader."])
         role = tx.one("roles.by_key", ("chapter_leader",))
@@ -653,9 +672,7 @@ def mark_paper(request: Request, payload: dict = Body(...),
                                                  "registration", writes=True)):
     with database().tx(request_id=request_id(request)) as tx:
         person_id = int(payload.get("person_id") or 0)
-        auth.require_person_in_scope(tx, principal, person_id)
-        person = dict(tx.one("people.get", (person_id,)))
-        school = dict(tx.one("schools.get", (person["school_id"],)))
+        person, school = _person_and_school(tx, principal, person_id)
         roster.mark_paper_form(tx, school, principal, person,
                                payload.get("form_type") or "",
                                bool(payload.get("received")))
@@ -770,17 +787,6 @@ def put_adult_sheet(request: Request, payload: dict = Body(...),
         if person["person_type"] != "adult":
             raise auth.ForbiddenError("that form is for adults")
         return forms.save_adult_sheet(tx, principal, person, payload)
-
-
-@app.get("/me/catalog")
-def my_catalog(principal: auth.Principal = Depends(any_session)):
-    with database().read() as tx:
-        person = _self(tx, principal)
-        return {"catalog": catalog.for_person(
-            tx, person_type=person["person_type"],
-            school_level=person["school_level"],
-            latin_level=person["latin_level"],
-            latin_knowledge=person["latin_knowledge"])}
 
 
 def _self(tx, principal: auth.Principal) -> dict:
@@ -1182,13 +1188,19 @@ def registration_overview(principal: auth.Principal = guard("admin.overview",
 
         if row["status"] != "active":
             continue
-        totals["chapters"] += 1
-        if row["people"]:
-            totals["chapters_started"] += 1
+
+        # CHAPTERS are counted; PEOPLE are counted wherever they come from.
+        # SCL is not a chapter and must not inflate the chapter figure, but its
+        # attendees are attending, and the meal totals below feed a caterer.
+        is_chapter = row["kind"] == "chapter"
+        if is_chapter:
+            totals["chapters"] += 1
+            if row["people"]:
+                totals["chapters_started"] += 1
         # An exempt chapter owes nothing, so "paid" is not a useful thing to
         # say about it. Counting it as unpaid would make the figure read as a
         # problem that cannot be solved.
-        if row["billing_exempt"] or row["balance_cents"] <= 0:
+        if is_chapter and (row["billing_exempt"] or row["balance_cents"] <= 0):
             totals["chapters_paid"] += 1
 
         for key in ("delegates_active", "adults_active", "adults_sponsors",

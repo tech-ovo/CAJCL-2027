@@ -41,25 +41,6 @@ def money(cents: int | None) -> str:
     return f"{sign}${abs(cents) / 100:,.2f}"
 
 
-def roman(n: int) -> str:
-    """Roman numerals for METADATA CONTEXTS ONLY.
-
-    Convention dates in the masthead rail and on printed sheets. Never for a
-    date a person has to act on -- deadlines and payment dates stay Arabic,
-    because a parent reading a due date should not have to decode it. This is
-    the entire budget for classical flourish on the printed page.
-    """
-    table = ((1000, "M"), (900, "CM"), (500, "D"), (400, "CD"), (100, "C"),
-             (90, "XC"), (50, "L"), (40, "XL"), (10, "X"), (9, "IX"),
-             (5, "V"), (4, "IV"), (1, "I"))
-    out = []
-    for value, numeral in table:
-        while n >= value:
-            out.append(numeral)
-            n -= value
-    return "".join(out)
-
-
 def convention_dates(tx: Tx) -> str:
     """March 12-13, 2027.
 

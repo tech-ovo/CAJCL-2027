@@ -120,6 +120,12 @@ export async function checkinPage(host) {
    * requests and lands wherever the network decides; two buttons that each
    * assert a state cannot. */
   function open_(chapter) {
+    // Built by hand rather than with `check()` from ui.js, and deliberately.
+    // Those helpers ask one question, resolve, and close. This dialog STAYS
+    // OPEN and reports back into itself: mark arrived, see the time appear,
+    // change the note, mark arrived again, all without the row underneath
+    // moving. At a desk with a queue, closing after every action is the wrong
+    // shape.
     const note = el("textarea", {
       id: "checkin-note", rows: "5", class: "checkin__note",
       placeholder: NOTE_PLACEHOLDER,

@@ -27,7 +27,7 @@ import secrets
 
 from . import auth, clock, settings, stats
 from .db import Tx
-from .names import ParsedRow, parse_roster
+from .names import parse_roster
 
 # How long a preview stays committable. Long enough for a sponsor to read
 # thirty rows carefully and fix a few; short enough that a key found in a

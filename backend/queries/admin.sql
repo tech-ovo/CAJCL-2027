@@ -41,30 +41,15 @@ ORDER BY c.sort_order, i.sort_order;
 SELECT id, item_id, name, sort_order, active
 FROM catalog_item_options ORDER BY item_id, sort_order;
 
--- name: catalog.category_update
-UPDATE catalog_categories
-SET name = ?, description = ?, min_selections = ?, max_selections = ?,
-    enforcement = ?, sort_order = ?, active = ?
-WHERE id = ?;
-
 -- name: catalog.item_update
+-- The one catalog write there is a screen for, behind PUT /admin/catalog/items.
+-- Creating categories, items and options is still a migration, because a new
+-- contest is a decision the state board minutes, not something typed into a box.
 UPDATE catalog_items
 SET name = ?, description = ?, eligible_latin_levels = ?,
     eligible_school_levels = ?, registration_scope = ?, max_sub_selections = ?,
     min_latin_knowledge = ?, sort_order = ?, active = ?
 WHERE id = ?;
-
--- name: catalog.item_create
-INSERT INTO catalog_items (
-  category_id, name, description, eligible_latin_levels, eligible_school_levels,
-  registration_scope, max_sub_selections, min_latin_knowledge, sort_order, active
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-
--- name: catalog.option_create
-INSERT INTO catalog_item_options (item_id, name, sort_order, active) VALUES (?, ?, ?, ?);
-
--- name: catalog.option_update
-UPDATE catalog_item_options SET name = ?, sort_order = ?, active = ? WHERE id = ?;
 
 -- name: announcements.active
 -- The banner. Uses idx_announcements_active.

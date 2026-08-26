@@ -161,8 +161,9 @@ is wrong by default the moment a detail changes.
 
 ### 4. Then open registration
 
-`docs/SPONSOR-EMAIL.md` is the message, and the checklist at the bottom of it
-is the last thing to read before sending.
+`docs/REGISTRATION.md` §4 is the message, and the checklist under it is the
+last thing to read before sending. That document is the registration chairs'
+walkthrough of the whole job, so hand it to them at the same time.
 
 ### What about the migrations?
 
@@ -926,10 +927,18 @@ because you will click straight past the thing that is broken.
   it is the same document. The first PDF request has to start a second, heavier
   container and takes 30 seconds or more. **Demonstrate the print view, not the
   PDF.**
-- **The usage page shows a message rather than numbers**, unless the three
-  optional Turso settings from step 2 are present.
-- **The catalog editor is read-only.** The catalog itself is correct; the
-  screen for editing it was cut for time.
+- **There is no usage page either.** `GET /admin/usage` returns the row counts
+  and needs the three optional Turso settings from step 2; nothing on the site
+  calls it. To see the numbers, run `python scripts/measure_usage.py`, which
+  reads Turso directly and does not need the API at all.
+- **There is no catalog screen.** The catalog itself is correct, and the sheets
+  read it, but nothing on the site edits it. Changing a contest means a
+  migration. This line used to say the editor was read-only, which was worse
+  than saying nothing: somebody would have gone looking for it.
+- **Four back-end jobs have no button.** Waiving an activity sheet, reopening a
+  submitted form, editing a chapter's details, and adding a person from the
+  admin side all work, and all have tests, but each one is reachable only from a
+  script. They are listed in `docs/TODO.md` with what each screen would take.
 - **Exports download to your computer.** Writing them to Google Drive requires
   Apps Script, which is not set up and is not needed here.
 

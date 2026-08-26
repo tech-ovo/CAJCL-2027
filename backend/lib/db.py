@@ -445,7 +445,11 @@ class Database:
     def _open(self) -> _Handle:
         if self._url is not None:
             return _open_remote(self._url, self._auth_token)
-        assert self._path is not None, "a Database has either a path or a url"
+        if self._path is None:
+            # An `assert` here vanishes under `python -O`, and this is a real
+            # invariant rather than a debugging aid: a Database with neither a
+            # path nor a url would otherwise fail somewhere less obvious.
+            raise ValueError("a Database has either a path or a url")
         return _open_local(self._path)
 
     @contextmanager

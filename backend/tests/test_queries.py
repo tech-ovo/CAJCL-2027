@@ -19,6 +19,7 @@ The enforcement mechanism had a hole exactly where the code was best explained.
 
 from __future__ import annotations
 
+import pathlib
 import re
 
 from backend.lib.queries import REGISTRY
@@ -116,3 +117,27 @@ def test_placeholders_are_qmark_only():
         body = re.sub(r"--[^\n]*", "", query.sql)
         assert ":" not in re.sub(r"'[^']*'", "", body).replace("::", ""), \
             f"{name} appears to use named placeholders"
+
+
+def test_every_query_has_a_caller():
+    """A named query nothing runs is SQL nobody tested.
+
+    It still passes the plan check and the placeholder checks, so it looks
+    maintained while drifting away from the schema underneath it -- and the
+    first person to reach for it discovers that at runtime. Five of these had
+    accumulated: four catalog writes for an editor that has never been built,
+    and a paper-forms read the roster query had absorbed.
+
+    If a query here is genuinely for something not yet built, build it or drop
+    it. The shape is recorded in docs/schema.md either way.
+    """
+    root = pathlib.Path(__file__).resolve().parents[2]
+    python = "\n".join(
+        p.read_text(encoding="utf-8")
+        for d in ("backend", "scripts")
+        for p in (root / d).rglob("*.py"))
+
+    orphans = sorted(name for name in REGISTRY
+                     if f'"{name}"' not in python and f"'{name}'" not in python)
+    assert orphans == [], (
+        "no Python runs these queries: " + ", ".join(orphans))

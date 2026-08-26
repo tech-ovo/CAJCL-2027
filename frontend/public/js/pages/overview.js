@@ -28,7 +28,7 @@ export async function overviewPage(host) {
     const t = data.totals;
 
     add(host,
-      el("h1", {}, "Registration"),
+      el("h1", {}, "Overview"),
       el("p", { class: "lede" },
         "Where every chapter has got to. Figures come from the counters, which "
         + "move with the roster, so this is what is true now."),
@@ -78,8 +78,8 @@ export async function overviewPage(host) {
       el("p", { class: "muted" },
         `${known.toLocaleString("en-US")} answered, `
         + `${t.meal_unanswered.toLocaleString("en-US")} still to come. `
-        + "Every figure here counts active attendees only — somebody who "
-        + "withdrew is not eating."),
+        + "This is everybody attending, chapters and SCL alike, and counts "
+        + "active attendees only — somebody who withdrew is not eating."),
 
       el("div", { class: "totals" },
         ...rows.map(([label, count]) => el("div", { class: "totals__row" },
@@ -99,6 +99,10 @@ export async function overviewPage(host) {
   function chapters() {
     const rows = data.chapters.filter((row) => {
       if (row.status !== "active") return false;
+      // The heading says Chapters and means it. SCL and members at large are
+      // in the totals above, and in Check-in, but they have no sponsor to
+      // chase and no invoice to settle, so there is nothing to do to a row.
+      if (row.kind !== "chapter") return false;
       if (!onlyProblems) return true;
       // "Needs attention" is deliberately narrow: something a chair can act on
       // today. A chapter with nobody in it and one that owes money are two

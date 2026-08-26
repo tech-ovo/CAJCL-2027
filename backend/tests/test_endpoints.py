@@ -199,7 +199,7 @@ def test_no_route_is_accidentally_public():
         "/auth/redeem", "/health",
         # These take any valid session and check authority in the handler.
         "/auth/me", "/auth/logout", "/auth/impersonate/end",
-        "/me/adult-sheet", "/me/catalog",
+        "/me/adult-sheet",
         "/auth/sessions/{session_id}/revoke",
     }
     guarded_paths = set()
@@ -474,3 +474,117 @@ def test_the_board_script_loads_without_importing_the_backend():
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "[]", (
         "importing scripts.add_board pulled in " + result.stdout.strip())
+
+
+def test_the_roster_page_never_offers_a_button_the_api_refuses():
+    """The roster is served to two different people and it must not lie to
+    either.
+
+    A sponsor opens it for their own chapter; a registration chair opens the
+    same page for somebody else's. Every control on it is therefore reachable
+    by both -- unless it is wrapped in a `hasScope` check, which the page does
+    for the two that genuinely need `*`.
+
+    "Make leader" was not wrapped and was not shared: it took `sponsor` alone,
+    so a chair saw a button that answered 403. Nothing failed until somebody
+    pressed it.
+    """
+    page = (pathlib.Path(__file__).resolve().parents[2]
+            / "frontend/public/js/pages/roster.js").read_text(encoding="utf-8")
+
+    shared = {name: guard for name, guard in api.GUARDS.items()
+              if name.startswith("sponsor.")}
+    offenders = []
+    for name, guard in sorted(shared.items()):
+        # The endpoint the page calls, derived from the guard's own route.
+        path = next((route[2] for route in ROUTES if route[0] == name), None)
+        if path is None:
+            continue
+        stem = path.split("{")[0].split("?")[0].rstrip("/")
+        if stem not in page:
+            continue
+        if not {"sponsor", "registration"} <= set(guard.scopes):
+            offenders.append(f"{name} takes {guard.scopes}")
+
+    assert offenders == [], (
+        "the roster page offers these to a chair the API turns away: "
+        + "; ".join(offenders))
+
+
+def test_the_overview_counts_everybody_who_is_attending(fx, client):
+    """The Overview totals must not stop at chapter boundaries.
+
+    CHAPTERS are counted, because that figure means "how many delegations".
+    PEOPLE are counted wherever they come from: SCL, the state board and --
+    later -- members at large all attend and all eat, so they belong in the
+    totals. The table of chapters underneath still leaves them out, because
+    they have no sponsor to chase and no invoice to settle.
+
+    Both halves used to come from a query filtered to `kind = 'chapter'`, which
+    made the meal figures short by however many people registered outside a
+    chapter. Those figures are what the caterer is given.
+    """
+    body = client.get("/admin/overview", headers=as_(fx, "chair")).json()
+    totals = body["totals"]
+
+    kinds = {row["school_name"]: row["kind"] for row in body["chapters"]}
+    assert "CAJCL State Board" in kinds, (
+        "an organization was filtered out of the rows the totals are built "
+        "from, so its attendees are missing from the meal figures")
+    assert kinds["CAJCL State Board"] == "organization"
+    assert totals["chapters"] == len(
+        [k for k in kinds.values() if k == "chapter"]), (
+        "an organization is not a chapter")
+
+    # Counted straight off the table, not through the registry: the point of
+    # the check is that the cached totals match the rows.
+    import sqlite3
+    raw = sqlite3.connect(fx.path)
+    attending = raw.execute(
+        "SELECT COUNT(*) FROM people WHERE status = 'active'").fetchone()[0]
+    raw.close()
+
+    assert totals["people"] == attending, (
+        "somebody registered outside a chapter is still attending")
+
+
+def test_a_chair_can_give_a_new_chapter_its_sponsor(fx, client):
+    """The step that closes the loop on creating a chapter.
+
+    A chair adds a chapter from the Chapters page, and until the roster grew an
+    "Add the sponsor" button that chapter sat there with nobody able to sign in
+    to it. The endpoint was always here; nothing called it, and the roster's
+    own banner said to use Settings, which grants roles to people who already
+    have accounts.
+    """
+    headers = as_(fx, "chair")
+    made = client.post("/admin/schools",
+                       json={"name": "Brand New High School", "city": "Irvine",
+                             "level": "HS"},
+                       headers=headers)
+    assert made.status_code == 200, made.text
+    school_id = made.json()["id"]
+
+    roster = client.get(f"/sponsor/roster?school_id={school_id}",
+                        headers=headers).json()
+    assert roster["people"] == [], "a new chapter starts empty"
+
+    created = client.post(f"/admin/schools/{school_id}/people",
+                          json={"first_name": "Nia", "last_name": "Okafor",
+                                "email": "nia@example.edu",
+                                "adult_type": "sponsor"},
+                          headers=headers)
+    assert created.status_code == 200, created.text
+    body = created.json()
+    assert body["code"].startswith("SPO-"), "a sponsor gets a sponsor's prefix"
+
+    roster = client.get(f"/sponsor/roster?school_id={school_id}",
+                        headers=headers).json()
+    sponsors = [p for p in roster["people"] if p.get("adult_type") == "sponsor"]
+    assert len(sponsors) == 1 and sponsors[0]["first_name"] == "Nia"
+
+    # And the code signs them in, which is the whole point of issuing it.
+    signed_in = client.post("/auth/redeem", json={"code": body["code"]})
+    assert signed_in.status_code == 200, signed_in.text
+    assert (signed_in.json()["person"]["school"]["name"]
+            == "Brand New High School")

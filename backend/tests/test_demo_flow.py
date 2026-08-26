@@ -15,7 +15,6 @@ in the same place, and it is far better to find that here.
 
 from __future__ import annotations
 
-import re
 
 import pytest
 

@@ -318,6 +318,11 @@ export function guardUnsaved(isDirty, what = "unsaved changes") {
     const anchor = event.target.closest && event.target.closest('a[href^="#"]');
     if (!anchor || anchor.getAttribute("href") === location.hash) return;
 
+    // THE ONE NATIVE DIALOG LEFT, and it has to be. Everything else on the
+    // site uses `check()` below, which looks like the site rather than like
+    // the browser -- but `check()` returns a promise, and this handler must
+    // decide before it returns whether to cancel the click. By the time a
+    // promise resolves, the navigation has already happened.
     const ok = window.confirm(
       `You have ${what}.\n\nLeave this page and lose them?`);
     if (ok) { release(); return; }
@@ -340,6 +345,89 @@ export function guardUnsaved(isDirty, what = "unsaved changes") {
  * ----------------------------------------------------------------------- */
 
 /**
+ * The scaffolding every dialog here shares: a <dialog> holding a
+ * `method="dialog"` form, removed from the document when it closes.
+ *
+ * `showModal()` traps focus, closes on Escape, restores focus to whatever
+ * opened it, and paints a backdrop — none of which is worth reimplementing,
+ * and all of which native `alert()` and `confirm()` also do. What those two
+ * cannot do is look like this site. Projected in a room, a browser dialog
+ * reads as something having gone wrong.
+ *
+ * `build` receives (form, close) and returns the value the promise resolves
+ * to, read at close time rather than returned directly, because the dialog may
+ * also be dismissed with Escape or the backdrop.
+ */
+function dialogue(build) {
+  return new Promise((resolve) => {
+    const form = el("form", { method: "dialog" });
+    const dialog = el("dialog", { class: "dialog" }, form);
+    const read = build(form, () => dialog.close());
+
+    dialog.addEventListener("close", () => {
+      dialog.remove();
+      resolve(read());
+    });
+
+    add(document.body, dialog);
+    dialog.showModal();
+    const first = form.querySelector("input, textarea, button");
+    if (first) first.focus();
+  });
+}
+
+/**
+ * Yes or no. Resolves true only if the confirming button was pressed.
+ *
+ * Replaces `window.confirm`. Escape, the backdrop and Cancel all resolve
+ * false, so the safe answer is the one you get by doing nothing — which is the
+ * opposite of a native confirm's OK-focused default.
+ *
+ * NOT usable where the answer must be known synchronously. `guardUnsaved` has
+ * to decide inside a click handler whether to cancel the navigation, and a
+ * promise resolves a turn too late; it keeps `window.confirm` deliberately.
+ */
+export function check({ title, body, confirmLabel = "Continue",
+                        cancelLabel = "Cancel", danger = false } = {}) {
+  return dialogue((form, close) => {
+    let yes = false;
+    add(form,
+      el("h2", {}, title),
+      ...(Array.isArray(body) ? body : [body]).filter(Boolean)
+        .map((line) => (typeof line === "string" ? el("p", {}, line) : line)),
+      el("div", { class: "btn-row" },
+        button(confirmLabel, {
+          variant: danger ? "btn--danger" : "btn--primary",
+          type: "submit",
+          onclick: () => { yes = true; },
+        }),
+        button(cancelLabel, { variant: "btn--quiet", onclick: () => close() })));
+    return () => yes;
+  });
+}
+
+/**
+ * Say something and wait for it to be acknowledged. Replaces `window.alert`.
+ *
+ * Used for the failures a person must see before carrying on — a save that did
+ * not happen, a pop-up the browser blocked. Anything a page can show inline
+ * should be shown inline instead; this is for the moment when there is no
+ * inline place left to put it.
+ */
+export function tell({ title = "That did not work", body } = {}) {
+  return dialogue((form, close) => {
+    add(form,
+      el("h2", {}, title),
+      ...(Array.isArray(body) ? body : [body]).filter(Boolean)
+        .map((line) => (typeof line === "string" ? el("p", {}, line) : line)),
+      el("div", { class: "btn-row" },
+        button("Close", { variant: "btn--primary", type: "submit" })));
+    return () => undefined;
+  });
+}
+
+
+/**
  * Ask for something in a real dialog. Resolves to the value, or null.
  *
  * WHY NOT window.prompt
@@ -358,7 +446,7 @@ export function guardUnsaved(isDirty, what = "unsaved changes") {
  */
 export function ask({ title, body, label, confirmLabel = "Continue",
                       secret = false, danger = false } = {}) {
-  return new Promise((resolve) => {
+  return dialogue((form, close) => {
     const input = el("input", {
       type: secret ? "password" : "text",
       class: secret ? "mono" : null,
@@ -369,7 +457,6 @@ export function ask({ title, body, label, confirmLabel = "Continue",
     });
 
     let answer = null;
-    const form = el("form", { method: "dialog" });
     add(form,
       el("h2", {}, title),
       body ? el("p", {}, body) : null,
@@ -382,18 +469,9 @@ export function ask({ title, body, label, confirmLabel = "Continue",
         }),
         button("Cancel", {
           variant: "btn--quiet",
-          onclick: () => { answer = null; dialog.close(); },
+          onclick: () => { answer = null; close(); },
         })));
-
-    const dialog = el("dialog", { class: "dialog" }, form);
-    dialog.addEventListener("close", () => {
-      dialog.remove();
-      resolve(answer || null);
-    });
-
-    add(document.body, dialog);
-    dialog.showModal();
-    input.focus();
+    return () => answer || null;
   });
 }
 

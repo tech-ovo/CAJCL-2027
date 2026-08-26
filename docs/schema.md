@@ -640,7 +640,6 @@ All endpoints are under one Modal FastAPI app. Every endpoint declares a require
 | PUT | `/me/activity-sheet` | `delegate` | Whole-form replace in one transaction; rejects if locked |
 | GET | `/me/adult-sheet` | any adult | |
 | PUT | `/me/adult-sheet` | any adult | |
-| GET | `/me/catalog` | any session | Filtered by person type, school level, Latin level |
 
 ### Admin
 | Method | Path | Scope | Notes |

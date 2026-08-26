@@ -24,7 +24,6 @@ SCOPES REACH A PERSON ONLY THROUGH ROLES
 from __future__ import annotations
 
 import hashlib
-import hmac
 import os
 import secrets
 from dataclasses import dataclass, field, replace

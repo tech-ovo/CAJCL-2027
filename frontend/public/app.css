@@ -309,15 +309,6 @@ hr.accent { border: 0; border-top: 2px solid var(--accent); width: var(--space-7
   letter-spacing: var(--tracking-label); text-transform: uppercase;
   color: var(--text-muted); }
 
-.epigraph--inline {
-  padding: 0; display: flex; gap: var(--space-3); align-items: baseline;
-  flex-wrap: wrap; font-size: var(--size-sm);
-}
-.epigraph--inline .epigraph__latin {
-  font-size: var(--size-base); margin: 0; max-width: none;
-}
-.epigraph--inline .epigraph__english { margin: 0; color: var(--text-muted); }
-
 /* ===========================================================================
  * Navigation
  * ======================================================================== */
@@ -355,7 +346,6 @@ hr.accent { border: 0; border-top: 2px solid var(--accent); width: var(--space-7
 .banner--demo { background: var(--tint); color: var(--ink); }
 .banner--info { background: var(--tint); color: var(--ink); }
 .banner--warning { background: var(--ink); color: var(--ivory); }
-.banner--critical { background: var(--ink); color: var(--ivory); border-bottom-color: var(--accent); border-bottom-width: 3px; }
 .banner__label {
   font-size: var(--size-xs); letter-spacing: var(--tracking-label);
   text-transform: uppercase; font-weight: var(--weight-semi);
@@ -609,7 +599,6 @@ th[aria-sort] { color: var(--text); }
   color: var(--text-muted); background: var(--panel-bg);
 }
 .pill--done { border-color: var(--status-done); color: var(--status-done); font-weight: var(--weight-semi); }
-.pill--attention { border-color: var(--status-attention); color: var(--status-attention); }
 
 /* On narrow screens tables become labelled row-groups rather than a horizontal
  * scroll — reading a roster sideways on a phone is not reading it. */
@@ -694,22 +683,11 @@ th[aria-sort] { color: var(--text); }
 }
 .stat--stale .stat__value { color: var(--text-muted); }
 
-/* A flat lavender field standing in for imagery that does not exist yet. There
- * is no stock photography and no AI-generated classical imagery anywhere on
- * this site, and the absence must not read as unfinished. */
-.image-slot {
-  background: var(--tint); border: var(--border);
-  min-height: 12rem; display: flex; align-items: flex-end;
-  padding: var(--space-4);
-}
-.image-slot .label { color: var(--ink); }
-
 /* ===========================================================================
  * Panels and detail lists
  * ======================================================================== */
 
 .panel { background: var(--panel-bg); border: var(--border); padding: var(--space-5); }
-.panel--flush { padding: 0; }
 
 /* The term is small uppercase sans and the value is body serif, so they have
  * different line boxes. Left to stretch, each sits at the top of its own box
@@ -774,6 +752,14 @@ th[aria-sort] { color: var(--text); }
 .dialog::backdrop { background: rgb(16 42 86 / 0.45); }
 .dialog h2 { margin-top: 0; }
 .dialog .field { margin-bottom: var(--space-4); }
+
+/* `check()` and `tell()` take several paragraphs, and the reissue dialog names
+ * the people it is about in a list. Both need to breathe, and the list needs
+ * the button row pushed clear of it. */
+.dialog p { margin: 0 0 var(--space-3); max-width: none; }
+.dialog ul { margin: 0 0 var(--space-3); padding-left: var(--space-5); }
+.dialog li { margin-bottom: var(--space-1); }
+.dialog .btn-row { margin-top: var(--space-5); }
 
 /* A short list of term-and-answer pairs in the rail. Not a <dl>: at rail width
  * the value column wraps three words onto two lines, and small capitals for

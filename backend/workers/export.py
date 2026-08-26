@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import os
 import pathlib
 import sqlite3
 import sys
@@ -259,8 +260,6 @@ def stamp() -> str:
 def run(fmt: str = "xlsx", anonymized: bool = False, db_path: str | None = None,
         out_dir: str = "/tmp/exports") -> dict:
     """Called by Modal. Returns a description of what was written."""
-    import os
-
     path = db_path or os.environ.get("EXPORT_DB_PATH")
     if path is None:
         # On Modal the database is Turso, so mirror it to a local file first.
@@ -332,15 +331,23 @@ def mirror_turso_to_file(out_dir: str) -> str:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--db", required=True, help="path to a SQLite .db file")
+    ap.add_argument("--db", default=None,
+                    help="path to a SQLite .db file "
+                         "(or set EXPORT_DB_PATH, which run() already reads)")
     ap.add_argument("--out", default="./exports")
     ap.add_argument("--only", choices=["sql", "xlsx"], default=None,
                     help="write just one format instead of all four files")
     args = ap.parse_args()
 
+    # Same fallback `run()` uses, so the documented environment variable means
+    # the same thing whether this file is imported or run from a terminal.
+    db = args.db or os.environ.get("EXPORT_DB_PATH")
+    if db is None:
+        ap.error("give --db, or set EXPORT_DB_PATH")
+
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    conn = open_db(args.db)
+    conn = open_db(db)
 
     formats = [args.only] if args.only else ["sql", "xlsx"]
     try:

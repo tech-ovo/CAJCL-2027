@@ -12,7 +12,8 @@
 
 import * as api from "../api.js";
 import { add, el, clear, field, input, button, errorSummary, table,
-         localDate, loadingRows, guardUnsaved, ask } from "../ui.js";
+         localDate, loadingRows, guardUnsaved, ask, check,
+         tell } from "../ui.js";
 import { state, route, adopt, hasScope } from "../main.js";
 
 export async function adminPage(host) {
@@ -47,15 +48,19 @@ export async function adminPage(host) {
         ...[["settings", "Values"], ["documents", "Printed wording"],
             ["announcements", "Announcements"], ["roles", "Roles"],
             ["ops", "Operations"]].map(([key, label]) => {
-          const a = el("a", { href: "#/admin", onclick: (e) => {
+          const a = el("a", { href: "#/admin", onclick: async (e) => {
             e.preventDefault();
             // Leaving the Values tab abandons whatever is typed into it just
             // as surely as leaving the page does.
             if (tab === "settings" && key !== "settings"
-                && Object.keys(pending).length
-                && !confirm("You have unsaved changes to the convention "
-                          + "settings.\n\nLeave this tab and lose them?")) {
-              return;
+                && Object.keys(pending).length) {
+              const ok = await check({
+                title: "Leave this tab and lose your changes?",
+                body: "You have unsaved changes to the convention settings.",
+                confirmLabel: "Leave and lose them",
+                cancelLabel: "Stay here", danger: true,
+              });
+              if (!ok) return;
             }
             if (key !== "settings") pending = {};
             tab = key;
@@ -461,7 +466,7 @@ export async function adminPage(host) {
           } catch (error) {
             event.target.checked = !event.target.checked;
             event.target.disabled = false;
-            alert(error.message);
+            await tell({ body: error.message });
           }
         },
       }),
@@ -483,12 +488,13 @@ export async function adminPage(host) {
           variant: "btn--quiet btn--danger",
           onclick: async () => {
             if (!held.size) return;
-            if (!confirm(
-              `Remove every role from ${name}?
-
-`
-              + "Their account and their code keep working. They simply lose "
-              + "the powers those roles carried.")) return;
+            const ok = await check({
+              title: `Remove every role from ${name}?`,
+              body: "Their account and their code keep working. They simply "
+                    + "lose the powers those roles carried.",
+              confirmLabel: "Remove them all", danger: true,
+            });
+            if (!ok) return;
             for (const box of boxes) {
               const input_ = box.querySelector("input");
               if (input_.checked) {
@@ -680,11 +686,15 @@ export async function adminPage(host) {
                   button("Reset demo data", {
                     variant: "btn--danger",
                     onclick: async () => {
-                      if (!confirm(
-                        "Erase everything and rebuild the demonstration data?\n\n" +
-                        "This drops every table. It is only possible because " +
-                        "this database is flagged as demonstration data."
-                      )) return;
+                      const ok = await check({
+                        title: "Erase everything and rebuild the "
+                               + "demonstration data?",
+                        body: "This drops every table. It is only possible "
+                              + "because this database is flagged as "
+                              + "demonstration data.",
+                        confirmLabel: "Erase and rebuild", danger: true,
+                      });
+                      if (!ok) return;
                       await api.post("/admin/demo/reset", {});
                       message = "Demonstration data rebuilt. New codes were issued.";
                       render();

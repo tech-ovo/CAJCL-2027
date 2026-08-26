@@ -270,3 +270,60 @@ def test_the_add_helper_drops_empty_children():
     assert re.search(r"function append\(node, children\)[\s\S]{0,200}?"
                      r"child === null \|\| child === undefined \|\| child === false",
                      source)
+
+
+# The layout scale. `.span-9` has no user today, but a column scale with a hole
+# in it is worse than an unused step, and the next page that needs nine columns
+# would otherwise silently get twelve.
+CSS_KEPT_ON_PURPOSE = {"span-9"}
+
+
+def test_every_css_rule_has_a_user():
+    """A stylesheet is where dead code hides best.
+
+    Nothing fails when a rule stops being used -- the page still renders, the
+    tests still pass -- so a class outlives its markup indefinitely and the
+    next person has to read it to find out it does nothing. Five had: an
+    epigraph variant, a fourth banner severity, a pill colour, an imagery
+    placeholder, and a flush panel.
+
+    Set the class on an element, or delete the rule.
+    """
+    css = (ROOT / "frontend/public/app.css").read_text(encoding="utf-8")
+    markup = "\n".join(
+        p.read_text(encoding="utf-8")
+        for pattern in ("frontend/public/**/*.js", "frontend/public/*.html",
+                        "backend/**/*.py")
+        for p in ROOT.glob(pattern))
+
+    defined = set(re.findall(r"\.([a-zA-Z][\w-]+)", css)) - CSS_KEPT_ON_PURPOSE
+    unused = sorted(c for c in defined
+                    if not re.search(r"\b" + re.escape(c) + r"\b", markup))
+    assert unused == [], "no markup uses these classes: " + ", ".join(unused)
+
+
+def test_pages_do_not_use_the_browsers_own_dialogs():
+    """`alert()` and `confirm()` are the browser's furniture, not this site's.
+
+    Projected in a room they read as something having gone wrong, they cannot
+    be styled, and `confirm()` focuses OK -- so the dangerous answer is the one
+    you get by pressing Return. `ui.js` provides `check()` and `tell()`, which
+    are `<dialog>`s that look like the rest of the site and default to the safe
+    answer.
+
+    `guardUnsaved` in ui.js is the single exception: it must answer inside a
+    click handler, synchronously, or the navigation it is trying to cancel has
+    already happened. It is allowed here and explains itself in place.
+    """
+    offenders = []
+    for path in sorted(ROOT.glob("frontend/public/js/**/*.js")):
+        if path.name == "ui.js":
+            continue
+        text = path.read_text(encoding="utf-8")
+        for number, line in enumerate(text.splitlines(), 1):
+            if line.lstrip().startswith(("*", "//", "/*")):
+                continue
+            if re.search(r"(?<![.\w])(alert|confirm|prompt)\s*\(", line):
+                offenders.append(f"{path.name}:{number}: {line.strip()}")
+    assert offenders == [], (
+        "use check() or tell() from ui.js instead:\n  " + "\n  ".join(offenders))

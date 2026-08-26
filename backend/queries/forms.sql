@@ -62,9 +62,6 @@ ON CONFLICT (person_id, form_type) DO UPDATE SET
   marked_by_person_id = excluded.marked_by_person_id,
   marked_at = excluded.marked_at;
 
--- name: forms.paper_for_person
-SELECT form_type, received, marked_at FROM paper_forms WHERE person_id = ?;
-
 -- name: forms.chapter_entries_for_school
 SELECT ce.id, ce.item_id, ce.team_label, ce.notes, ce.created_at,
        i.name AS item_name

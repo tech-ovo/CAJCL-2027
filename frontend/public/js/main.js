@@ -345,7 +345,11 @@ function renderNav() {
 
     const administrative = [];
     if (hasScope("registration")) {
-      administrative.push(["#/overview", "Registration"],
+      // "Overview", not "Registration". A chair is an adult with their own
+      // form to fill in, so the personal link above already says Registration
+      // — and two identical words in one nav bar is a coin toss. Its siblings
+      // are nouns for what they show: Overview, Chapters, Check-in.
+      administrative.push(["#/overview", "Overview"],
                           ["#/dashboard", "Chapters"],
                           ["#/check-in", "Check-in"]);
     }
@@ -479,7 +483,7 @@ function renderNoAccess(scope) {
     el("p", {}, "If it should, write to ",
       el("a", { href: "mailto:state@uhsjcl.org" }, "state@uhsjcl.org"),
       " and say which page you were trying to open. A convention president can "
-      + "grant it in a minute, and you will not need a new code."),
+      + "grant it, and you will not need a new code."),
     el("div", { class: "btn-row" },
       el("a", { class: "btn btn--primary", href: landingFor(state.me) },
         "Go to your own page"),

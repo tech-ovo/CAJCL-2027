@@ -7,7 +7,8 @@
 
 import * as api from "../api.js";
 import { add, el, clear, tabula, table, button, emptyState, loadingRows,
-         fullName, personNumber, ask } from "../ui.js";
+         fullName, personNumber, ask, check, tell,
+         field, input } from "../ui.js";
 import { state, route, hasScope, adopt } from "../main.js";
 
 export async function rosterPage(host, params = []) {
@@ -71,9 +72,15 @@ export async function rosterPage(host, params = []) {
       asChair && !sponsorOf(data.people)
         ? el("div", { class: "banner banner--info", style: "margin-bottom:1.5rem" },
             el("span", { class: "banner__label" }, "No sponsor"),
-            el("span", {}, "This chapter has no active sponsor, so nobody can "
-                         + "manage its roster or receive its invoice. Add one "
-                         + "from Settings, or ask the chapter who it should be."))
+            el("span", {}, "Nobody can sign in to manage this chapter's roster "
+                         + "or receive its invoice."),
+            // Used to say "add one from Settings", which was wrong twice:
+            // Settings is admin-only, and Settings → Roles grants a role to
+            // somebody who already has an account. This makes the account.
+            button("Add the sponsor", {
+              variant: "btn--small btn--primary",
+              onclick: () => addSponsor(school),
+            }))
         : null,
 
       el("section", { class: "grid" },
@@ -107,13 +114,18 @@ export async function rosterPage(host, params = []) {
           // The warning used to be a paragraph under the button row, where
           // nothing connected it to this button. Asked at the moment of
           // clicking, it is unmissable and it is about the thing being done.
-          onclick: () => {
-            if (!confirm(
-              "This is a preview, not something to hand out.\n\n"
-              + "Access codes are stored scrambled and cannot be read back, "
-              + "so the sheets will show blocks where the codes would be.\n\n"
-              + "To give somebody a working sheet, use Issue new codes and "
-              + "print from the screen that follows.")) return;
+          onclick: async () => {
+            const ok = await check({
+              title: "Preview the packet",
+              body: ["This is a preview, not something to hand out.",
+                     "Access codes are stored scrambled and cannot be read "
+                     + "back, so the sheets will show blocks where the codes "
+                     + "would be.",
+                     "To give somebody a working sheet, use Issue new codes "
+                     + "and print from the screen that follows."],
+              confirmLabel: "Show the preview",
+            });
+            if (!ok) return;
             openPrintView(asChair
               ? `/sponsor/packet?school_id=${schoolId}`
               : "/sponsor/packet");
@@ -163,6 +175,72 @@ export async function rosterPage(host, params = []) {
     );
   }
 
+  /* Create a chapter's sponsor, and show their code once.
+   *
+   * A chair adds a chapter from the Chapters page, and until this existed the
+   * chapter then sat there with nobody able to sign in to it. The code is
+   * shown once and cannot be recovered, so it is displayed on its own with
+   * nothing else competing for attention.
+   */
+  async function addSponsor(school) {
+    const first = input({ id: "sponsor-first", autocomplete: "off" });
+    const last = input({ id: "sponsor-last", autocomplete: "off" });
+    const email = input({ id: "sponsor-email", type: "email",
+                          autocomplete: "off" });
+
+    const ok = await check({
+      title: `Add the sponsor for ${school.name}`,
+      body: [
+        el("p", {}, "This creates their account and issues their access code. "
+                  + "You will see the code once, on the next screen."),
+        field({ id: "sponsor-first", label: "First name", required: true,
+                control: first, wide: true }),
+        field({ id: "sponsor-last", label: "Last name", required: true,
+                control: last, wide: true }),
+        field({ id: "sponsor-email", label: "Email", control: email, wide: true,
+                help: "Where you will send their code. Optional here." }),
+      ],
+      confirmLabel: "Create the account",
+    });
+    if (!ok) return;
+
+    if (!first.value.trim() && !last.value.trim()) {
+      await tell({ title: "That needs a name",
+                   body: "Give the sponsor at least a first or last name, then "
+                       + "try again." });
+      return;
+    }
+
+    let created;
+    try {
+      created = await api.post(`/admin/schools/${school.id}/people`, {
+        first_name: first.value.trim(),
+        last_name: last.value.trim(),
+        email: email.value.trim() || null,
+        adult_type: "sponsor",
+      });
+    } catch (error) {
+      await tell({ body: error.message });
+      return;
+    }
+
+    clear(host);
+    add(host, el("section", { class: "panel", role: "alertdialog",
+                              "aria-label": "The sponsor's access code" },
+      el("h2", {}, `${created.first_name} ${created.last_name}`.trim()),
+      el("p", { class: "label" }, "Access code"),
+      el("p", { class: "tabula__code mono", style: "font-size:1.5rem" },
+        created.code),
+      el("p", {}, "This is the only time this code is shown, and nothing can "
+                + "recover it. Send it to them now, in a message addressed to "
+                + "them alone."),
+      el("div", { class: "btn-row" },
+        button("Back to the roster", {
+          variant: "btn--primary",
+          onclick: () => reload(),
+        }))));
+  }
+
   function reissueBar(people) {
     const active = people.filter((p) => p.status === "active");
     const count = picked.size;
@@ -201,19 +279,24 @@ export async function rosterPage(host, params = []) {
       .filter((p) => picked.has(p.id))
       .map((p) => fullName(p));
 
-    if (!confirm(
-      `Issue new codes for ${ids.length} ${ids.length === 1 ? "person" : "people"}?\n\n`
-      + names.slice(0, 10).join("\n")
-      + (names.length > 10 ? `\n...and ${names.length - 10} more` : "")
-      + "\n\nTheir current codes stop working immediately."
-    )) return;
+    const ok = await check({
+      title: `Issue new codes for ${ids.length} `
+             + `${ids.length === 1 ? "person" : "people"}?`,
+      // Named, not counted. Ticking the wrong row is the mistake this catches,
+      // and a number cannot show it.
+      body: [el("ul", {}, ...names.slice(0, 10).map((n) => el("li", {}, n))),
+             names.length > 10 ? `…and ${names.length - 10} more` : null,
+             "Their current codes stop working immediately."],
+      confirmLabel: "Issue the codes", danger: true,
+    });
+    if (!ok) return;
 
     let result;
     try {
       result = await api.post("/sponsor/regenerate-codes", {
         person_ids: ids, school_id: schoolId || undefined });
     } catch (error) {
-      alert(error.message);
+      await tell({ body: error.message });
       return;
     }
 
@@ -393,7 +476,7 @@ export async function rosterPage(host, params = []) {
         : "#/roster";
       await route();
     } catch (error) {
-      alert(error.message);
+      await tell({ body: error.message });
     }
   }
 
@@ -423,7 +506,7 @@ export async function rosterPage(host, params = []) {
             } catch (error) {
               event.target.checked = !event.target.checked;
               event.target.disabled = false;
-              alert(error.message);
+              await tell({ body: error.message });
             }
           },
         });
@@ -462,7 +545,13 @@ export async function rosterPage(host, params = []) {
       add(wrap, button("Cancel", {
         variant: "btn--small btn--danger",
         onclick: async () => {
-          if (!confirm(`Cancel ${fullName(row)}? They can be restored later.`)) return;
+          const ok = await check({
+            title: `Cancel ${fullName(row)}?`,
+            body: "They can be restored later, and the roster keeps their row.",
+            confirmLabel: "Cancel them", cancelLabel: "Leave them on",
+            danger: true,
+          });
+          if (!ok) return;
           await api.post(`/sponsor/people/${row.id}/cancel`, {});
           await reload();
         },
@@ -484,11 +573,13 @@ export async function rosterPage(host, params = []) {
    * works, with no obvious way to produce a new one. */
   async function regenerate(row) {
     const name = fullName(row);
-    if (!confirm(
-      `Issue a new code for ${name}?\n\n` +
-      "Their old code and every device signed in with it stop working " +
-      "immediately, so you will need to give them the new sheet."
-    )) return;
+    const ok = await check({
+      title: `Issue a new code for ${name}?`,
+      body: "Their old code, and every device signed in with it, stop working "
+            + "immediately — so you will need to give them the new sheet.",
+      confirmLabel: "Issue a new code", danger: true,
+    });
+    if (!ok) return;
 
     const result = await api.post(`/sponsor/people/${row.id}/regenerate-code`, {});
     const dialog = el("div", { class: "panel", role: "alertdialog",
@@ -538,7 +629,9 @@ export async function rosterPage(host, params = []) {
 export async function openPrintView(path) {
   const target = window.open("", "_blank");
   if (!target) {
-    alert("Your browser blocked the print window. Allow pop-ups for this site.");
+    await tell({ title: "The print window was blocked",
+                 body: "Your browser stopped this page opening a new tab. "
+                       + "Allow pop-ups for this site, then try again." });
     return;
   }
   target.document.write("<p style=\"font:14px system-ui;padding:2rem\">Preparing…</p>");

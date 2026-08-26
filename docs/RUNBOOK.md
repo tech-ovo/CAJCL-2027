@@ -564,6 +564,13 @@ anywhere — including a free Google Colab notebook, with no setup:
 
 **Try this once before convention, for real.** Do not assume it works.
 
+`--db` can also be given as the `EXPORT_DB_PATH` environment variable, which is
+what you want when the file is somewhere long and awkward, or when you are
+running the exporter repeatedly. With neither, the exporter copies the live
+Turso database to a local file first and works on that — which is what happens
+on Modal, and the reason the Colab run and the production run take exactly the
+same path through the code.
+
 ---
 
 ## 10. Adding a chair and giving them access

@@ -68,7 +68,6 @@
    * paired with a text label or a glyph. */
   --status-done:      var(--purple);
   --status-pending:   var(--slate);
-  --status-attention: var(--ink);
 
   /* ---------------------------------------------------------------------
    * Type

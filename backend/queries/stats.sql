@@ -168,10 +168,16 @@ ORDER BY s.name;
 
 
 -- name: stats.registration_overview
--- The registration dashboard: every chapter, who is coming, how far along they
--- are, and what they owe. Reads school_stats -- about fifty rows -- never
--- `people`. Everything here was counted inside the transaction that changed it.
-SELECT s.id AS school_id, s.name AS school_name, s.level, s.city,
+-- The registration dashboard: everyone coming, how far along they are, and
+-- what they owe. Reads school_stats -- about fifty rows -- never `people`.
+-- Everything here was counted inside the transaction that changed it.
+--
+-- ORGANIZATIONS ARE INCLUDED, and `kind` comes back so the caller can tell
+-- them apart. This used to filter to kind = 'chapter', which was right for the
+-- table of chapters and wrong for every total above it: SCL's attendees eat,
+-- and the meal figures on that page are what the caterer is given. Two people
+-- today, more once "At Large" exists.
+SELECT s.id AS school_id, s.name AS school_name, s.level, s.city, s.kind,
        s.billing_exempt, s.status,
        ss.delegates_active, ss.adults_active,
        ss.adults_sponsors, ss.adults_chaperones,
@@ -181,7 +187,6 @@ SELECT s.id AS school_id, s.name AS school_name, s.level, s.city,
        ss.discount_cents, ss.amount_owed_cents, ss.amount_paid_cents
 FROM schools s
 JOIN school_stats ss ON ss.school_id = s.id
-WHERE s.kind = 'chapter'
 ORDER BY s.name;
 
 -- name: stats.checkin_board
