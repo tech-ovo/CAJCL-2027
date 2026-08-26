@@ -913,9 +913,10 @@ def create_sponsor(school_id: int, request: Request, payload: dict = Body(...),
         payload = {**payload, "person_type": "adult",
                    "adult_type": payload.get("adult_type") or "sponsor"}
         created = roster._insert_person(tx, school, payload, clock.now_iso())
-        person = tx.one("people.get", (created["id"],))
-        code = auth.issue_code(tx, created["id"],
-                               auth.code_prefix_for("adult", payload["adult_type"]))
+        # `_insert_person` already minted one. Issuing a second here replaced it
+        # a millisecond later, which worked and was one wasted write plus one
+        # dead code per sponsor created.
+        code = created["code"]
         name = f"{created['first_name']} {created['last_name']}".strip()
         tx.audit("person.create",
                  f"{principal.display_name} created a sponsor account for {name} "

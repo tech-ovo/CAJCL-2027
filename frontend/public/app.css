@@ -333,6 +333,21 @@ hr.accent { border: 0; border-top: 2px solid var(--accent); width: var(--space-7
  * devices: a school Chromebook will hold sessions for a dozen delegates. */
 .nav__signout { font-weight: var(--weight-semi); }
 
+/* The theme toggle. Quiet on purpose: an icon with no label, no border and no
+ * background, at the very end of the row. It is the one control here that
+ * changes nothing about the convention, and it should read that way. */
+.nav__theme {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 2rem; height: 2rem; flex: none;
+  margin-left: var(--space-2);
+  padding: 0; border: 0; border-radius: var(--radius);
+  background: none; color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--transition), background var(--transition);
+}
+.nav__theme:hover { color: var(--text); background: var(--tint); }
+.nav__theme:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
 /* ===========================================================================
  * Banners
  * ======================================================================== */
@@ -399,6 +414,10 @@ hr.accent { border: 0; border-top: 2px solid var(--accent); width: var(--space-7
 }
 
 .btn-row { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; margin: var(--space-5) 0; }
+/* A button row at the bottom of a panel or a dialog already has that
+ * container's padding under it. Its own bottom margin on top of that is
+ * a visible gap with nothing in it. */
+.btn-row:last-child { margin-bottom: 0; }
 
 @media (pointer: coarse) {
   /* 44px minimum where a finger is doing the pointing. Applied on coarse
@@ -862,22 +881,19 @@ th[aria-sort] { color: var(--text); }
 .checkin__row:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 .checkin__row.is-here { border-color: var(--status-done); background: var(--tint); }
 
-.checkin__state {
-  width: 2.5rem; height: 2.5rem; flex: none;
-  display: flex; align-items: center; justify-content: center;
-  border: var(--border-strong); border-radius: var(--radius);
-  font-family: var(--font-sans); font-size: var(--size-lg); line-height: 1;
-}
-.checkin__state.is-here {
-  background: var(--status-done); color: var(--white);
-  border-color: var(--status-done);
-}
-
 .checkin__who { display: grid; gap: 2px; min-width: 0; }
 .checkin__name { font-family: var(--font-sans); font-weight: var(--weight-semi); }
 .checkin__note-preview {
   color: var(--text-muted); font-style: italic;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* The desk's exceptions -- adding a late delegate, opening the roster --
+ * set below and apart from the two buttons that do the ordinary job. */
+.checkin__extras {
+  display: flex; flex-wrap: wrap; gap: var(--space-3);
+  margin-top: var(--space-4); padding-top: var(--space-4);
+  border-top: var(--border);
 }
 
 /* Room to actually write in. This is the reason the row became a dialog. */

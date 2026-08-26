@@ -535,6 +535,9 @@ class Seeder:
         offered -- reads `schools.level`. One row would have to be a lie for
         half of them. "At Large (MS)" and "At Large (HS)", both organizations.
 
+        BOTH OF THEM PAY. Being an organization is about not being a chapter;
+        being exempt is about not being billed. Only SCL is the second thing.
+
         `schools.level` is NOT NULL with a CHECK, so SCL is stored as 'HS' and
         the frontend simply does not show a level for an organization. Making
         it nullable needs a table rebuild; see docs/TODO.md.

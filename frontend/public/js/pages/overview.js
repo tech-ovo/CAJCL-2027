@@ -99,16 +99,13 @@ export async function overviewPage(host) {
   function chapters() {
     const rows = data.chapters.filter((row) => {
       if (row.status !== "active") return false;
-      // The heading says Chapters and means it. SCL and members at large are
-      // in the totals above, and in Check-in, but they have no sponsor to
-      // chase and no invoice to settle, so there is nothing to do to a row.
-      if (row.kind !== "chapter") return false;
       if (!onlyProblems) return true;
       // "Needs attention" is deliberately narrow: something a chair can act on
       // today. A chapter with nobody in it and one that owes money are two
       // different phone calls; a chapter that is simply not finished yet is
       // neither, and burying those two in it would make the filter useless.
-      return !row.people || !row.has_sponsor
+      const wantsSponsor = row.kind === "chapter";
+      return !row.people || (wantsSponsor && !row.has_sponsor)
           || (!row.billing_exempt && row.balance_cents > 0);
     });
 
@@ -125,9 +122,17 @@ export async function overviewPage(host) {
 
       rows.length
         ? table([
+            // ORGANIZATIONS ARE LISTED HERE, marked. SCL is not a chapter
+            // and is not counted as one in the figures above, but a chair
+            // looking for "is everybody in" wants one list, not two. The pill
+            // is the same one Check-in uses, so the word means one thing.
             { key: "school_name", label: "Chapter",
-              render: (row) => el("a", { href: `#/roster/${row.school_id}` },
-                row.school_name) },
+              render: (row) => el("span", {},
+                el("a", { href: `#/roster/${row.school_id}` }, row.school_name),
+                row.kind !== "chapter"
+                  ? el("span", { class: "pill", style: "margin-left:.5rem" },
+                       "Not a chapter")
+                  : null) },
             { key: "level", label: "Level" },
             { key: "delegates_active", label: "Delegates", num: true },
             { key: "adults_active", label: "Adults", num: true,
@@ -145,8 +150,9 @@ export async function overviewPage(host) {
                 : el("span", { class: row.balance_cents > 0 ? "mono" : "mono muted" },
                      money(row.balance_cents)) },
           ], rows, {
-            rowClass: (row) => (!row.people || !row.has_sponsor)
-              ? "is-flagged" : null,
+            rowClass: (row) =>
+              (!row.people || (row.kind === "chapter" && !row.has_sponsor))
+                ? "is-flagged" : null,
             caption: "Every registered chapter",
           })
         : emptyState("Nothing needs attention",

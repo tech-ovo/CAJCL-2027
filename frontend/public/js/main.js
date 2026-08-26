@@ -48,6 +48,10 @@ const ROUTES = [
   // it for everyone else, so this adds a route and no new authority.
   [/^\/roster\/(\d+)$/,          rosterPage,        { scope: "registration" }],
   [/^\/roster\/import$/,         importPage,        { scope: "sponsor" }],
+  // A chair pasting for a chapter that cannot get its own spreadsheet in.
+  // Same page and the same two endpoints, both of which already accept a
+  // school_id from an administrative scope and refuse it from everyone else.
+  [/^\/roster\/(\d+)\/import$/,   importPage,        { scope: "registration" }],
   [/^\/invoice$/,                invoicePage,       { scope: "sponsor" }],
   [/^\/activity-sheet$/,         activitySheetPage, { scope: "delegate" }],
   [/^\/adult-sheet$/,            adultSheetPage,    {}],
@@ -309,6 +313,85 @@ async function magicLink(host, [raw]) {
 
 /* ------------------------------------------------------------------------ */
 
+/* The theme toggle.
+ *
+ * ONE ICON, NO LABEL, at the far end of the nav. It is the only control on the
+ * site that changes nothing about the convention, so it sits apart from
+ * everything that does and never competes for the eye.
+ *
+ * Three states, two of them reachable from here. With nothing stored the site
+ * follows the operating system, which is what most people want and what they
+ * get without ever finding this button. Pressing it writes an explicit choice
+ * that then outlives their system switching over at sunset.
+ *
+ * The icon shows what you would GET, not what you are in: a moon means "go
+ * dark". Showing the current state is the other convention and it is the one
+ * people misread, because a button usually pictures its effect.
+ */
+function currentTheme() {
+  const stored = safeRead();
+  if (stored) return stored;
+  return window.matchMedia
+      && window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "dark" : "light";
+}
+
+function safeRead() {
+  try {
+    const value = localStorage.getItem("theme");
+    return value === "dark" || value === "light" ? value : null;
+  } catch (error) {
+    return null;                         // private mode, or storage blocked
+  }
+}
+
+function themeToggle() {
+  const dark = currentTheme() === "dark";
+  const label = dark ? "Switch to light mode" : "Switch to dark mode";
+
+  const svg = (paths) => {
+    const node = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    node.setAttribute("viewBox", "0 0 24 24");
+    node.setAttribute("width", "18");
+    node.setAttribute("height", "18");
+    node.setAttribute("fill", "none");
+    node.setAttribute("stroke", "currentColor");
+    node.setAttribute("stroke-width", "1.7");
+    node.setAttribute("stroke-linecap", "round");
+    node.setAttribute("aria-hidden", "true");
+    for (const d of paths) {
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", d);
+      node.appendChild(path);
+    }
+    return node;
+  };
+
+  // A sun to go back to light; a crescent to go dark.
+  const sun = ["M12 4.5v-2", "M12 21.5v-2", "M4.5 12h-2", "M21.5 12h-2",
+               "M6.7 6.7 5.3 5.3", "M18.7 18.7l-1.4-1.4",
+               "M6.7 17.3l-1.4 1.4", "M18.7 5.3l-1.4 1.4",
+               "M12 7.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9z"];
+  const moon = ["M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"];
+
+  const control = el("button", {
+    type: "button",
+    class: "nav__theme",
+    "aria-label": label,
+    title: label,
+    onclick: () => {
+      const next = currentTheme() === "dark" ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", next);
+      try {
+        localStorage.setItem("theme", next);
+      } catch (error) { /* the page still switches; it just will not persist */ }
+      renderNav();
+    },
+  });
+  control.appendChild(svg(dark ? sun : moon));
+  return control;
+}
+
 function renderNav() {
   const nav = document.getElementById("nav");
   clear(nav);
@@ -345,10 +428,11 @@ function renderNav() {
 
     const administrative = [];
     if (hasScope("registration")) {
-      // "Overview", not "Registration". A chair is an adult with their own
-      // form to fill in, so the personal link above already says Registration
-      // — and two identical words in one nav bar is a coin toss. Its siblings
-      // are nouns for what they show: Overview, Chapters, Check-in.
+      // "Overview", not "Registration". Almost every board member is a
+      // STUDENT — a delegate at their own chapter who also holds a convention
+      // role — so the personal link above already says Registration, and two
+      // identical words in one nav bar is a coin toss. Its siblings are nouns
+      // for what they show: Overview, Chapters, Check-in.
       administrative.push(["#/overview", "Overview"],
                           ["#/dashboard", "Chapters"],
                           ["#/check-in", "Check-in"]);
@@ -374,6 +458,10 @@ function renderNav() {
     add(nav, el("span", { class: "nav__spacer" }));
     add(nav, link("#/sign-in", "Sign in"));
   }
+
+  // Last, on every page, signed in or not. It is the only control here that
+  // has nothing to do with the convention.
+  add(nav, themeToggle());
 }
 
 function signOut() {

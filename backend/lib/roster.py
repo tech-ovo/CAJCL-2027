@@ -241,7 +241,19 @@ def commit(tx: Tx, school: dict, actor: auth.Principal, raw_text: str,
     )
     stats.recompute(tx, school["id"], settings=settings.fee_settings(tx))
 
-    return {"created": created, "committed_count": len(created), "already_committed": False}
+    # THE CODES DO NOT COME BACK FROM A PASTE, deliberately.
+    #
+    # `_insert_person` returns each one for the screens that add a single
+    # person and must show it. Nothing reads them here -- a sponsor collects
+    # thirty codes by printing the packet -- and returning them would put the
+    # two paths out of step: a replayed commit reads its rows back from the
+    # database, where the code is a hash and unreadable by design.
+    return {
+        "created": [{k: v for k, v in row.items() if k != "code"}
+                    for row in created],
+        "committed_count": len(created),
+        "already_committed": False,
+    }
 
 
 def _insert_person(tx: Tx, school: dict, row: dict, created_at: str,
@@ -282,13 +294,21 @@ def _insert_person(tx: Tx, school: dict, row: dict, created_at: str,
     tx.run("people.grant_role", (person_id, role["id"], None, created_at))
 
     prefix = auth.code_prefix_for(person_type, adult_type)
-    auth.issue_code(tx, person_id, prefix)
+    # THE CODE IS RETURNED, because this is the only moment it is readable.
+    #
+    # It used to be minted and dropped on the floor, which was harmless while
+    # the only caller was a roster paste -- thirty codes nobody reads, printed
+    # later from the packet. It stopped being harmless the moment a screen
+    # added ONE person and had to hand them their code: the caller either
+    # showed a blank, or minted a second code over the top of the first.
+    code = auth.issue_code(tx, person_id, prefix)
 
     return {
         "id": person_id,
         "first_name": row.get("first_name") or "",
         "last_name": row.get("last_name") or "",
         "person_type": person_type,
+        "code": code,
     }
 
 

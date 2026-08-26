@@ -140,7 +140,7 @@ remove a student. Tested in `test_money.py`.
 
 ### A school is marked exempt after paying
 **RESOLVED — this does not happen.** Exemption is applied on bookkeeping
-grounds only (SCL, At Large), when a chapter is created, and never after money
+grounds only (SCL), when a chapter is created, and never after money
 has arrived. Nothing enforces that in code, so an admin could still do it by
 hand and produce a zero invoice against a positive payment. Judged not worth a
 constraint: the recovery is obvious and visible, and it is corrected with a

@@ -20,7 +20,8 @@
  */
 
 import * as api from "../api.js";
-import { add, el, clear, button, loadingRows, localDate } from "../ui.js";
+import { add, el, clear, button, loadingRows, localDate,
+         check, tell, field, input } from "../ui.js";
 
 const NOTE_PLACEHOLDER =
   "Did they bring a catapult? A chariot? How many Certamen machines?";
@@ -88,8 +89,10 @@ export async function checkinPage(host) {
       class: "checkin__row" + (here ? " is-here" : ""),
       onclick: () => open_(chapter),
     },
-      el("span", { class: "checkin__state" + (here ? " is-here" : "") },
-        here ? "✓" : ""),
+      // NO TICK BOX. There used to be a bordered square here showing arrival,
+      // which read as a checkbox, was not one -- the whole row is the button --
+      // and so collected clicks that did nothing. The row already says
+      // "Registered 3:42 PM" in words, and turns green when it is.
       el("span", { class: "checkin__who" },
         el("span", { class: "checkin__name" }, chapter.school_name),
         el("span", { class: "small muted" },
@@ -175,13 +178,97 @@ export async function checkinPage(host) {
       el("div", { class: "btn-row" },
         done, undo,
         button("Close", { variant: "btn--quiet",
-                          onclick: () => dialog.close() })));
+                          onclick: () => dialog.close() })),
+
+      /* The two things a desk does besides ticking a chapter off.
+       *
+       * A chapter turns up with a replacement for somebody who could not come.
+       * The replacement needs a code in their hand within the minute, and the
+       * person they replaced should stop being counted for meals. Both used to
+       * mean finding somebody with a terminal.
+       *
+       * Kept below the close button, in quieter type, because they are the
+       * exception: forty-nine chapters in fifty just arrive. */
+      el("div", { class: "checkin__extras" },
+        button("Add a delegate", {
+          variant: "btn--small btn--quiet",
+          onclick: () => addLate(chapter, dialog),
+        }),
+        el("a", { class: "btn btn--small btn--quiet",
+                  href: `#/roster/${chapter.school_id}` },
+          "Open the roster")));
 
     const dialog = el("dialog", { class: "dialog" }, form);
     dialog.addEventListener("close", () => { dialog.remove(); render(); });
     add(document.body, dialog);
     dialog.showModal();
     note.focus();
+  }
+
+  /* A delegate added at the desk on the Friday.
+   *
+   * Two calls, and the second is the point: their ACTIVITY SHEET IS WAIVED.
+   * The tests were printed and the food ordered weeks ago, so there is nothing
+   * left for their answers to change -- and without the waiver they would sit
+   * in their chapter's completion figure as permanently unfinished, sending
+   * somebody to chase a delegate who cannot act.
+   *
+   * Their waiver and medical are NOT waived. Those are safety documents and
+   * nobody is exempt; the desk checks the paper as it always has.
+   */
+  async function addLate(chapter, dialog) {
+    const first = input({ id: "late-first", autocomplete: "off" });
+    const last = input({ id: "late-last", autocomplete: "off" });
+
+    const ok = await check({
+      title: `Add a delegate to ${chapter.school_name}`,
+      body: [
+        el("p", {}, "For somebody arriving in place of a delegate who could "
+                  + "not come. Their activity sheet is waived — the tests are "
+                  + "already printed — but their waiver and medical form are "
+                  + "still required, on paper, today."),
+        field({ id: "late-first", label: "First name", control: first, wide: true }),
+        field({ id: "late-last", label: "Last name", control: last, wide: true }),
+      ],
+      confirmLabel: "Add them",
+    });
+    if (!ok) return;
+
+    if (!first.value.trim() && !last.value.trim()) {
+      await tell({ title: "That needs a name",
+                   body: "Give at least a first or last name, then try again." });
+      return;
+    }
+
+    let created;
+    try {
+      created = await api.post("/sponsor/people", {
+        school_id: chapter.school_id,
+        first_name: first.value.trim(),
+        last_name: last.value.trim(),
+        person_type: "delegate",
+      });
+      await api.post(`/admin/people/${created.id}/waive-activity-sheet`,
+                     { waived: true });
+    } catch (error) {
+      await tell({ body: error.message });
+      return;
+    }
+
+    chapter.delegates_active += 1;
+    dialog.close();
+    await tell({
+      title: `${created.first_name} ${created.last_name}`.trim(),
+      body: [
+        el("p", { class: "label" }, "Access code"),
+        el("p", { class: "tabula__code mono", style: "font-size:1.5rem" },
+          created.code),
+        el("p", {}, "Write this down or photograph it now. It is not shown "
+                  + "again and nothing can recover it."),
+      ],
+    });
+    data = await api.get("/admin/checkin");
+    render();
   }
 
   function recount() {

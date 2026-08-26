@@ -145,11 +145,102 @@ def test_reduced_motion_is_respected():
     assert "prefers-reduced-motion" in css
 
 
-def test_no_dark_mode():
-    """docs/design.md: out of scope, and it would double the contrast-audit
-    surface for no benefit to this audience."""
-    css = (PUBLIC / "app.css").read_text(encoding="utf-8")
-    assert "prefers-color-scheme" not in css
+def test_dark_mode_redefines_every_alias():
+    """Dark mode works by swapping the semantic aliases and nothing else.
+
+    Components name `--text` and `--page-bg`, never `--ink` or `--ivory`, so the
+    whole site inverts by redefining one block. The failure that makes is silent
+    and ugly: miss one alias and that single colour stays in light mode, which
+    usually means black text on a navy panel.
+
+    Both blocks are checked. `@media (prefers-color-scheme: dark)` serves
+    somebody who has never touched the toggle; `[data-theme="dark"]` serves
+    somebody who has, including on a system set to light.
+    """
+    tokens = (PUBLIC / "tokens.css").read_text(encoding="utf-8")
+
+    light = tokens[tokens.index(":root {"):tokens.index("}\n\n/* ---")]
+    aliases = set(re.findall(r"^  (--[\w-]+):\s*var\(", light, re.M))
+    assert len(aliases) > 10, "the alias block moved; this is reading the wrong thing"
+
+    for block in ('@media (prefers-color-scheme: dark)', ':root[data-theme="dark"]'):
+        start = tokens.index(block)
+        end = tokens.index("\n}\n", tokens.index("--status-pending", start))
+        defined = set(re.findall(r"(--[\w-]+):\s*", tokens[start:end]))
+        missing = sorted(aliases - defined)
+        assert missing == [], f"{block} leaves these in light mode: {missing}"
+
+
+def test_dark_mode_survives_an_explicit_choice_of_light():
+    """Somebody on a dark-mode phone who presses the toggle for light must get
+    light. Without the `:not([data-theme="light"])` guard the media query wins
+    and the button appears to do nothing."""
+    tokens = (PUBLIC / "tokens.css").read_text(encoding="utf-8")
+    start = tokens.index("@media (prefers-color-scheme: dark)")
+    end = tokens.index("\n}\n", tokens.index("--status-pending", start))
+    assert ':root:not([data-theme="light"])' in tokens[start:end], (
+        "the dark media query must exclude an explicit light choice")
+
+
+def test_the_theme_is_applied_before_the_first_paint():
+    """A dark-mode phone must not see a white page first.
+
+    The stylesheet cannot do this alone: the attribute the toggle writes lives
+    in localStorage, and reading it from a deferred module means one painted
+    frame in the wrong colours. The script has to be inline, in the head, after
+    the stylesheets.
+    """
+    html = (PUBLIC / "index.html").read_text(encoding="utf-8")
+    head = html[:html.index("</head>")]
+    assert 'localStorage.getItem("theme")' in head, (
+        "nothing in <head> reads the stored theme")
+    assert head.index("app.css") < head.index("localStorage"), (
+        "the theme script must come after the stylesheets it overrides")
+
+
+def test_the_dark_palette_was_measured():
+    """Every colour pairing dark mode introduces clears 4.5:1.
+
+    The light palette records a measured ratio beside each token because the
+    rule there is "measured, not guessed". Dark mode does not get a weaker rule
+    just because it arrived later, and it is the easier half: gold and Columbia
+    blue were always marked "on dark ONLY" precisely because they work here.
+    """
+    tokens = (PUBLIC / "tokens.css").read_text(encoding="utf-8")
+
+    def value(name):
+        found = re.search(rf"{re.escape(name)}:\s*(#[0-9A-Fa-f]{{6}})", tokens)
+        assert found, f"{name} is not a hex literal in tokens.css"
+        return found.group(1)
+
+    def contrast(one, two):
+        def channel(hex_pair):
+            v = int(hex_pair, 16) / 255
+            return v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4
+
+        def luminance(colour):
+            h = colour.lstrip("#")
+            r, g, b = (channel(h[i:i + 2]) for i in (0, 2, 4))
+            return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+        first, second = luminance(one), luminance(two)
+        hi, lo = max(first, second), min(first, second)
+        return (hi + 0.05) / (lo + 0.05)
+
+    night, panel = value("--night"), value("--night-panel")
+    readable = {
+        "--ivory": "body text",
+        "--haze": "metadata",
+        "--lavender": "links",
+        "--rose": "destructive actions",
+        "--gold": "accents and the focus ring",
+    }
+    for token, role in readable.items():
+        colour = value(token)
+        for ground, where in ((night, "--night"), (panel, "--night-panel")):
+            measured = contrast(colour, ground)
+            assert measured >= 4.5, (
+                f"{token} ({role}) is {measured:.2f}:1 on {where}, under 4.5:1")
 
 
 def test_fonts_are_self_hosted():

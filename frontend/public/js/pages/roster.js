@@ -8,7 +8,7 @@
 import * as api from "../api.js";
 import { add, el, clear, tabula, table, button, emptyState, loadingRows,
          fullName, personNumber, ask, check, tell,
-         field, input } from "../ui.js";
+         field, input, select } from "../ui.js";
 import { state, route, hasScope, adopt } from "../main.js";
 
 export async function rosterPage(host, params = []) {
@@ -101,8 +101,13 @@ export async function rosterPage(host, params = []) {
               `${(stats.delegates_complete || 0) + (stats.adults_complete || 0)}`)))),
 
       el("div", { class: "btn-row" },
-        asChair ? null : el("a", { class: "btn btn--primary", href: "#/roster/import" },
+        // A chair gets this too. A sponsor whose spreadsheet will not paste is
+        // a support call, and until this existed the only answer was to find a
+        // president to sign in as them.
+        el("a", { class: "btn btn--primary",
+                  href: asChair ? `#/roster/${schoolId}/import` : "#/roster/import" },
           "Paste a roster"),
+        button("Add one person", { onclick: () => addPerson(school) }),
         asChair ? null : el("a", { class: "btn", href: "#/invoice" }, "View invoice"),
         asChair && hasScope("*") && sponsorOf(data.people)
           ? button("Sign in as the sponsor", {
@@ -175,6 +180,174 @@ export async function rosterPage(host, params = []) {
     );
   }
 
+  /* Correct somebody's name.
+   *
+   * A pasted roster reads what it is given, and it is given whatever the
+   * sponsor's spreadsheet had: a nickname, a maiden name, a typo, or a name a
+   * form field mangled. The name is printed on their sheet and read out at
+   * awards, so it is the field most worth being able to fix -- and until this
+   * existed, nothing on the site could fix it for a delegate at all.
+   *
+   * Names only. Grade, Latin level and meal are the delegate's own answers on
+   * their own form, and a sponsor overwriting them silently is how two people
+   * end up disagreeing about which test somebody is sitting.
+   */
+  async function editPerson(row) {
+    const first = input({ id: "edit-first", value: row.first_name || "" });
+    const middle = input({ id: "edit-middle", value: row.middle_name || "" });
+    const last = input({ id: "edit-last", value: row.last_name || "" });
+    const suffix = input({ id: "edit-suffix", value: row.suffix || "" });
+
+    const ok = await check({
+      title: `Edit ${fullName(row)}`,
+      body: [
+        el("p", {}, "Their access code does not change, and neither does "
+                  + "anything they have filled in themselves."),
+        field({ id: "edit-first", label: "First name", control: first, wide: true }),
+        field({ id: "edit-middle", label: "Middle name", control: middle, wide: true }),
+        field({ id: "edit-last", label: "Last name", control: last, wide: true }),
+        field({ id: "edit-suffix", label: "Suffix", control: suffix, wide: true }),
+      ],
+      confirmLabel: "Save",
+    });
+    if (!ok) return;
+
+    if (!first.value.trim() && !last.value.trim()) {
+      await tell({ title: "That needs a name",
+                   body: "Leave at least a first or last name, then try again." });
+      return;
+    }
+    try {
+      await api.patch(`/sponsor/people/${row.id}`, {
+        first_name: first.value.trim(),
+        middle_name: middle.value.trim() || null,
+        last_name: last.value.trim(),
+        suffix: suffix.value.trim() || null,
+      });
+      await reload();
+    } catch (error) {
+      await tell({ body: error.message });
+    }
+  }
+
+  async function setUnlocked(row, unlocked) {
+    if (!unlocked) {
+      const ok = await check({
+        title: `Close ${fullName(row)}'s form again?`,
+        body: "They go back to whatever the deadline says. Anything they have "
+            + "already saved is kept.",
+        confirmLabel: "Close it",
+      });
+      if (!ok) return;
+    }
+    try {
+      await api.post(`/admin/people/${row.id}/unlock-forms`, { unlocked });
+      await reload();
+    } catch (error) {
+      await tell({ body: error.message });
+    }
+  }
+
+  async function setWaived(row, waived) {
+    const ok = await check({
+      title: waived
+        ? `Waive ${fullName(row)}'s activity sheet?`
+        : `Require ${fullName(row)}'s activity sheet again?`,
+      body: waived
+        ? ["They count as complete once their waiver and medical are in. Those "
+           + "are safety documents and are still required.",
+           "They are entered in nothing, so they will not appear on any "
+           + "proctor's sheet."]
+        : "They go back to needing a submitted activity sheet before they "
+          + "count as complete.",
+      confirmLabel: waived ? "Waive it" : "Require it",
+    });
+    if (!ok) return;
+    try {
+      await api.post(`/admin/people/${row.id}/waive-activity-sheet`, { waived });
+      await reload();
+    } catch (error) {
+      await tell({ body: error.message });
+    }
+  }
+
+  /* Add one person to a roster.
+   *
+   * Pasting is how a roster is BUILT; this is how it is corrected. A chapter
+   * that gains one delegate in February should not have to paste a second list
+   * and reason about what the de-duplicator will make of it.
+   *
+   * Their code is minted here and shown once, exactly like a reissue, because
+   * there is no other moment at which it can be read.
+   */
+  async function addPerson(school) {
+    const first = input({ id: "person-first", autocomplete: "off" });
+    const last = input({ id: "person-last", autocomplete: "off" });
+    const kind = select([["delegate", "Delegate"],
+                         ["chaperone", "Chaperone"],
+                         ["sponsor", "Sponsor"]], { id: "person-kind" });
+
+    const ok = await check({
+      title: `Add one person to ${school.name}`,
+      body: [
+        el("p", {}, "This mints their access code, which you will see once on "
+                  + "the next screen. Everything else about them — grade, "
+                  + "Latin level, meal — they fill in themselves."),
+        field({ id: "person-first", label: "First name", control: first,
+                wide: true }),
+        field({ id: "person-last", label: "Last name", control: last,
+                wide: true }),
+        field({ id: "person-kind", label: "They are a", control: kind,
+                wide: true }),
+      ],
+      confirmLabel: "Add them",
+    });
+    if (!ok) return;
+
+    if (!first.value.trim() && !last.value.trim()) {
+      await tell({ title: "That needs a name",
+                   body: "Give at least a first or last name, then try again." });
+      return;
+    }
+
+    const delegate = kind.value === "delegate";
+    let created;
+    try {
+      created = await api.post("/sponsor/people", {
+        school_id: schoolId || undefined,
+        first_name: first.value.trim(),
+        last_name: last.value.trim(),
+        person_type: delegate ? "delegate" : "adult",
+        adult_type: delegate ? undefined : kind.value,
+      });
+    } catch (error) {
+      await tell({ body: error.message });
+      return;
+    }
+
+    showCode(`${created.first_name} ${created.last_name}`.trim(), created.code,
+             `Give this to ${created.first_name || "them"} with their sheet.`);
+  }
+
+  /* One code, shown once, with nothing else on the screen to compete with it.
+   * Used by everything that mints a code: a new sponsor, a new person, and a
+   * reissue. */
+  function showCode(name, code, note) {
+    clear(host);
+    add(host, el("section", { class: "panel", role: "alertdialog",
+                              "aria-label": `Access code for ${name}` },
+      el("h2", {}, name),
+      el("p", { class: "label" }, "Access code"),
+      el("p", { class: "tabula__code mono", style: "font-size:1.5rem" }, code),
+      el("p", {}, "This is the only time this code is shown, and nothing can "
+                + "recover it. " + note),
+      el("div", { class: "btn-row" },
+        button("Back to the roster", {
+          variant: "btn--primary",
+          onclick: () => reload(),
+        }))));
+  }
+
   /* Create a chapter's sponsor, and show their code once.
    *
    * A chair adds a chapter from the Chapters page, and until this existed the
@@ -224,21 +397,8 @@ export async function rosterPage(host, params = []) {
       return;
     }
 
-    clear(host);
-    add(host, el("section", { class: "panel", role: "alertdialog",
-                              "aria-label": "The sponsor's access code" },
-      el("h2", {}, `${created.first_name} ${created.last_name}`.trim()),
-      el("p", { class: "label" }, "Access code"),
-      el("p", { class: "tabula__code mono", style: "font-size:1.5rem" },
-        created.code),
-      el("p", {}, "This is the only time this code is shown, and nothing can "
-                + "recover it. Send it to them now, in a message addressed to "
-                + "them alone."),
-      el("div", { class: "btn-row" },
-        button("Back to the roster", {
-          variant: "btn--primary",
-          onclick: () => reload(),
-        }))));
+    showCode(`${created.first_name} ${created.last_name}`.trim(), created.code,
+             "Send it to them now, in a message addressed to them alone.");
   }
 
   function reissueBar(people) {
@@ -351,9 +511,16 @@ export async function rosterPage(host, params = []) {
 
   function columns() {
     /* A chair opening a chapter wants to know who is in it and to be able to
-     * act. Grade, Latin level, and the two form columns are the sponsor's
-     * working state -- a chair reading them can do nothing about any of it, and
-     * five extra columns push the actions off the side of the screen.
+     * act. Grade and Latin level stay out: they are the sponsor's working
+     * state and five extra columns push the actions off the side of a screen.
+     *
+     * ACTIVITIES IS IN, because a chair can now reopen a form and waive a
+     * sheet. It used to be hidden on the grounds that a chair could do nothing
+     * about it, which stopped being true the moment those buttons existed --
+     * and a button whose effect you cannot see is worse than no button.
+     *
+     * The paper ticks stay out. Those really are the sponsor's, and they are
+     * the one thing on this page a chair should not quietly do for them.
      *
      * "Type" becomes "Position", because for an adult we can say what they
      * actually are rather than repeating the word "Adult" down the column. */
@@ -377,6 +544,7 @@ export async function rosterPage(host, params = []) {
           render: (row) => el("span", { class: "mono" }, personNumber(row.id)) },
         { key: "position", label: "Position", sortable: true,
           render: (row) => position(row) },
+        { key: "form_status", label: "Activities", render: formState },
         { key: "actions", label: "Actions", render: (row) => actions(row) },
       ];
     }
@@ -407,14 +575,35 @@ export async function rosterPage(host, params = []) {
       // "Form" and "Paper forms" sat next to each other and neither said which
       // was which. One is the thing they fill in on this site; the other is the
       // paper that has to reach the sponsor's hands.
-      { key: "form_status", label: "Activities",
-        render: (row) => row.form_status === "submitted"
-          ? el("span", { class: "pill pill--done" }, "✓ Submitted")
-          : el("span", { class: "pill" }, "Not yet") },
+      { key: "form_status", label: "Activities", render: formState },
       { key: "paper", label: "Forms",
         render: (row) => paperControls(row) },
       { key: "actions", label: "Actions", render: (row) => actions(row) },
     ];
+  }
+
+  /* Where their own form has got to.
+   *
+   * Three states, not two. "Waived" is not a kind of "not yet": it is a
+   * decision somebody made at the desk, and showing it as unfinished sends a
+   * chair chasing a delegate who has nothing left to do.
+   *
+   * "Reopened" is worth saying out loud as well. A form that is past the
+   * deadline but open for one person is exactly the sort of thing that gets
+   * forgotten, and the next person to look at the row should be able to see
+   * why it is editable.
+   */
+  function formState(row) {
+    if (row.activity_sheet_waived) {
+      return el("span", { class: "pill" }, "Waived");
+    }
+    return el("span", {},
+      row.form_status === "submitted"
+        ? el("span", { class: "pill pill--done" }, "✓ Submitted")
+        : el("span", { class: "pill" }, "Not yet"),
+      row.forms_unlocked
+        ? el("span", { class: "pill", style: "margin-left:.35rem" }, "Reopened")
+        : null);
   }
 
   /* What this person is, in the words the convention uses. `adult_type_other`
@@ -532,6 +721,33 @@ export async function rosterPage(host, params = []) {
         variant: "btn--small",
         onclick: () => regenerate(row),
       }));
+
+      /* Reopening a form is a REGISTRATION CHAIR's job, not a sponsor's.
+       *
+       * The deadline stops a delegate editing their own answers; it was never
+       * meant to stop a chair. Until this button existed the only way through
+       * was somebody with a terminal, which meant every "she picked the wrong
+       * Latin level" became an email to an admin. */
+      if (hasScope("registration")) {
+        add(wrap, button(row.forms_unlocked ? "Close form" : "Reopen form", {
+          variant: "btn--small btn--quiet",
+          onclick: () => setUnlocked(row, !row.forms_unlocked),
+        }));
+      }
+
+      /* Waiving the activity sheet, for somebody added at the desk on the
+       * Friday. Their waiver and medical are still required -- those are
+       * safety documents and nobody is exempt -- but the tests were printed
+       * and the food ordered weeks ago, so there is nothing left for their
+       * answers to change. Without this they sit in their chapter's completion
+       * figure as permanently unfinished. */
+      if (hasScope("registration") && row.person_type === "delegate") {
+        add(wrap, button(row.activity_sheet_waived
+              ? "Un-waive sheet" : "Waive sheet", {
+          variant: "btn--small btn--quiet",
+          onclick: () => setWaived(row, !row.activity_sheet_waived),
+        }));
+      }
       if (row.person_type === "delegate") {
         add(wrap, button(row.is_chapter_leader ? "Unset leader" : "Make leader", {
           variant: "btn--small btn--quiet",
@@ -542,6 +758,10 @@ export async function rosterPage(host, params = []) {
           },
         }));
       }
+      add(wrap, button("Edit", {
+        variant: "btn--small btn--quiet",
+        onclick: () => editPerson(row),
+      }));
       add(wrap, button("Cancel", {
         variant: "btn--small btn--danger",
         onclick: async () => {

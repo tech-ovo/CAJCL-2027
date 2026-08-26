@@ -17,6 +17,20 @@
 <link rel="apple-touch-icon" href="img/apple-touch-icon.png">
 <link rel="stylesheet" href="tokens.css">
 <link rel="stylesheet" href="app.css">
+
+<!-- The theme, applied before the first paint.
+     This has to be inline and here, above the body: anything deferred means a
+     white flash on a dark-mode phone before the stylesheet is overridden. With
+     nothing stored the attribute is never set, and tokens.css falls through to
+     the operating system's preference. -->
+<script>
+  try {
+    var t = localStorage.getItem("theme");
+    if (t === "dark" || t === "light") {
+      document.documentElement.setAttribute("data-theme", t);
+    }
+  } catch (e) { /* private mode; the system preference still applies */ }
+</script>
 </head>
 <body>
 

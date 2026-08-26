@@ -588,3 +588,184 @@ def test_a_chair_can_give_a_new_chapter_its_sponsor(fx, client):
     assert signed_in.status_code == 200, signed_in.text
     assert (signed_in.json()["person"]["school"]["name"]
             == "Brand New High School")
+
+
+# ---------------------------------------------------------------------------
+# The five jobs that had a working endpoint and no button
+# ---------------------------------------------------------------------------
+# Each of these was reachable only from a terminal until the screens caught up,
+# and each is now promised to the registration chairs in docs/REGISTRATION.md.
+
+
+def test_a_chair_can_paste_a_roster_for_another_chapter(fx, client):
+    """A sponsor whose spreadsheet will not paste is a support call, and the
+    only previous answer was to find a president to sign in as them."""
+    headers = as_(fx, "chair")
+    text = "Nia Okafor\nJoon Park"
+
+    preview = client.post("/sponsor/roster/parse",
+                          json={"text": text, "person_type": "delegate",
+                                "school_id": fx.other_id},
+                          headers=headers)
+    assert preview.status_code == 200, preview.text
+    assert len(preview.json()["rows"]) == 2
+
+    done = client.post("/sponsor/roster/commit",
+                       json={"text": text,
+                             "idempotency_key": preview.json()["idempotency_key"],
+                             "rows": preview.json()["rows"],
+                             "school_id": fx.other_id},
+                       headers=headers)
+    assert done.status_code == 200, done.text
+    assert done.json()["committed_count"] == 2
+
+    # It landed in the chapter that was named, not in the chair's own.
+    roster = client.get(f"/sponsor/roster?school_id={fx.other_id}",
+                        headers=headers).json()
+    assert "Okafor" in [p["last_name"] for p in roster["people"]]
+
+
+def test_adding_one_person_returns_a_code_that_works(fx, client):
+    """The screens that add a single person have to hand over a code.
+
+    `_insert_person` minted one and dropped it, which was invisible while the
+    only caller was a paste -- thirty codes nobody reads, printed later from
+    the packet. A screen that adds ONE person has no packet to fall back on.
+    """
+    created = client.post("/sponsor/people",
+                          json={"school_id": fx.other_id,
+                                "first_name": "Nia", "last_name": "Okafor",
+                                "person_type": "delegate"},
+                          headers=as_(fx, "chair"))
+    assert created.status_code == 200, created.text
+    code = created.json().get("code")
+    assert code and code.startswith("DEL-"), f"no usable code came back: {code!r}"
+
+    signed_in = client.post("/auth/redeem", json={"code": code})
+    assert signed_in.status_code == 200, "the code returned does not sign anybody in"
+
+
+def test_a_paste_does_not_return_thirty_codes(fx, client):
+    """The single-person path returns a code; the paste deliberately does not.
+
+    Nothing reads them there, and returning them would put the two commit paths
+    out of step: a REPLAYED commit reads its rows back from the database, where
+    the code is a hash and unreadable by design.
+    """
+    text = "Ann Example\nBeth Sample"
+    headers = as_(fx, "chair")
+    preview = client.post("/sponsor/roster/parse",
+                          json={"text": text, "school_id": fx.other_id},
+                          headers=headers).json()
+    body = {"text": text, "idempotency_key": preview["idempotency_key"],
+            "rows": preview["rows"], "school_id": fx.other_id}
+
+    first = client.post("/sponsor/roster/commit", json=body, headers=headers).json()
+    assert all("code" not in row for row in first["created"])
+
+    replay = client.post("/sponsor/roster/commit", json=body, headers=headers).json()
+    assert replay["already_committed"] is True
+    assert all("code" not in row for row in replay["created"])
+
+
+def test_a_chair_can_reopen_one_persons_form(fx, client):
+    """The deadline stops a DELEGATE editing their own answers. It was never
+    meant to stop a chair, and until the button existed it did."""
+    headers = as_(fx, "chair")
+    opened = client.post(f"/admin/people/{fx.other_delegate_id}/unlock-forms",
+                         json={"unlocked": True}, headers=headers)
+    assert opened.status_code == 200, opened.text
+
+    roster = client.get(f"/sponsor/roster?school_id={fx.other_id}",
+                        headers=headers).json()
+    row = [p for p in roster["people"] if p["id"] == fx.other_delegate_id][0]
+    assert row["forms_unlocked"] == 1, (
+        "the roster must show that a form is open, or the button has no visible "
+        "effect and gets pressed twice")
+
+    closed = client.post(f"/admin/people/{fx.other_delegate_id}/unlock-forms",
+                         json={"unlocked": False}, headers=headers)
+    assert closed.status_code == 200
+
+
+def test_a_chair_can_correct_a_chapter_after_creating_it(fx, client):
+    """Chapters are typed in a hurry from the Chapters page, so a typo in a
+    name is normal. It used to be permanent."""
+    headers = as_(fx, "chair")
+    fixed = client.patch(f"/admin/schools/{fx.other_id}",
+                         json={"name": "Rival Renamed High School",
+                               "city": "Tustin", "level": "MS",
+                               "billing_exempt": False,
+                               "discount_cents": 5000,
+                               "discount_reason": "New chapter"},
+                         headers=headers)
+    assert fixed.status_code == 200, fixed.text
+
+    rows = client.get("/admin/registration", headers=headers).json()["schools"]
+    row = [r for r in rows if r["id"] == fx.other_id][0]
+    assert row["name"] == "Rival Renamed High School"
+    assert row["city"] == "Tustin"
+    assert row["level"] == "MS"
+    assert row["discount_cents"] == 5000
+
+
+def test_a_delegate_added_at_the_desk_is_not_left_permanently_unfinished(fx, client):
+    """The Friday desk, and the reason the waiver flag exists.
+
+    Their activity sheet is waived because the tests were printed and the food
+    ordered weeks ago. Their WAIVER AND MEDICAL are not waived -- those are
+    safety documents and nobody is exempt -- so they are still not complete
+    until the paper is in, which is what the desk is checking anyway.
+    """
+    headers = as_(fx, "chair")
+    created = client.post("/sponsor/people",
+                          json={"school_id": fx.other_id,
+                                "first_name": "Late", "last_name": "Arrival",
+                                "person_type": "delegate"},
+                          headers=headers)
+    assert created.status_code == 200, created.text
+    person_id = created.json()["id"]
+
+    waived = client.post(f"/admin/people/{person_id}/waive-activity-sheet",
+                         json={"waived": True}, headers=headers)
+    assert waived.status_code == 200, waived.text
+
+    roster = client.get(f"/sponsor/roster?school_id={fx.other_id}",
+                        headers=headers).json()
+    row = [p for p in roster["people"] if p["id"] == person_id][0]
+    assert row["activity_sheet_waived"] == 1, (
+        "the roster must carry the flag, or the desk cannot see what it did")
+    assert row["form_status"] is None, "they never submitted a sheet, and will not"
+
+    stats = fx.stats_for(fx.other_id)
+    assert stats["delegates_active"] >= 1
+    assert stats["delegates_complete"] == 0, (
+        "waiving the sheet must not waive the paper: no waiver, no medical, "
+        "not complete")
+
+
+def test_a_name_can_be_corrected_from_the_roster(fx, client):
+    """A pasted roster reads whatever the spreadsheet had.
+
+    The name is printed on their sheet and read out at awards, so it is the
+    field most worth being able to fix -- and `PATCH /sponsor/people/{id}` had
+    no button anywhere, for a sponsor or a chair, so nothing on the site could
+    fix a delegate's name at all.
+
+    Both roles can, because both see the roster it sits on.
+    """
+    for who in ("chair", "other_sponsor"):
+        fixed = client.patch(f"/sponsor/people/{fx.other_delegate_id}",
+                             json={"first_name": "Rory", "last_name": f"By{who}"},
+                             headers=as_(fx, who))
+        assert fixed.status_code == 200, f"{who}: {fixed.text}"
+
+    roster = client.get(f"/sponsor/roster?school_id={fx.other_id}",
+                        headers=as_(fx, "chair")).json()
+    row = [p for p in roster["people"] if p["id"] == fx.other_delegate_id][0]
+    assert row["last_name"] == "Byother_sponsor"
+
+    # Their code is untouched: renaming somebody must not invalidate the sheet
+    # in their hand.
+    assert client.post("/auth/redeem",
+                       json={"code": fx.codes["other_delegate"]}).status_code == 200

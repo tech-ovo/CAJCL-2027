@@ -42,9 +42,12 @@ def invoice_cents(
     billable_counts().
 
     Exemption is a FLAG, never a name check. A name check breaks the first time
-    someone types "S.C.L." or a second exempt chapter appears. SCL and At Large
-    send real people who need real accounts and real forms; they are simply not
-    billed.
+    someone types "S.C.L." or a second exempt chapter appears. SCL sends real
+    people who need real accounts and real forms; it is simply not billed.
+
+    MEMBERS AT LARGE PAY. They are an organization rather than a chapter, which
+    is a separate question from whether they are billed -- the two ideas are
+    deliberately two columns.
 
     The discount is an ad-hoc reduction an admin sets by hand: a new-chapter
     discount, a hardship arrangement, or the way a fee change gets honoured

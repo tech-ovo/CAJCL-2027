@@ -58,7 +58,7 @@ An attendee who can no longer attend is **marked cancelled rather than deleted**
 
 A person is never **moved** between chapters. Chapters are completely separate, and a chapter sending both middle and high school delegates is already two schools with two sponsors. If a sponsor enters someone under the wrong chapter, they cancel that row and enter them again under the right one.
 
-*[Demo: all of this. The parsing logic should be genuinely good, since it is the most impressive thing to show a board. Later: richer duplicate detection, a manual per-student edit form with more validation, and SCL and delegate-at-large registration — which is easy, just a school named SCL and a school named At Large with some ad hoc handling. SCL does not pay but still needs accounts.]*
+*[Demo: all of this. The parsing logic should be genuinely good, since it is the most impressive thing to show a board. Later: richer duplicate detection, a manual per-student edit form with more validation, and SCL and delegate-at-large registration — which is easy, just a school named SCL and a school named At Large with some ad hoc handling. SCL does not pay but still needs accounts; members at large pay normally.]*
 
 ## The printed packet
 
@@ -112,7 +112,7 @@ The invoice is `$140 × billable delegates`, plus `max(0, $75 × (billable adult
 
 **Billable** means active attendees plus anyone who cancelled after the chapter paid — see the roster section above. **The discount** is a per-school amount an admin sets by hand, with a reason shown on the invoice: a new-chapter discount, a hardship arrangement, or the way a fee change gets honoured after invoicing. There is no early-bird discount and no late fee; every chapter pays the same amount at the same time.
 
-**Some chapters are not billed.** SCL pays nothing but still needs accounts so its members can complete forms, and the At Large chapter will need similar handling. This is a `billing_exempt` flag on the school record, toggled in the admin dashboard — **not** a special case keyed to the name "SCL" in code. A name check would silently break the first time someone types "S.C.L." or creates a second exempt chapter. An exempt school computes an invoice total of zero, its invoice page says why in plain words rather than showing a blank, and it is excluded from the chair dashboard's outstanding-balance total so the number stays meaningful.
+**Some chapters are not billed.** SCL pays nothing but still needs accounts so its members can complete forms. Members at large DO pay; they are an organization rather than a chapter, which is a separate question from billing. This is a `billing_exempt` flag on the school record, toggled in the admin dashboard — **not** a special case keyed to the name "SCL" in code. A name check would silently break the first time someone types "S.C.L." or creates a second exempt chapter. An exempt school computes an invoice total of zero, its invoice page says why in plain words rather than showing a blank, and it is excluded from the chair dashboard's outstanding-balance total so the number stays meaningful.
 
 The generic invoice details — payment deadline of February 13, 2027, and remit to University High School JCL c/o Mark Michalak, University High School, 4771 Campus Drive, Irvine, CA 92612 — are dashboard-editable settings. There is a [sample invoice](https://docs.google.com/spreadsheets/d/180ZfF7xyLx_PvS293pFebJZp7511rYZ2JMQz00zSAJ0/edit?usp=sharing) from two years ago to work from.
 

@@ -32,6 +32,8 @@ CREATE TABLE settings (
 
 Seeded keys: `convention.year`, `convention.ordinal`, `convention.start_date`, `convention.end_date`, `convention.venue_name`, `convention.venue_address`, `convention.theme_latin`, `convention.theme_english`, `convention.theme_citation`, `convention.contact_email`, `fee.delegate_cents` (14000), `fee.extra_adult_cents` (7500), `fee.adult_ratio` (10), `deadline.forms_lock`, `deadline.payment`, `invoice.remit_to`, `invoice.remit_address`, `ops.warm_until`, `ops.autoexport_enabled`, `ops.autoexport_until`, `ops.autoexport_interval_minutes`.
 
+**Only SCL is exempt. Members at large pay.** Being an *organization* is about not being a chapter; being *exempt* is about not being billed, and they are two columns because only one school is both. The comment above `billing_exempt` in `001_core.sql` still pairs SCL with At Large — that migration has been applied and is never edited, so this line is the one to trust.
+
 ```sql
 CREATE TABLE schools (
   id              INTEGER PRIMARY KEY,
@@ -40,7 +42,7 @@ CREATE TABLE schools (
   kind            TEXT NOT NULL DEFAULT 'chapter' CHECK (kind IN ('chapter','organization')),
   city            TEXT,
   drive_folder_id TEXT,               -- packet scans; URL string only, visible only to scope '*'
-  billing_exempt  INTEGER NOT NULL DEFAULT 0,   -- SCL, At Large: invoice computes to zero
+  billing_exempt  INTEGER NOT NULL DEFAULT 0,   -- SCL only: invoice computes to zero
   discount_cents  INTEGER NOT NULL DEFAULT 0 CHECK (discount_cents >= 0),
   discount_reason TEXT,               -- shown on the invoice in words
   status          TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','withdrawn')),

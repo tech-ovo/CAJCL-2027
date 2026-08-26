@@ -118,6 +118,13 @@ export async function dashboardPage(host) {
           // the packet is its own button, named after what it produces.
           el("a", { class: "btn btn--small", href: `#/roster/${row.id}` },
             "Roster"),
+          // A chapter's own details -- its name above all. Created from this
+          // page in a hurry, so a typo in one is normal and used to be
+          // permanent.
+          button("Edit", {
+            variant: "btn--small btn--quiet",
+            onclick: () => { panel = { kind: "school", school: row }; render(); },
+          }),
           button("Packet", {
             variant: "btn--small btn--quiet",
             onclick: () => openPrintView(`/sponsor/packet?school_id=${row.id}`),
@@ -128,12 +135,17 @@ export async function dashboardPage(host) {
   /* ------------------------------------------------------------------ */
 
   function renderPanel() {
-    return panel.kind === "payment" ? paymentPanel(panel.school) : schoolPanel();
+    return panel.kind === "payment"
+      ? paymentPanel(panel.school)
+      : schoolPanel(panel.school || null);
   }
 
   function paymentPanel(school) {
     let errors = [];
-    const amount = input({ inputmode: "decimal", placeholder: "0.00" });
+    // The `$` sits in the field rather than in help text underneath, the same
+    // way Settings → Values renders a fee. Help text under a label pushes the
+    // input out of line with its neighbours in the grid.
+    const amount = input({ inputmode: "decimal", placeholder: "e.g., 2500.00" });
     const reference = input({ placeholder: "Check number" });
     const received = el("input", { type: "date" });
     const note = input({ placeholder: "Anything worth remembering" });
@@ -151,7 +163,8 @@ export async function dashboardPage(host) {
         el("div", { class: "grid" },
           el("div", { class: "span-3" },
             field({ id: "amount", label: "Amount", required: true,
-                    help: "Dollars, e.g. 2500.00", control: amount })),
+                    control: el("span", { class: "input-prefix" },
+                                el("span", {}, "$"), amount) })),
           el("div", { class: "span-3" },
             field({ id: "reference", label: "Check number", control: reference })),
           el("div", { class: "span-3" },
@@ -195,46 +208,64 @@ export async function dashboardPage(host) {
     return wrap;
   }
 
-  function schoolPanel() {
+  /* Adding a chapter and correcting one are the same six fields.
+   *
+   * Written as two panels they drift: the create form gains a field, the edit
+   * form does not, and the difference is invisible until somebody cannot fix
+   * the thing they just typed wrong. `existing` is null when adding.
+   */
+  function schoolPanel(existing) {
+    const editing = existing !== null;
     let errors = [];
-    const name = input({ placeholder: "Chapter name" });
-    const city = input({ placeholder: "City" });
+    const name = input({ placeholder: "Chapter name",
+                         value: editing ? existing.name : "" });
+    const city = input({ placeholder: "City", value: editing ? existing.city || "" : "" });
     const level = select([["HS", "High school"], ["MS", "Middle school"]]);
+    if (editing) level.value = existing.level;
     const exempt = el("input", { type: "checkbox" });
-    const discount = input({ inputmode: "decimal", placeholder: "0.00" });
-    const reason = input({ placeholder: "Why, in words" });
+    if (editing && existing.billing_exempt) exempt.checked = true;
+    const discount = input({
+      inputmode: "decimal", placeholder: "0.00",
+      value: editing && existing.discount_cents
+        ? (existing.discount_cents / 100).toFixed(2) : "",
+    });
+    const reason = input({ value: editing ? existing.discount_reason || "" : "" });
 
     const wrap = el("div", { class: "panel" });
 
     function draw() {
       clear(wrap);
       add(wrap, 
-        el("h2", {}, "Add a chapter"),
+        el("h2", {}, editing ? `Edit ${existing.name}` : "Add a chapter"),
         el("p", { class: "muted" },
-          "A chapter sending both middle and high school delegates registers " +
-          "twice, as two chapters with two sponsors."),
+          editing
+            ? "Changing the name changes it everywhere, including on sheets "
+              + "printed from now on. Nobody's access code is affected."
+            : "A chapter sending both middle and high school delegates "
+              + "registers twice, as two chapters with two sponsors."),
         errors.length ? errorSummary(errors) : null,
         el("div", { class: "grid" },
           el("div", { class: "span-5" },
             field({ id: "school-name", label: "Name", required: true, control: name })),
           el("div", { class: "span-4" },
             field({ id: "school-city", label: "City", required: true,
-                    help: "Shown beside the chapter name everywhere.",
                     control: city })),
           el("div", { class: "span-3" },
             field({ id: "school-level", label: "Level", required: true, control: level })),
           el("div", { class: "span-4" },
-            field({ id: "discount", label: "Discount", control: discount,
-                    help: "Dollars off this chapter's invoice." })),
+            field({ id: "discount", label: "Discount",
+                    control: el("span", { class: "input-prefix" },
+                                el("span", {}, "$"), discount) })),
           el("div", { class: "span-8" },
             field({ id: "reason", label: "Discount reason", control: reason }))),
         el("label", { class: "choice" }, exempt,
           el("span", {},
             el("span", { class: "choice__name" }, "This chapter is not billed"),
             el("span", { class: "choice__why" },
-              "For SCL and At Large. They still need accounts and forms."))),
+              "SCL only. Members at large pay like everybody else. An exempt "
+              + "chapter still needs accounts and forms."))),
         el("div", { class: "btn-row" },
-          button("Add chapter", {
+          button(editing ? "Save changes" : "Add chapter", {
             variant: "btn--primary",
             onclick: async () => {
               errors = [];
@@ -242,13 +273,15 @@ export async function dashboardPage(host) {
               try {
                 const dollars = Number(String(discount.value || 0)
                   .replace(/[$,\s]/g, "")) || 0;
-                await api.post("/admin/schools", {
+                const body = {
                   name: name.value.trim(), city: city.value.trim(),
                   level: level.value,
                   billing_exempt: exempt.checked,
                   discount_cents: Math.round(dollars * 100),
                   discount_reason: reason.value.trim() || null,
-                });
+                };
+                if (editing) await api.patch(`/admin/schools/${existing.id}`, body);
+                else await api.post("/admin/schools", body);
                 panel = null;
                 await reload();
               } catch (error) {

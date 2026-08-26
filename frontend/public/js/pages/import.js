@@ -34,9 +34,22 @@ const WARNINGS = {
 const MEALS = [["", "—"], ["regular", "Regular"],
                ["vegetarian", "Vegetarian"], ["gluten_free", "Gluten free"]];
 
-export async function importPage(host) {
-  const roster = await api.get("/sponsor/roster", { statusHost: host });
+export async function importPage(host, params = []) {
+  /* A sponsor reaches this at #/roster/import and it means their own chapter.
+   * A registration chair reaches it at #/roster/123/import, having opened a
+   * chapter that cannot get its own spreadsheet in.
+   *
+   * The server already accepted `school_id` on both calls below and already
+   * refused it for anybody without an administrative scope, so this adds a
+   * route and no new authority. */
+  const schoolId = params[0] ? Number(params[0]) : null;
+  const asChair = schoolId !== null;
+
+  const roster = await api.get(
+    asChair ? `/sponsor/roster?school_id=${schoolId}` : "/sponsor/roster",
+    { statusHost: host });
   const school = roster.school;
+  const backHref = asChair ? `#/roster/${schoolId}` : "#/roster";
   const levels = school.level === "MS"
     ? ["MS-1", "MS-2", "MS-3"]
     : ["HS-1", "HS-2", "HS-3", "HS-Adv"];
@@ -118,7 +131,9 @@ export async function importPage(host) {
                 }
                 try {
                   preview = await api.post("/sponsor/roster/parse",
-                    { text, person_type: personType }, { statusHost: host });
+                    { text, person_type: personType,
+                      school_id: schoolId || undefined },
+                    { statusHost: host });
                   renderPreview();
                 } catch (error) {
                   errors = error.errors && error.errors.length
@@ -127,7 +142,7 @@ export async function importPage(host) {
                 }
               },
             }),
-            el("a", { class: "btn", href: "#/roster" }, "Back to roster")),
+            el("a", { class: "btn", href: backHref }, "Back to roster")),
 
           el("hr", { class: "hair" }),
           el("details", {},
@@ -275,6 +290,7 @@ export async function importPage(host) {
         text,
         idempotency_key: preview.idempotency_key,
         rows: preview.rows,
+        school_id: schoolId || undefined,
       });
 
       clear(host);
@@ -288,7 +304,7 @@ export async function importPage(host) {
           : "Everyone now has an access code. Print their sheets and hand each " +
             "one to the person named on it."),
         el("div", { class: "btn-row" },
-          el("a", { class: "btn btn--primary", href: "#/roster" }, "Go to roster")));
+          el("a", { class: "btn btn--primary", href: backHref }, "Go to roster")));
     } catch (error) {
       committing = false;
       errors = error.errors && error.errors.length ? error.errors : [error.message];

@@ -44,6 +44,21 @@
    * says what it does. */
   --crimson:   #A02334;  /* destructive actions ONLY                    6.93:1 on ivory */
 
+  /* Dark mode, and it is four colours rather than a second palette.
+   *
+   * The palette above was already built around a light/dark split -- gold and
+   * Columbia blue are marked "on dark ONLY" because they fail on ivory and are
+   * comfortable on navy. Inverting the ground is what lets them finally be
+   * text: gold reaches 7.68:1 on --night, having been 2.06:1 on ivory.
+   *
+   * So only the two grounds are new, plus a muted tone and a red, because
+   * --slate and --crimson are the two colours that are dark by design. Every
+   * figure below was measured, like the ones above. */
+  --night:       #0B1B33;  /* the page in dark mode; navy taken further down */
+  --night-panel: #152C4D;  /* panels and inputs         ivory on it 12.86:1 */
+  --haze:        #A9B4C4;  /* metadata and captions     6.68:1 on --night-panel */
+  --rose:        #E8919B;  /* destructive actions       5.97:1 on --night-panel */
+
   /* Semantic aliases. Prefer these in components: they say what a colour is
    * FOR, so a future commissioner can re-skin by editing the block above
    * without hunting for which --purple was a link and which was a heading. */
@@ -68,6 +83,71 @@
    * paired with a text label or a glyph. */
   --status-done:      var(--purple);
   --status-pending:   var(--slate);
+}
+
+/* ---------------------------------------------------------------------------
+ * Dark mode
+ *
+ * ONLY THE ALIASES CHANGE. Nothing below this point in the file, and nothing in
+ * app.css, knows which mode it is in -- every component was already written
+ * against --text, --page-bg and the rest, so the whole site inverts by
+ * redefining thirteen lines. If you add a component and it does not follow the
+ * toggle, it is because it named a raw colour instead of an alias.
+ *
+ * Three states, and the middle one is the default:
+ *   no data-theme            follow the operating system
+ *   data-theme="dark"        the toggle was pressed, dark
+ *   data-theme="light"       the toggle was pressed, light
+ *
+ * The `:not([data-theme="light"])` guard is what makes an explicit choice of
+ * light survive a system set to dark.
+ *
+ * Worst measured ratio anywhere in this block: 5.44:1, muted text on a tinted
+ * row. Every other pairing is above 5.9:1.
+ * ------------------------------------------------------------------------ */
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { color-scheme: dark; }
+  :root:not([data-theme="light"]) {
+    --page-bg:        var(--night);
+    --panel-bg:       var(--night-panel);
+    --text:           var(--ivory);
+    --text-muted:     var(--haze);
+    --link:           var(--lavender);
+    --rule:           #33507A;
+    --rule-strong:    var(--haze);
+    --accent:         var(--gold);
+    --tint:           #1E3A63;
+    --danger:         var(--rose);
+    /* Gold IS the focus ring here. The light-mode rule bans it because gold on
+     * ivory is 2.06:1; on --night it is 7.68:1, which is why --focus-on-dark
+     * existed before dark mode did. */
+    --focus:          var(--gold);
+    --focus-on-dark:  var(--gold);
+    --status-done:    var(--lavender);
+    --status-pending: var(--haze);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page-bg:        var(--night);
+  --panel-bg:       var(--night-panel);
+  --text:           var(--ivory);
+  --text-muted:     var(--haze);
+  --link:           var(--lavender);
+  --rule:           #33507A;
+  --rule-strong:    var(--haze);
+  --accent:         var(--gold);
+  --tint:           #1E3A63;
+  --danger:         var(--rose);
+  --focus:          var(--gold);
+  --focus-on-dark:  var(--gold);
+  --status-done:    var(--lavender);
+  --status-pending: var(--haze);
+}
+
+:root {
 
   /* ---------------------------------------------------------------------
    * Type
