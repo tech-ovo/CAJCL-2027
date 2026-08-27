@@ -92,7 +92,7 @@ a:hover { text-decoration-thickness: 2px; }
 }
 .on-dark :focus-visible { outline-color: var(--focus-on-dark); }
 
-::selection { background: var(--tint); color: var(--ink); }
+::selection { background: var(--tint); color: var(--text); }
 
 .visually-hidden {
   position: absolute; width: 1px; height: 1px; overflow: hidden;
@@ -102,7 +102,7 @@ a:hover { text-decoration-thickness: 2px; }
 /* Skip link — the first thing in the tab order on every page. */
 .skip-link {
   position: absolute; left: var(--space-3); top: -4rem; z-index: 100;
-  background: var(--ink); color: var(--ivory);
+  background: var(--inverse-bg); color: var(--on-inverse);
   padding: var(--space-2) var(--space-4);
   font-family: var(--font-sans); font-size: var(--size-sm);
   transition: top var(--transition);
@@ -243,7 +243,13 @@ hr.accent { border: 0; border-top: 2px solid var(--accent); width: var(--space-7
 .with-rail > .rail { padding-top: 0.45rem; }
 @media (max-width: 60rem) { .with-rail > .rail { padding-top: 0; } }
 
-.rail > * + * { margin-top: var(--space-4); }
+/* A LABEL AND ITS VALUE ARE ONE THING, and the gap between them has to be
+ * smaller than the gap to the next pair — otherwise the eye groups the value
+ * with the label BELOW it, which is exactly backwards. Applies everywhere this
+ * small-caps-over-value pattern appears: the rail, the stat blocks, the
+ * detail lists. */
+.rail__item > .label { margin-bottom: var(--space-1); }
+.rail > * + * { margin-top: var(--space-5); }
 @media (max-width: 60rem) { .rail > * + * { margin-top: 0; } }
 
 /* ===========================================================================
@@ -318,7 +324,10 @@ hr.accent { border: 0; border-top: 2px solid var(--accent); width: var(--space-7
   align-items: center; padding: var(--space-2) 0;
   font-family: var(--font-sans); font-size: var(--size-sm);
   border-bottom: var(--border);
-  margin-bottom: var(--space-5);
+  /* The rule under the nav is a boundary, not a section break. A full step of
+   * air below it read as a gap the page had failed to fill, and on a laptop it
+   * pushed the first heading of every page further down for nothing. */
+  margin-bottom: var(--space-4);
 }
 .nav a {
   color: var(--text); text-decoration: none;
@@ -358,9 +367,9 @@ hr.accent { border: 0; border-top: 2px solid var(--accent); width: var(--space-7
   border-bottom: var(--border-strong);
   display: flex; gap: var(--space-3); align-items: baseline; flex-wrap: wrap;
 }
-.banner--demo { background: var(--tint); color: var(--ink); }
-.banner--info { background: var(--tint); color: var(--ink); }
-.banner--warning { background: var(--ink); color: var(--ivory); }
+.banner--demo { background: var(--tint); color: var(--text); }
+.banner--info { background: var(--tint); color: var(--text); }
+.banner--warning { background: var(--inverse-bg); color: var(--on-inverse); }
 .banner__label {
   font-size: var(--size-xs); letter-spacing: var(--tracking-label);
   text-transform: uppercase; font-weight: var(--weight-semi);
@@ -368,8 +377,8 @@ hr.accent { border: 0; border-top: 2px solid var(--accent); width: var(--space-7
 }
 
 /* The impersonation banner names BOTH identities and never goes away. */
-.banner--impersonating { background: var(--ink); color: var(--ivory); position: sticky; top: 0; z-index: 40; }
-.banner--impersonating .banner__label { color: var(--blue); }
+.banner--impersonating { background: var(--inverse-bg); color: var(--on-inverse); position: sticky; top: 0; z-index: 40; }
+.banner--impersonating .banner__label { color: var(--on-inverse-quiet); }
 .banner--impersonating button { margin-left: auto; }
 
 /* ===========================================================================
@@ -390,11 +399,28 @@ hr.accent { border: 0; border-top: 2px solid var(--accent); width: var(--space-7
               border-color var(--transition);
 }
 .btn:hover { border-color: var(--link); color: var(--link); }
+.btn[disabled] { opacity: 0.6; cursor: default; }
+.btn[disabled]:hover { border-color: var(--rule-strong); color: var(--text); }
+
+/* The wait, inside the button that caused it. `currentColor` so it is legible
+ * on a filled primary button and an outlined one without a second rule. */
+.btn__spinner {
+  width: 1em; height: 1em; flex: none;
+  border: 2px solid currentColor; border-top-color: transparent;
+  border-radius: 50%;
+  animation: btn-spin 0.7s linear infinite;
+}
+@keyframes btn-spin { to { transform: rotate(360deg); } }
+
+/* Nobody has asked for a spinning ring. Hold the shape, drop the motion. */
+@media (prefers-reduced-motion: reduce) {
+  .btn__spinner { animation: none; border-top-color: currentColor; opacity: 0.5; }
+}
 
 .btn--primary {
-  background: var(--link); border-color: var(--link); color: var(--white);
+  background: var(--link); border-color: var(--link); color: var(--on-link);
 }
-.btn--primary:hover { background: var(--ink); border-color: var(--ink); color: var(--white); }
+.btn--primary:hover { background: var(--inverse-bg); border-color: var(--inverse-bg); color: var(--on-inverse); }
 
 /* Destructive actions are navy, not red — the palette has no red, and a
  * confirmation step carries the weight instead of a colour. */
@@ -402,7 +428,7 @@ hr.accent { border: 0; border-top: 2px solid var(--accent); width: var(--space-7
  * in a row of buttons pulls the eye to the one thing nobody should click by
  * accident; the colour is a warning, not an invitation. */
 .btn--danger { border-color: var(--danger); color: var(--danger); background: var(--panel-bg); }
-.btn--danger:hover { background: var(--danger); color: var(--white); border-color: var(--danger); }
+.btn--danger:hover { background: var(--danger); color: var(--on-danger); border-color: var(--danger); }
 .btn--danger:focus-visible { outline-color: var(--danger); }
 
 .btn--quiet { border-color: var(--rule); color: var(--text-muted); }
@@ -462,7 +488,7 @@ input[type="search"], input[type="date"], select, textarea {
   width: 100%;
   font-family: var(--font-sans); font-size: var(--size-base);
   color: var(--text); background: var(--panel-bg);
-  border: 1px solid var(--slate); border-radius: var(--radius);
+  border: 1px solid var(--input-border); border-radius: var(--radius);
   padding: var(--space-2) var(--space-3);
   min-height: var(--control-h);
   transition: border-color var(--transition), box-shadow var(--transition);
@@ -470,9 +496,9 @@ input[type="search"], input[type="date"], select, textarea {
 textarea { min-height: 9rem; resize: vertical; line-height: var(--leading-snug); }
 textarea.paste { font-family: var(--font-mono); font-size: var(--size-sm); min-height: 14rem; }
 
-input:hover, select:hover, textarea:hover { border-color: var(--ink); }
+input:hover, select:hover, textarea:hover { border-color: var(--text); }
 input[aria-invalid="true"], textarea[aria-invalid="true"], select[aria-invalid="true"] {
-  border-color: var(--ink); border-width: 2px;
+  border-color: var(--text); border-width: 2px;
 }
 input::placeholder, textarea::placeholder { color: var(--text-muted); opacity: 1; }
 
@@ -482,8 +508,8 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); opacity: 1
 .field__error {
   display: flex; gap: var(--space-2);
   font-family: var(--font-sans); font-size: var(--size-sm);
-  background: var(--tint); color: var(--ink);
-  border-left: 3px solid var(--ink);
+  background: var(--tint); color: var(--text);
+  border-left: 3px solid var(--text);
   padding: var(--space-2) var(--space-3);
   margin-top: var(--space-2);
 }
@@ -493,14 +519,14 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); opacity: 1
   display: flex; gap: var(--space-2);
   font-family: var(--font-sans); font-size: var(--size-sm);
   background: var(--panel-bg); color: var(--text);
-  border: var(--border); border-left: 3px solid var(--slate);
+  border: var(--border); border-left: 3px solid var(--text-muted);
   padding: var(--space-2) var(--space-3); margin-top: var(--space-2);
 }
 .field__warning::before { content: "Note"; font-weight: var(--weight-semi); flex: 0 0 auto; }
 
 .form-errors {
   border: var(--border-strong); border-left-width: 3px;
-  background: var(--tint); color: var(--ink);
+  background: var(--tint); color: var(--text);
   padding: var(--space-4); margin-bottom: var(--space-5);
   font-family: var(--font-sans); font-size: var(--size-sm);
 }
@@ -527,6 +553,9 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); opacity: 1
 /* Ineligible options are DISABLED with an explanation, never hidden. A delegate
  * who cannot find Grammar 2 assumes the site is broken. */
 .choice--blocked { color: var(--text-muted); }
+/* At the category's limit, and this one is not chosen. Quieter than blocked,
+ * because nothing is wrong: unticking any other one brings it back. */
+.choice--capped { color: var(--text-muted); }
 .choice--blocked .choice__name { font-weight: var(--weight-normal); }
 .choice--blocked input { cursor: not-allowed; }
 
@@ -539,7 +568,6 @@ legend { padding: 0; }
   font-family: var(--font-sans); font-size: var(--size-sm);
   color: var(--text-muted); margin: var(--space-2) 0 var(--space-3);
 }
-.count-note--over { color: var(--text); font-weight: var(--weight-semi); }
 
 /* ===========================================================================
  * Tables — the chair dashboard is fifty schools; the roster is thirty people.
@@ -666,10 +694,10 @@ th[aria-sort] { color: var(--text); }
   margin: var(--space-5) 0;
   display: flex; gap: var(--space-3); align-items: baseline; flex-wrap: wrap;
 }
-.waking--late { border-left-color: var(--ink); color: var(--text); }
+.waking--late { border-left-color: var(--text); color: var(--text); }
 .waking--failed {
   border: var(--border-strong); border-left-width: 3px;
-  background: var(--tint); color: var(--ink);
+  background: var(--tint); color: var(--text);
   display: block;
 }
 .waking__dot {
@@ -698,7 +726,7 @@ th[aria-sort] { color: var(--text); }
 .stat__value {
   font-family: var(--font-mono); font-variant-numeric: tabular-nums;
   font-size: var(--size-xl); font-weight: var(--weight-medium);
-  line-height: 1; display: block; margin-bottom: var(--space-2);
+  line-height: 1; display: block; margin-bottom: var(--space-1);
 }
 .stat--stale .stat__value { color: var(--text-muted); }
 
@@ -714,7 +742,7 @@ th[aria-sort] { color: var(--text); }
  * what makes the two columns look like one line. */
 .detail {
   display: grid; grid-template-columns: auto 1fr;
-  gap: var(--space-2) var(--space-5); margin: 0;
+  gap: var(--space-1) var(--space-5); margin: 0;
   align-items: baseline;
 }
 .detail dt {
@@ -784,6 +812,7 @@ th[aria-sort] { color: var(--text); }
  * the value column wraps three words onto two lines, and small capitals for
  * both halves leaves neither leading the other. */
 .rail-list p { margin: 0 0 var(--space-3); max-width: none; }
+.rail-list strong + br + * { margin-top: 0; }
 .rail-list p:last-child { margin-bottom: 0; }
 .rail-list strong { font-family: var(--font-sans); font-weight: var(--weight-semi); }
 

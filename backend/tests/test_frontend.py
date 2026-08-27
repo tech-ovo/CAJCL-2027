@@ -418,3 +418,115 @@ def test_pages_do_not_use_the_browsers_own_dialogs():
                 offenders.append(f"{path.name}:{number}: {line.strip()}")
     assert offenders == [], (
         "use check() or tell() from ui.js instead:\n  " + "\n  ".join(offenders))
+
+
+# The raw palette. A component naming one of these has opted out of dark mode,
+# because these are the colours dark mode does NOT redefine -- the aliases are.
+RAW_PALETTE = ("--ink", "--purple", "--gold", "--blue", "--lavender", "--ivory",
+               "--slate", "--mist", "--white", "--crimson",
+               "--night", "--night-panel", "--haze", "--rose")
+
+
+def test_components_never_name_a_raw_palette_colour():
+    """app.css must reach for `--text`, never `--ink`.
+
+    This is the rule that makes dark mode one block of overrides, and breaking
+    it is silent: the page still renders, in light mode it looks right, and
+    only a viewer in dark mode sees the damage. It went wrong in eighteen
+    places at once -- a nav bar with navy text on a navy tint, and filled
+    buttons with white text on lavender.
+
+    The print block is exempt. Paper is white in both modes.
+    """
+    css = (PUBLIC / "app.css").read_text(encoding="utf-8")
+    # Anything from @media print onwards is exempt: paper is white either way.
+    last_line = css[:css.index("@media print")].count(chr(10)) + 1
+
+    offenders = [
+        f"{number}: {line.strip()}"
+        for number, line in enumerate(css.splitlines(), 1)
+        if number < last_line
+        and any(f"var({token})" in line for token in RAW_PALETTE)
+    ]
+
+    assert offenders == [], (
+        "these use a raw palette colour instead of a semantic alias, so they "
+        "will not follow the theme:\n  " + "\n  ".join(offenders))
+
+
+def test_the_router_cannot_be_overtaken_by_a_slower_page():
+    """Two clicks in quick succession must not leave one tab's contents under
+    another tab's highlight.
+
+    Every page fetches, so `route()` sits at an await for as long as the
+    network takes, and whichever call finishes LAST wins the screen. The
+    highlight comes from `location.hash` and is always right, which is what
+    makes the mismatch so confusing to look at.
+
+    Two mechanisms, and the second is what actually saves it: a ticket that
+    stops an overtaken navigation writing anything more, and a fresh container
+    per navigation so a page still fetching when a newer one arrives paints
+    into a detached node.
+    """
+    main = (PUBLIC / "js/main.js").read_text(encoding="utf-8")
+    body = main[main.index("async function route()"):]
+    body = body[:body.index("\nasync function ensureSession")]
+
+    assert "const ticket = ++navigation" in body, "no per-navigation ticket"
+    assert body.count("if (stale()) return;") >= 2, (
+        "every await in route() must be followed by a staleness check")
+    assert 'const host = el("div");' in body, (
+        "the page must render into its own container, not into #app directly")
+    assert "await page(host," in body, "the page is handed #app, not its own node"
+
+
+def test_buttons_show_their_own_wait():
+    """A button that fires a request must disable itself and say so.
+
+    The two failure modes it replaces are both real. Doing nothing invites a
+    second click, and "Record payment" pressed twice is two payments against
+    one cheque. Replacing the screen with a loading bar is worse: the button
+    you just pressed vanishes, so you cannot tell whether the press landed, and
+    the page you were reading goes with it.
+
+    `button()` in ui.js does this for every caller whose `onclick` returns a
+    promise, which an `async` handler does by definition.
+    """
+    ui = (PUBLIC / "js/ui.js").read_text(encoding="utf-8")
+    body = ui[ui.index("export function button("):]
+    body = body[:body.index("\n/* ---")]
+
+    assert "typeof result.then" in body, "the helper must detect a promise"
+    assert "node.disabled = true" in body, "a busy button must not accept a second click"
+    assert 'aria-busy' in body, "the wait has to be announced, not only drawn"
+    assert "btn__spinner" in body, "there is no visible sign of the wait"
+    assert "finally" in body, "a failed request must give the button back"
+
+
+def test_the_sheets_do_not_blank_the_screen_to_save():
+    """Saving is the moment a delegate most wants the page to stay put.
+
+    `statusHost` hands the wait to the cold-start ladder, which CLEARS whatever
+    host it is given before drawing itself -- so pressing Save wiped the form,
+    showed a bar, and then flashed empty. The button carries the wait instead.
+    """
+    for name in ("activity.js", "adult.js"):
+        page = (PUBLIC / "js/pages" / name).read_text(encoding="utf-8")
+        save = page[page.index("async function save()"):]
+        # The literal option, not the word: the code says in a comment why it
+        # is absent, and that comment must not satisfy this test.
+        assert "statusHost:" not in save, (
+            f"{name}: saving must not hand the whole screen to a loading state")
+
+
+def test_a_sponsor_is_assumed_to_know_latin():
+    """A sponsor is the chapter's Latin teacher.
+
+    Defaulting them to "None" meant every one of them had to correct the form,
+    and the ones who did not were quietly shut out of the roles that need Latin
+    -- Certamen reading above all. A chaperone is a parent, and None is right
+    for them.
+    """
+    page = (PUBLIC / "js/pages/adult.js").read_text(encoding="utf-8")
+    assert page.count('person.adult_type === "sponsor" ? "advanced" : "none"') == 2, (
+        "both the initial value and the post-save reset must apply the default")

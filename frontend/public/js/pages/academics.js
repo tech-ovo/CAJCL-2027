@@ -118,9 +118,16 @@ export async function academicsPage(host) {
 
   function columns() {
     return [
+      // The name IS the link, the way a chapter's name is on every other page.
+      // A trailing "Who" button made a second target for the same thing and
+      // put it at the far end of the row, so the eye crossed five columns to
+      // reach it.
       { key: "name", label: "Item",
         render: (row) => el("span", {},
-          row.name,
+          el("a", {
+            href: "#/entries",
+            onclick: (event) => { event.preventDefault(); openItem(row.id); },
+          }, row.name),
           row.registration_scope === "chapter"
             ? el("span", { class: "pill", style: "margin-left:.5rem" },
                 "Per chapter")
@@ -135,11 +142,6 @@ export async function academicsPage(host) {
         render: (row) => row.registration_scope === "chapter"
           ? el("span", { class: "mono" }, `${row.chapter_entries} teams`)
           : el("strong", { class: "mono" }, row.chosen) },
-      { key: "actions", label: "",
-        render: (row) => button("Who", {
-          variant: "btn--small btn--quiet",
-          onclick: () => openItem(row.id),
-        }) },
     ];
   }
 

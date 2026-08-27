@@ -161,8 +161,53 @@ export function select(options, attrs = {}) {
 }
 
 /** Buttons carry active, specific labels: "Add 28 delegates", not "Submit". */
-export function button(text, { variant = "", ...attrs } = {}) {
-  return el("button", { type: "button", class: `btn ${variant}`.trim(), ...attrs }, text);
+/**
+ * A button. If its `onclick` returns a promise, the button handles the wait.
+ *
+ * EVERY BUTTON THAT TALKS TO THE SERVER MUST BE IDEMPOTENT OR DISABLED, and
+ * this makes the second one automatic. While the promise is outstanding the
+ * button is disabled, keeps its width, and shows a spinner in place of its
+ * label; a second click cannot land at all. It comes back by itself whether
+ * the promise resolves or rejects.
+ *
+ * The alternative people actually do — replacing the screen with a loading
+ * bar — is worse than doing nothing: the thing you just pressed vanishes, so
+ * you cannot tell whether the press registered, and the page you were reading
+ * goes with it.
+ *
+ * The width is frozen before the label is swapped. Without that, "Record
+ * payment" becomes a spinner and the button collapses to 3rem, moving every
+ * button beside it while somebody is still looking at where they clicked.
+ */
+export function button(text, { variant = "", onclick, ...attrs } = {}) {
+  const node = el("button",
+    { type: "button", class: `btn ${variant}`.trim(), ...attrs }, text);
+
+  if (typeof onclick === "function") {
+    node.onclick = async (event) => {
+      const result = onclick(event);
+      if (!result || typeof result.then !== "function") return result;
+
+      const width = node.getBoundingClientRect().width;
+      if (width) node.style.minWidth = `${Math.ceil(width)}px`;
+      node.disabled = true;
+      node.setAttribute("aria-busy", "true");
+      const label = Array.from(node.childNodes);
+      clear(node);
+      add(node, el("span", { class: "btn__spinner", "aria-hidden": "true" }),
+                el("span", { class: "visually-hidden" }, "Working"));
+      try {
+        return await result;
+      } finally {
+        clear(node);
+        add(node, ...label);
+        node.removeAttribute("aria-busy");
+        node.disabled = false;
+        node.style.minWidth = "";
+      }
+    };
+  }
+  return node;
 }
 
 /* --------------------------------------------------------------------------
@@ -304,6 +349,33 @@ export function table(columns, rows, { sort, onSort, rowClass, caption } = {}) {
  *   are already gone. Hash changes cannot be cancelled, which is why this hooks
  *   the click instead.
  */
+/* Every page currently guarding unsaved work.
+ *
+ * `guardUnsaved` catches the two ways a browser leaves a page: closing it, and
+ * following a link. Sign-out is neither -- it is a button that throws the
+ * token away and re-renders -- so it walked straight past the guard, and the
+ * warning only appeared on the NEXT sign-in, about work that was already gone.
+ *
+ * Anything that navigates by means of its own can ask here first.
+ */
+const guards = new Set();
+
+/* Forget every guard. The router calls this as it swaps pages, so a page that
+ * left one registered -- most do, since `release()` is only returned, never
+ * required -- does not answer for a page that is no longer on screen. */
+export function forgetGuards() {
+  guards.clear();
+}
+
+export function unsavedWork() {
+  for (const isDirty of guards) {
+    try {
+      if (isDirty()) return true;
+    } catch (error) { /* a page mid-teardown is not dirty */ }
+  }
+  return false;
+}
+
 export function guardUnsaved(isDirty, what = "unsaved changes") {
   const onBeforeUnload = (event) => {
     if (!isDirty()) return;
@@ -331,10 +403,12 @@ export function guardUnsaved(isDirty, what = "unsaved changes") {
   };
 
   function release() {
+    guards.delete(isDirty);
     window.removeEventListener("beforeunload", onBeforeUnload);
     document.removeEventListener("click", onClick, true);
   }
 
+  guards.add(isDirty);
   window.addEventListener("beforeunload", onBeforeUnload);
   document.addEventListener("click", onClick, true);
   return release;

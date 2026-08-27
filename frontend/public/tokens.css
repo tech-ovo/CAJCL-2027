@@ -83,6 +83,30 @@
    * paired with a text label or a glyph. */
   --status-done:      var(--purple);
   --status-pending:   var(--slate);
+
+  /* PAIRS, because a colour on its own cannot survive an inversion.
+   *
+   * Every one of these is a foreground that only makes sense against a
+   * specific background, and dark mode swaps both halves together. Written as
+   * two independent tokens they drift apart -- which is exactly what happened:
+   * components reached past the aliases for `--ink` and `--white` directly, so
+   * the nav went dark-on-dark and the buttons went light-on-light.
+   *
+   * A LOUD BLOCK inverts properly rather than staying navy. In light mode that
+   * is ivory on navy; in dark it is navy on ivory. Both read as "this one is
+   * different", which is the whole job. */
+  --inverse-bg:       var(--ink);
+  --on-inverse:       var(--ivory);      /* 12.97:1 light, 15.82:1 dark */
+  --on-inverse-quiet: var(--blue);       /*  5.57:1 light,  7.41:1 dark */
+
+  /* Text on a FILLED button, whose background is --link or --danger. Both of
+   * those go light in dark mode, so white stops working on either. */
+  --on-link:          var(--white);      /* 10.77:1 light, 11.18:1 dark */
+  --on-danger:        var(--white);      /*  7.54:1 light,  7.35:1 dark */
+
+  /* An input's edge. Stronger than --rule: a field has to look like somewhere
+   * you can type before you have touched it. */
+  --input-border:     var(--slate);      /*  8.07:1 light,  6.68:1 dark */
 }
 
 /* ---------------------------------------------------------------------------
@@ -126,6 +150,12 @@
     --focus-on-dark:  var(--gold);
     --status-done:    var(--lavender);
     --status-pending: var(--haze);
+    --inverse-bg:       var(--ivory);
+    --on-inverse:       var(--night);
+    --on-inverse-quiet: var(--slate);
+    --on-link:          var(--night);
+    --on-danger:        var(--night);
+    --input-border:     var(--haze);
   }
 }
 
@@ -145,6 +175,12 @@
   --focus-on-dark:  var(--gold);
   --status-done:    var(--lavender);
   --status-pending: var(--haze);
+  --inverse-bg:       var(--ivory);
+  --on-inverse:       var(--night);
+  --on-inverse-quiet: var(--slate);
+  --on-link:          var(--night);
+  --on-danger:        var(--night);
+  --input-border:     var(--haze);
 }
 
 :root {

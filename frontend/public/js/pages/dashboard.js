@@ -113,6 +113,13 @@ export async function dashboardPage(host) {
             variant: "btn--small",
             onclick: () => { panel = { kind: "payment", school: row }; render(); },
           }),
+          // What has already been recorded. A chair about to enter a cheque
+          // needs to know whether somebody else entered it this morning, and
+          // the balance alone does not say.
+          button("Records", {
+            variant: "btn--small btn--quiet",
+            onclick: () => { panel = { kind: "records", school: row }; render(); },
+          }),
           // "Roster" used to open the printable packet, which is not a roster
           // and cannot be edited. It now opens the chapter's actual roster;
           // the packet is its own button, named after what it produces.
@@ -135,9 +142,9 @@ export async function dashboardPage(host) {
   /* ------------------------------------------------------------------ */
 
   function renderPanel() {
-    return panel.kind === "payment"
-      ? paymentPanel(panel.school)
-      : schoolPanel(panel.school || null);
+    if (panel.kind === "payment") return paymentPanel(panel.school);
+    if (panel.kind === "records") return recordsPanel(panel.school);
+    return schoolPanel(panel.school || null);
   }
 
   function paymentPanel(school) {
@@ -205,6 +212,82 @@ export async function dashboardPage(host) {
     }
 
     draw();
+    return wrap;
+  }
+
+  /* Every payment recorded against one chapter, and its discount.
+   *
+   * Payments are APPEND-ONLY: a correction is another row, and a refund is a
+   * negative one. That makes this list the answer to "why is the balance
+   * that?", which is a question asked in March with somebody's cheque stub in
+   * hand, and it is the reason the rows carry who entered each one and when.
+   */
+  function recordsPanel(school) {
+    const wrap = el("div", { class: "panel" });
+    add(wrap, el("h2", {}, `Records for ${school.name}`),
+              loadingRows(3, "Loading records"));
+
+    api.get(`/admin/payments?school_id=${school.id}`).then((data) => {
+      const rows = data.payments || [];
+      const paid = rows.reduce((sum, row) => sum + row.amount_cents, 0);
+
+      clear(wrap);
+      add(wrap,
+        el("h2", {}, `Records for ${school.name}`),
+
+        el("dl", { class: "detail" },
+          el("dt", {}, "Owed"),
+          el("dd", { class: "mono" }, school.billing_exempt
+            ? "Not billed" : money(school.amount_owed_cents)),
+          el("dt", {}, "Paid"),
+          el("dd", { class: "mono" }, money(paid)),
+          el("dt", {}, "Balance"),
+          el("dd", { class: "mono" }, school.billing_exempt
+            ? "—" : money((school.amount_owed_cents || 0) - paid)),
+          ...(school.discount_cents
+            ? [el("dt", {}, "Discount"),
+               el("dd", {}, el("span", { class: "mono" },
+                              money(school.discount_cents)),
+                 school.discount_reason
+                   ? el("span", { class: "small muted" },
+                        ` — ${school.discount_reason}`)
+                   : null)]
+            : [])),
+
+        rows.length
+          ? table([
+              { key: "received_on", label: "Received",
+                render: (row) => row.received_on
+                  ? localDate(row.received_on) : "—" },
+              { key: "amount_cents", label: "Amount", num: true,
+                render: (row) => el("span", { class: "mono" },
+                                    money(row.amount_cents)) },
+              { key: "reference", label: "Check", render: (row) => row.reference || "—" },
+              { key: "note", label: "Note", render: (row) => row.note || "—" },
+              { key: "recorded_by", label: "Recorded by",
+                render: (row) => [row.recorded_by_first, row.recorded_by_last]
+                  .filter(Boolean).join(" ") || "—" },
+            ], rows, { caption: `Payments from ${school.name}` })
+          : el("p", { class: "muted" },
+               "Nothing recorded yet. A payment entered here would appear in "
+               + "this list, and the balance above would move with it."),
+
+        el("div", { class: "btn-row" },
+          button("Record a payment", {
+            variant: "btn--primary",
+            onclick: () => { panel = { kind: "payment", school }; render(); },
+          }),
+          button("Close", { variant: "btn--quiet",
+                            onclick: () => { panel = null; render(); } })));
+    }).catch((error) => {
+      clear(wrap);
+      add(wrap, el("h2", {}, `Records for ${school.name}`),
+                errorSummary([error.message]),
+                el("div", { class: "btn-row" },
+                  button("Close", { variant: "btn--quiet",
+                                    onclick: () => { panel = null; render(); } })));
+    });
+
     return wrap;
   }
 

@@ -13,7 +13,8 @@
  */
 
 import * as api from "./api.js";
-import { add, el, clear, button } from "./ui.js";
+import { add, el, clear, button, unsavedWork,
+         forgetGuards } from "./ui.js";
 import { checkSymbolOk } from "./codes.js";
 
 import { welcomePage } from "./pages/welcome.js";
@@ -149,7 +150,25 @@ export function applySnapshot(convention) {
 
 /* ------------------------------------------------------------------------ */
 
+/* WHICH NAVIGATION IS CURRENT.
+ *
+ * Every page fetches, so `route()` sits at an `await` for as long as the
+ * network takes. Click one tab and then another quickly and there are two of
+ * these in flight; whichever finishes LAST wins the screen, which is not
+ * necessarily the one that was clicked last. The nav highlight comes from
+ * `location.hash` and is right, so the symptom is a page showing one tab's
+ * contents under another tab's highlight.
+ *
+ * Two things fix it, and both are needed. `stale()` stops an overtaken
+ * navigation from writing anything more itself; and each navigation renders
+ * into its OWN container, so a page that is still fetching when a newer one
+ * arrives finds its container detached and paints into nothing.
+ */
+let navigation = 0;
+
 async function route() {
+  const ticket = ++navigation;
+  const stale = () => ticket !== navigation;
   const path = location.hash.replace(/^#/, "") || "/";
 
   for (const [pattern, page, options] of ROUTES) {
@@ -158,6 +177,7 @@ async function route() {
 
     if (!options.public) {
       await ensureSession();
+      if (stale()) return;
       if (!state.me) { location.hash = "#/sign-in"; return; }
 
       // THE NAV IS DRAWN FIRST, before anything can return early.
@@ -184,15 +204,25 @@ async function route() {
       // so passing #app here blanked a finished welcome page to show a spinner
       // for a request the visitor did not ask for and does not need.
       await ensureSession({ quiet: true });
+      if (stale()) return;
     }
 
     renderNav();
     renderBanners();
+
+    // The page's own container, replaced wholesale on every navigation. A
+    // slower page that resolves after this point is holding a node that is no
+    // longer in the document, so its render is a no-op rather than a surprise.
+    const host = el("div");
     clear(appNode());
+    add(appNode(), host);
+    // The page being replaced no longer answers for unsaved work. Its own
+    // guard, if it had one, went with its DOM.
+    forgetGuards();
     try {
-      await page(appNode(), match.slice(1));
+      await page(host, match.slice(1));
     } catch (error) {
-      renderFailure(error);
+      if (!stale()) renderFailure(error);
     }
     return;
   }
@@ -465,6 +495,21 @@ function renderNav() {
 }
 
 function signOut() {
+  /* ASK FIRST IF THERE IS UNSAVED WORK.
+   *
+   * `guardUnsaved` catches a closing tab and a followed link. Sign-out is
+   * neither — it throws the token away and re-renders — so a delegate could
+   * sign out from the middle of a half-filled activity sheet, lose all of it,
+   * and be told about it on their NEXT sign-in, when the draft was already
+   * gone. The confirm is synchronous for the same reason it is in
+   * `guardUnsaved`: this has to decide before it clears the token.
+   */
+  if (unsavedWork()
+      && !window.confirm("You have unsaved answers.\n\n"
+                         + "Sign out and lose them?")) {
+    return;
+  }
+
   /* INSTANT, AND THE ORDER IS THE POINT.
    *
    * Forget the session here first, then leave. The server call is fired and

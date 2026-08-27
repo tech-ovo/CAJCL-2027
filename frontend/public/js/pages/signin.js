@@ -102,7 +102,10 @@ export async function signInPage(host) {
         // capitals, so neither led — and squeezed the answers into a column
         // narrow enough to wrap three words onto two lines. A heading with a
         // line under it has the hierarchy the content already had.
-        el("p", { class: "label" }, "Where codes come from"),
+        // `label--ink`, not plain `label`: this one is a HEADING over the list
+        // beneath it, and the muted default made the heading fainter than the
+        // content it introduces.
+        el("p", { class: "label label--ink" }, "Where codes come from"),
         el("div", { class: "rail-list" },
           ...[["Delegates", "Your sponsor"],
               ["Chaperones", "Your chapter's sponsor"],

@@ -50,10 +50,20 @@ export async function adultSheetPage(host) {
   let sheet = await api.get("/me/adult-sheet", { statusHost: host });
   let selected = new Set(sheet.selected);
   let person = { ...sheet.person };
-  let knowledge = person.latin_knowledge || "none";
+  /* A SPONSOR IS A LATIN TEACHER. Defaulting them to "None" made every one of
+   * them correct the form, and the ones who did not were quietly excluded from
+   * the roles that need Latin — Certamen moderating above all.
+   *
+   * A chaperone is a parent, and "None" is the right default for them.
+   *
+   * This is only the starting position of a control they can change. Nothing
+   * downstream assumes it. */
+  let knowledge = person.latin_knowledge
+    || (person.adult_type === "sponsor" ? "advanced" : "none");
   let errors = [];
   let warnings = [];
   let saved = false;
+  const countNotes = new Map();
 
   // Same idea as the activity sheet: compare against what the server sent, so
   // that changing something and changing it back counts as no change.
@@ -212,18 +222,14 @@ export async function adultSheetPage(host) {
           })))));
 
     for (const category of sheet.catalog) {
-      const chosen = category.items.filter((i) => selected.has(i.id)).length;
+      const note = el("p", { class: "count-note", "aria-live": "polite" });
+      countNotes.set(category.key, { note, category });
       add(form, el("fieldset", {},
         el("legend", {}, el("h2", {}, category.name)),
         category.description ? el("p", { class: "muted" }, category.description) : null,
-        el("p", { class: "count-note", "aria-live": "polite" },
-          `You have chosen ${chosen}.` +
-          (category.min_selections && chosen < category.min_selections
-            ? ` Please choose at least ${category.min_selections} if you can — ` +
-              "you can still submit either way."
-            : "")),
+        note,
         el("div", { class: "choices choices--two" },
-          ...category.items.map((item) => choice(item)))));
+          ...category.items.map((item) => choice(category, item)))));
     }
 
     add(form, 
@@ -240,20 +246,69 @@ export async function adultSheetPage(host) {
       el("div", { class: "btn-row" }, buttonRow()));
 
     add(host, form);
+    for (const category of sheet.catalog) refreshCategory(category);
     refreshSubmit();
+  }
+
+  /* "Wherever needed!" is an ANSWER, not one role among many.
+   *
+   * Somebody who ticks it has said "put me anywhere", which makes every other
+   * box in the list meaningless — and makes "please choose at least two"
+   * meaningless too, since they have already given the most useful answer
+   * there is. Both used to stay on screen, so the form went on asking for
+   * more after it had got what it wanted.
+   */
+  function anywhereItem(category) {
+    return category.items.find((item) => /^wherever needed/i.test(item.name))
+        || null;
+  }
+
+  function refreshCategory(category) {
+    const entry = countNotes.get(category.key);
+    if (!entry) return;
+
+    const anywhere = anywhereItem(category);
+    const openToAnything = anywhere ? selected.has(anywhere.id) : false;
+
+    for (const item of category.items) {
+      const box = document.getElementById(`role-${item.id}`);
+      if (!box) continue;
+      const isAnywhere = anywhere && item.id === anywhere.id;
+      const off = openToAnything && !isAnywhere;
+      box.disabled = !item.eligible_now || sheet.locked || off;
+      const label = box.closest(".choice");
+      if (label) label.classList.toggle("choice--capped", off);
+    }
+
+    const chosen = category.items.filter((i) => selected.has(i.id)).length;
+    clear(entry.note);
+    if (openToAnything) {
+      add(entry.note, "You have said you will go wherever you are needed, "
+                    + "which is the most useful answer there is. Untick it if "
+                    + "you would rather pick particular roles.");
+      return;
+    }
+    add(entry.note, `You have chosen ${chosen}.`
+      + (category.min_selections && chosen < category.min_selections
+          ? ` Please choose at least ${category.min_selections} if you can — `
+            + "you can still submit either way."
+          : ""));
   }
 
   /* "Submit my registration" read as one-and-final, which is how an adult ends
    * up holding a half-finished form until the deadline. It has always been a
    * save. */
   function buttonRow() {
+    // Not a submit button: this one runs `save()` itself, so it can disable
+    // itself and show the wait in place of its label. The form's onsubmit
+    // stays for the Enter key and calls the same function.
     submitButton = button("Save my answers",
-                          { variant: "btn--primary", type: "submit" });
+                          { variant: "btn--primary", onclick: () => save() });
     unsavedNote = el("p", { class: "form-note", "aria-live": "polite" });
     return [submitButton, unsavedNote];
   }
 
-  function choice(item) {
+  function choice(category, item) {
     const blocked = !item.eligible_now;
     const isSelected = selected.has(item.id);
     return el("label", {
@@ -265,9 +320,32 @@ export async function adultSheetPage(host) {
         type: "checkbox", id: `role-${item.id}`,
         checked: isSelected, disabled: blocked || sheet.locked,
         onchange: (event) => {
-          if (event.target.checked) selected.add(item.id); else selected.delete(item.id);
+          const on = event.target.checked;
+          if (on) selected.add(item.id); else selected.delete(item.id);
+
+          // Ticking "wherever needed" clears the specific roles it replaces.
+          const anywhere = anywhereItem(category);
+          if (on && anywhere && item.id === anywhere.id) {
+            for (const other of category.items) {
+              if (other.id !== anywhere.id) selected.delete(other.id);
+            }
+            for (const other of category.items) {
+              const box = document.getElementById(`role-${other.id}`);
+              if (box && other.id !== anywhere.id) box.checked = false;
+              const label = box && box.closest(".choice");
+              if (label && other.id !== anywhere.id) {
+                label.classList.remove("choice--selected");
+              }
+            }
+          }
+
+          // IN PLACE, NOT A FULL RE-RENDER. `render()` rebuilt the whole form,
+          // which threw the reader back to the top of the page every time they
+          // ticked a box near the bottom of it.
+          const label = event.target.closest(".choice");
+          if (label) label.classList.toggle("choice--selected", on);
+          refreshCategory(category);
           touch();
-          render();
         },
       }),
       el("span", {},
@@ -302,14 +380,15 @@ export async function adultSheetPage(host) {
         latin_knowledge: knowledge,
         availability_note: person.availability_note || null,
         selected: [...selected],
-      }, { statusHost: host });
+      });          // the button shows the wait; see ui.js button()
 
       warnings = result.warnings || [];
       saved = true;
       sheet = await api.get("/me/adult-sheet");
       person = { ...sheet.person };
       selected = new Set(sheet.selected);
-      knowledge = person.latin_knowledge || "none";
+      knowledge = person.latin_knowledge
+        || (person.adult_type === "sponsor" ? "advanced" : "none");
       // What is now on the server becomes the new baseline, and the local
       // copy is only a way to get confused.
       original = snapshot();

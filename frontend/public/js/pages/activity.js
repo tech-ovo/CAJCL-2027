@@ -14,7 +14,7 @@
 import * as api from "../api.js";
 import { add, el, clear, tabula, field, select, button, errorSummary,
          renderMarkdown, localDate, personNumber, guardUnsaved,
-         draft } from "../ui.js";
+         draft, check, tell } from "../ui.js";
 
 /* A "No meal — I am bringing my own" option belongs at the END of this list,
  * never as the default: it is the one answer with a consequence nobody can
@@ -188,12 +188,21 @@ export async function activitySheetPage(host) {
     // submitted once waits until they have decided everything -- which for a
     // convention in March means waiting until March, and losing the lot when
     // the tab closes. It has always been a save. Say so.
+    // `type: "button"`, not "submit". A submit button hands the wait to the
+    // form, which cannot disable anything; this one runs `save()` itself, so
+    // it disables and shows a spinner in place of its label while the request
+    // is out. The form's own submit handler is kept for the Enter key and
+    // calls the same function.
     submitButton = button("Save my answers",
-                          { variant: "btn--primary", type: "submit" });
+                          { variant: "btn--primary", onclick: () => save() });
     unsavedNote = el("p", { class: "form-note", "aria-live": "polite" });
 
     add(form, el("div", { class: "btn-row" }, submitButton, unsavedNote));
     add(host, form);
+    // Now that the boxes exist in the document, close any category that is
+    // already at its limit -- somebody returning to a finished sheet must see
+    // the same cap as somebody who just reached it.
+    for (const category of sheet.catalog) applyCap(category);
     refreshSubmit();
     window.scrollTo({ top: scroll });
   }
@@ -282,6 +291,8 @@ export async function activitySheetPage(host) {
       checked: isSelected,
       disabled: blocked || sheet.locked,
       id: `item-${item.id}`,
+      "data-category": category.key,
+      "data-item": String(item.id),
       onchange: (event) => {
         const on = event.target.checked;
         if (on) {
@@ -297,6 +308,7 @@ export async function activitySheetPage(host) {
         if (on && item.options.length) add(label, subOptions(item));
 
         refreshCount(category);
+        applyCap(category);
         touch();
       },
     });
@@ -347,6 +359,37 @@ export async function activitySheetPage(host) {
           option.name))));
   }
 
+  /* A HARD CAP, in the interface, on a category with a maximum.
+   *
+   * The database cannot express "no more than three of these" -- a CHECK
+   * constraint cannot count rows in another table -- so the server warns and
+   * accepts. That is the right server behaviour and the wrong thing to show a
+   * fourteen-year-old: a warning they can save straight past reads as advice,
+   * and they find out it was not at the convention.
+   *
+   * The unchosen boxes simply stop responding once the limit is reached.
+   * Nothing is taken away and nothing shouts; unticking one frees another.
+   * Only `max` is capped. Being UNDER a minimum is fine at any moment -- they
+   * are allowed to be half-finished, and most of them are for weeks.
+   */
+  function applyCap(category) {
+    const high = category.max_selections;
+    if (!high) return;
+    const chosen = category.items.filter((i) => selected.has(i.id)).length;
+    const full = chosen >= high;
+
+    for (const item of category.items) {
+      const box = document.getElementById(`item-${item.id}`);
+      if (!box) continue;
+      const isChosen = selected.has(item.id);
+      const blocked = !item.eligible_now;
+      box.disabled = blocked || sheet.locked || (full && !isChosen);
+      const label = box.closest(".choice");
+      if (label) label.classList.toggle("choice--capped",
+                                        full && !isChosen && !blocked);
+    }
+  }
+
   function refreshCount(category) {
     const note = noteNodes.get(category.key);
     if (!note) return;
@@ -361,10 +404,22 @@ export async function activitySheetPage(host) {
     else if (low) text = `Choose at least ${low}. You have ${chosen}.`;
     else text = `Choose no more than ${high}. You have ${chosen}.`;
 
-    const over = (low && chosen < low) || (high && chosen > high);
-    note.className = over ? "count-note count-note--over" : "count-note";
+    /* ONLY BEING UNDER A MINIMUM IS A PROBLEM WORTH COLOURING.
+     *
+     * Going over a maximum is no longer reachable -- `applyCap` stops the
+     * fourth box responding -- so the old "you have 4, this is a suggestion,
+     * not a rule" state cannot occur, and saying it would have been a lie
+     * anyway now that it IS a rule here.
+     *
+     * Under a minimum is not coloured either. They are allowed to be
+     * half-finished; most of them are, for weeks. The count states the fact
+     * and leaves it there. */
+    const full = high && chosen >= high;
+    note.className = "count-note";
     add(note, text,
-      over && enforcement === "warn" ? " This is a suggestion, not a rule." : null);
+        full ? " That is the most you can pick." : null,
+        low && chosen < low && enforcement === "warn"
+          ? " You can save and come back to this." : null);
   }
 
   /* Latin level changed: re-evaluate eligibility locally, with no request.
@@ -386,7 +441,54 @@ export async function activitySheetPage(host) {
     render();
   }
 
+  /* What is still missing, in the words the delegate would use.
+   *
+   * Not the same as the server's validation: the server refuses a save with no
+   * grade, and accepts one with no events at all, because saving half a sheet
+   * in January is the intended way to use this page. This list is about
+   * whether their REGISTRATION is finished, which is a different question and
+   * one nobody was answering out loud.
+   */
+  function missing() {
+    const gaps = [];
+    if (!grade) gaps.push("your grade");
+    if (!level) gaps.push("your Latin level");
+    if (!meal) gaps.push("a meal choice");
+    for (const category of sheet.catalog) {
+      const low = category.min_selections;
+      if (!low) continue;
+      const chosen = category.items.filter((i) => selected.has(i.id)).length;
+      if (chosen < low) {
+        gaps.push(`at least ${low} in ${category.name} `
+                  + `(you have ${chosen})`);
+      }
+    }
+    return gaps;
+  }
+
   async function save() {
+    /* ASK BEFORE SAVING AN UNFINISHED SHEET, and say what is unfinished.
+     *
+     * A delegate who saves a half-filled form and closes the tab believes they
+     * have registered. Nothing on the page contradicted them: it said "Saved",
+     * which was true and not the thing they wanted to know. */
+    const gaps = missing();
+    if (gaps.length) {
+      const ok = await check({
+        title: "Your registration is not complete",
+        body: [
+          el("p", {}, "You can save this and come back — nothing is lost. But "
+                    + "as it stands you are not fully registered, because "
+                    + "this is still missing:"),
+          el("ul", {}, ...gaps.map((gap) => el("li", {}, gap))),
+          el("p", {}, "Your sponsor sees the same thing on their roster."),
+        ],
+        confirmLabel: "Save anyway",
+        cancelLabel: "Go back and finish",
+      });
+      if (!ok) return;
+    }
+
     errors = [];
     warnings = [];
     try {
@@ -396,7 +498,7 @@ export async function activitySheetPage(host) {
         meal: meal || null,
         selected: [...selected],
         selected_options: options,
-      }, { statusHost: host });
+      });          // the button shows the wait; see ui.js button()
 
       warnings = result.warnings || [];
       saved = true;
@@ -415,6 +517,23 @@ export async function activitySheetPage(host) {
       held.clear();
       render();
       window.scrollTo({ top: 0 });
+
+      // And say so when it IS finished. "Saved" in small grey type under a
+      // button is not an answer to "am I registered?", which is the only
+      // question a delegate actually has.
+      if (!gaps.length) {
+        await tell({
+          title: "You are registered",
+          body: [
+            el("p", {}, "Everything this form needs is filled in and saved."),
+            el("p", {}, "Two things are still on paper and are not done here: "
+                      + "your waiver and your medical form. Give both to your "
+                      + "sponsor."),
+            el("p", {}, "You can change any of these answers until the "
+                      + "deadline."),
+          ],
+        });
+      }
     } catch (error) {
       errors = error.errors && error.errors.length ? error.errors : [error.message];
       saved = false;

@@ -35,7 +35,7 @@ Welcome   Registration  |  Registration   Chapters   Check-in
 
 The first **Registration** is your own form (I might change the second to **Overview** later). Those after the divider are your job.
 
-| | |
+|  |  |
 | --- | --- |
 | **Registration** (maybe **Overview**) | See stuff. |
 | **Chapters** | Do stuff. |
@@ -81,17 +81,17 @@ Each of your delegates and adults then gets a sheet with their own access code. 
 
 **What it costs**
 
-| | |
+|  |  |
 | --- | --- |
-| Per delegate | $140.00 |
+| Per delegate | \$140.00 |
 | Adults | one free per 10 delegates |
-| Each additional adult | $75.00 |
+| Each additional adult | \$75.00 |
 
 Your invoice is on the site and updates itself as your roster changes, so check it there rather than working from a printed copy. Make checks payable to **University High School JCL c/o Mark Michalak**, and write your chapter name on the memo line so we can match the payment to your invoice.
 
 **Dates to keep**
 
-| | |
+|  |  |
 | --- | --- |
 | Forms close | February 13, 2027 |
 | Payment due | February 13, 2027 |
@@ -130,15 +130,15 @@ Keep this code private. Anyone who has it can sign in as you and see your whole 
 
 This page has all the important details. The five figures at the top:
 
-| | |
+|  |  |
 | --- | --- |
 | Chapters | How many, and how many have anybody on their roster yet |
-| Delegates | |
+| Delegates |  |
 | Adults | Split into sponsors and chaperones |
 | Forms complete | Out of everyone attending |
 | Still owed | And how many chapters have settled |
 
-*Complete* has a specific meaning.
+* Complete* has a specific meaning.
 
 - A **delegate** is complete when they have submitted their own registration form online *and* their waiver and medical form have reached their sponsor, who has ticked both.
 - An **adult** is complete when they have submitted their registration form online and their medical form has been ticked.
@@ -152,7 +152,7 @@ SCL is listed as a chapter in the table below to make things easier, but they do
 There are no refunds! Go to the **Chapters** tab. Every chapter shows what it owes, what it has paid, and the
 balance. When you receive an invoice, press **Payment** on a chapter's row and enter the relevant details.
 
-Payments are only ever added, never edited or deleted (good recordkeeping practice). If you enter $1,400 and it should have been $140, **add a second payment of −$1,260** (and then a note). The balance is always the sum of everything recorded, and the trail shows what actually happened and when.
+Payments are only ever added, never edited or deleted (good recordkeeping practice). If you enter \$1,400 and it should have been \$140, **add a second payment of −\$1,260** (and then a note). The balance is always the sum of everything recorded, and the trail shows what actually happened and when.
 
 **The invoice recalculates itself.** Adding a delegate changes what a chapter owes the moment the roster changes. Never work from a printed copy, or from a figure somebody read to you last week.
 
@@ -166,7 +166,7 @@ You can view an individual chapter from **Chapters → Roster**, or by clicking 
 
 **Position** is more useful than "Adult" repeated down a column. It shows Sponsor, Chaperone, SCL — or a board title. What you can do here:
 
-| | |
+|  |  |
 | --- | --- |
 | **Paste a roster** | For a sponsor who cannot get their own spreadsheet in. A second paste adds to the roster; it does not replace it. |
 | **Add one person** | One name, and whether they are a delegate, chaperone or sponsor. Shows their new code once. |
