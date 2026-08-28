@@ -21,7 +21,12 @@
 
 import * as api from "../api.js";
 import { add, el, clear, button, loadingRows, localDate,
-         check, tell, field, input } from "../ui.js";
+         field, input, select, errorSummary } from "../ui.js";
+
+/* What a delegate added at the desk can be. Both are required, and both are
+ * questions only the person standing there can answer. */
+const GRADES = [6, 7, 8, 9, 10, 11, 12];
+const LEVELS = ["MS-1", "MS-2", "MS-3", "HS-1", "HS-2", "HS-3", "HS-Adv"];
 
 const NOTE_PLACEHOLDER =
   "Did they bring a catapult? A chariot? How many Certamen machines?";
@@ -117,158 +122,251 @@ export async function checkinPage(host) {
     return at === -1 ? when : when.slice(at + 4);
   }
 
-  /* One dialog per chapter. Both buttons are IDEMPOTENT -- "Registration
-   * complete" sets arrived, "Unregister" clears it -- rather than one control
-   * that toggles. A toggle double-clicked at a desk sends two opposite
-   * requests and lands wherever the network decides; two buttons that each
-   * assert a state cannot. */
+  /* ONE DIALOG PER CHAPTER, AND IT NEVER CLOSES WITHOUT SAVING.
+   *
+   * Both actions are IDEMPOTENT -- "Registration complete" sets arrived,
+   * "Unregister" clears it -- rather than one control that toggles. A toggle
+   * double-clicked at a desk sends two opposite requests and lands wherever
+   * the network decides; two buttons that each assert a state cannot.
+   *
+   * THERE IS NO CLOSE BUTTON UNTIL SOMETHING HAS BEEN SAVED. Somebody who
+   * typed a note about a missing waiver, closed the panel and walked away had
+   * every reason to believe they had registered that chapter. The panel now
+   * holds until an action lands, then collapses to what it recorded, and only
+   * then offers a way out.
+   *
+   * Adding a delegate happens INSIDE this dialog rather than in a second one
+   * stacked on top of it. Two dialogs meant two backdrops and two boxes of
+   * different heights, with the one underneath sticking out around the edges.
+   */
   function open_(chapter) {
-    // Built by hand rather than with `check()` from ui.js, and deliberately.
-    // Those helpers ask one question, resolve, and close. This dialog STAYS
-    // OPEN and reports back into itself: mark arrived, see the time appear,
-    // change the note, mark arrived again, all without the row underneath
-    // moving. At a desk with a queue, closing after every action is the wrong
-    // shape.
-    const note = el("textarea", {
-      id: "checkin-note", rows: "5", class: "checkin__note",
-      placeholder: NOTE_PLACEHOLDER,
-    }, chapter.checkin_note || "");
+    const dialog = el("dialog", { class: "dialog" });
+    const body = el("div");
+    add(dialog, body);
 
-    const status = el("p", { class: "form-note", "aria-live": "polite" },
-      chapter.arrived_at
-        ? `Registered ${time(chapter.arrived_at)}`
-        : "Not yet registered");
+    // Everyone added at this desk on this visit, with the code each was given.
+    // A running list, because a code is readable exactly once and a desk adds
+    // two or three in a row.
+    const added = [];
+    let settled = !!chapter.arrived_at;
 
-    let busy = false;
-    const send = async (body, buttons) => {
-      if (busy) return;                 // a second click while the first is out
-      busy = true;
-      buttons.forEach((b) => { b.disabled = true; });
-      try {
-        const result = await api.post(`/admin/checkin/${chapter.school_id}`, body);
-        chapter.arrived_at = result.arrived_at;
-        chapter.checkin_note = result.note;
-        clear(status);
-        add(status, chapter.arrived_at
-          ? `Registered ${time(chapter.arrived_at)}` : "Not yet registered");
-        recount();
-      } catch (error) {
-        clear(status);
-        status.className = "form-note form-note--unsaved";
-        add(status, `Not saved: ${error.message}`);
-      } finally {
-        busy = false;
-        buttons.forEach((b) => { b.disabled = false; });
-      }
-    };
-
-    const done = button("Registration complete", { variant: "btn--primary" });
-    const undo = button("Unregister", { variant: "btn--quiet btn--danger" });
-    const buttons = [done, undo];
-    done.onclick = () => send({ arrived: true, note: note.value }, buttons);
-    undo.onclick = () => send({ arrived: false, note: note.value }, buttons);
-
-    const form = el("form", { method: "dialog" },
-      el("h2", {}, chapter.school_name),
-      el("p", { class: "muted" },
-        `${chapter.delegates_active} delegates · ${chapter.adults_active} adults`),
-      status,
-      el("label", { class: "label", for: "checkin-note" }, "Notes"),
-      note,
-      el("div", { class: "btn-row" },
-        done, undo,
-        button("Close", { variant: "btn--quiet",
-                          onclick: () => dialog.close() })),
-
-      /* The two things a desk does besides ticking a chapter off.
-       *
-       * A chapter turns up with a replacement for somebody who could not come.
-       * The replacement needs a code in their hand within the minute, and the
-       * person they replaced should stop being counted for meals. Both used to
-       * mean finding somebody with a terminal.
-       *
-       * Kept below the close button, in quieter type, because they are the
-       * exception: forty-nine chapters in fifty just arrive. */
-      el("div", { class: "checkin__extras" },
-        button("Add a delegate", {
-          variant: "btn--small btn--quiet",
-          onclick: () => addLate(chapter, dialog),
-        }),
-        el("a", { class: "btn btn--small btn--quiet",
-                  href: `#/roster/${chapter.school_id}` },
-          "Open the roster")));
-
-    const dialog = el("dialog", { class: "dialog" }, form);
+    // Escape and the backdrop dismiss a <dialog> for free. That is right once
+    // something is saved and wrong before it, which is the whole point.
+    dialog.addEventListener("cancel", (event) => {
+      if (!settled) event.preventDefault();
+    });
     dialog.addEventListener("close", () => { dialog.remove(); render(); });
+
+    function show(node) { clear(body); add(body, node); }
+
+    /* -- the desk itself ------------------------------------------------- */
+
+    function deskView() {
+      const note = el("textarea", {
+        id: "checkin-note", rows: "5", class: "checkin__note",
+        placeholder: NOTE_PLACEHOLDER,
+      }, chapter.checkin_note || "");
+
+      const status = el("p", { class: "form-note", "aria-live": "polite" },
+        chapter.arrived_at
+          ? `Registered ${time(chapter.arrived_at)}`
+          : "Nothing saved for this chapter yet.");
+
+      let busy = false;
+      const act = async (arrived, pair) => {
+        if (busy) return;
+        busy = true;
+        pair.forEach((one) => { one.disabled = true; });
+        try {
+          const result = await api.post(`/admin/checkin/${chapter.school_id}`,
+                                        { arrived, note: note.value });
+          chapter.arrived_at = result.arrived_at;
+          chapter.checkin_note = result.note;
+          settled = true;
+          recount();
+          show(settledView());
+        } catch (error) {
+          clear(status);
+          status.className = "form-note form-note--unsaved";
+          add(status, `Not saved: ${error.message}`);
+          busy = false;
+          pair.forEach((one) => { one.disabled = false; });
+        }
+      };
+
+      const done = button("Registration complete", { variant: "btn--primary" });
+      const undo = button("Unregister", { variant: "btn--quiet btn--danger" });
+      const pair = [done, undo];
+      done.onclick = () => act(true, pair);
+      undo.onclick = () => act(false, pair);
+
+      return el("div", {},
+        el("h2", {}, chapter.school_name),
+        el("p", { class: "muted" },
+          `${chapter.delegates_active} delegates · ${chapter.adults_active} adults`),
+        status,
+        el("label", { class: "label", for: "checkin-note" }, "Notes"),
+        note,
+        // No Close. Nothing has been recorded, and the note in that box is not
+        // saved until one of these is pressed.
+        el("div", { class: "btn-row" }, done, undo),
+        added.length ? codeList() : null,
+        el("div", { class: "checkin__extras" },
+          button("Add a delegate", {
+            variant: "btn--small btn--quiet",
+            onclick: () => show(addView()),
+          })));
+    }
+
+    /* -- once something has been saved ----------------------------------- */
+
+    function settledView() {
+      return el("div", {},
+        el("h2", {}, chapter.school_name),
+        el("p", { class: "form-note" }, chapter.arrived_at
+          ? `Registered ${time(chapter.arrived_at)}`
+          : "Unregistered. This chapter is not marked as arrived."),
+        chapter.checkin_note
+          ? el("div", {},
+              el("p", { class: "label" }, "Notes"),
+              el("p", { class: "small" }, chapter.checkin_note))
+          : null,
+        added.length ? codeList() : null,
+        el("div", { class: "btn-row" },
+          button("Close", { variant: "btn--primary",
+                            onclick: () => dialog.close() }),
+          button("Change something", {
+            variant: "btn--quiet",
+            onclick: () => show(deskView()),
+          })),
+        el("div", { class: "checkin__extras" },
+          button("Add a delegate", {
+            variant: "btn--small btn--quiet",
+            onclick: () => show(addView()),
+          }),
+          // Closes FIRST, then navigates. Left open, the dialog kept its modal
+          // backdrop over the roster underneath, which rendered perfectly and
+          // could not be touched.
+          button("Open the roster", {
+            variant: "btn--small btn--quiet",
+            onclick: () => {
+              dialog.close();
+              location.hash = `#/roster/${chapter.school_id}`;
+            },
+          })));
+    }
+
+    /* -- the codes handed out here, this visit --------------------------- */
+
+    function codeList() {
+      return el("div", { class: "checkin__added" },
+        el("p", { class: "label label--ink" }, added.length === 1
+          ? "Added just now" : `Added just now (${added.length})`),
+        el("p", { class: "small muted" },
+          "Write these down or photograph them before you close this. They "
+          + "cannot be shown again."),
+        el("table", { class: "table" },
+          el("thead", {}, el("tr", {},
+            el("th", { scope: "col" }, "Name"),
+            el("th", { scope: "col" }, "Code"))),
+          el("tbody", {}, ...added.map((person) => el("tr", {},
+            el("td", {}, person.name),
+            el("td", { class: "mono" }, person.code))))));
+    }
+
+    /* -- adding a delegate, without leaving this dialog ------------------- */
+
+    function addView() {
+      const first = input({ id: "late-first", autocomplete: "off" });
+      const last = input({ id: "late-last", autocomplete: "off" });
+      const grade = select(
+        [["", "—"], ...GRADES.map((one) => [String(one), String(one)])],
+        { id: "late-grade" });
+      const level = select([["", "—"], ...LEVELS.map((one) => [one, one])],
+                           { id: "late-level" });
+      const problems = el("div");
+
+      return el("div", {},
+        el("h2", {}, "Add a delegate"),
+        el("p", { class: "muted" },
+          `To ${chapter.school_name}, for somebody arriving in place of a `
+          + "delegate who could not come."),
+        el("p", { class: "small muted" },
+          "Their activity sheet is waived — the tests are already printed "
+          + "— but their waiver and medical form are still required, on "
+          + "paper, today."),
+        problems,
+        el("div", { class: "grid" },
+          el("div", { class: "span-6" },
+            field({ id: "late-first", label: "First name", required: true,
+                    control: first })),
+          el("div", { class: "span-6" },
+            field({ id: "late-last", label: "Last name", required: true,
+                    control: last })),
+          el("div", { class: "span-6" },
+            field({ id: "late-grade", label: "Grade", required: true,
+                    control: grade })),
+          el("div", { class: "span-6" },
+            field({ id: "late-level", label: "Latin level", required: true,
+                    control: level }))),
+        el("div", { class: "btn-row" },
+          button("Add them", {
+            variant: "btn--primary",
+            onclick: async () => {
+              // ALL FOUR ARE REQUIRED. A delegate entered with no grade and no
+              // Latin level is a row somebody has to chase later, and the one
+              // person who can answer both is standing at the desk right now.
+              const missing = [];
+              if (!first.value.trim()) missing.push("a first name");
+              if (!last.value.trim()) missing.push("a last name");
+              if (!grade.value) missing.push("a grade");
+              if (!level.value) missing.push("a Latin level");
+              clear(problems);
+              if (missing.length) {
+                add(problems,
+                    errorSummary([`Still needed: ${missing.join(", ")}.`]));
+                return;
+              }
+
+              let created;
+              try {
+                created = await api.post("/sponsor/people", {
+                  school_id: chapter.school_id,
+                  first_name: first.value.trim(),
+                  last_name: last.value.trim(),
+                  person_type: "delegate",
+                  grade: Number(grade.value),
+                  latin_level: level.value,
+                });
+                await api.post(
+                  `/admin/people/${created.id}/waive-activity-sheet`,
+                  { waived: true });
+              } catch (error) {
+                add(problems, errorSummary([error.message]));
+                return;
+              }
+
+              added.push({
+                name: `${created.first_name} ${created.last_name}`.trim(),
+                code: created.code,
+              });
+              settled = true;
+              data = await api.get("/admin/checkin");
+              const fresh = data.chapters.find(
+                (row) => row.school_id === chapter.school_id);
+              if (fresh) Object.assign(chapter, fresh);
+              show(chapter.arrived_at ? settledView() : deskView());
+            },
+          }),
+          button("Back", {
+            variant: "btn--quiet",
+            onclick: () => show(chapter.arrived_at ? settledView() : deskView()),
+          })));
+    }
+
+    show(chapter.arrived_at ? settledView() : deskView());
     add(document.body, dialog);
     dialog.showModal();
-    note.focus();
-  }
-
-  /* A delegate added at the desk on the Friday.
-   *
-   * Two calls, and the second is the point: their ACTIVITY SHEET IS WAIVED.
-   * The tests were printed and the food ordered weeks ago, so there is nothing
-   * left for their answers to change -- and without the waiver they would sit
-   * in their chapter's completion figure as permanently unfinished, sending
-   * somebody to chase a delegate who cannot act.
-   *
-   * Their waiver and medical are NOT waived. Those are safety documents and
-   * nobody is exempt; the desk checks the paper as it always has.
-   */
-  async function addLate(chapter, dialog) {
-    const first = input({ id: "late-first", autocomplete: "off" });
-    const last = input({ id: "late-last", autocomplete: "off" });
-
-    const ok = await check({
-      title: `Add a delegate to ${chapter.school_name}`,
-      body: [
-        el("p", {}, "For somebody arriving in place of a delegate who could "
-                  + "not come. Their activity sheet is waived — the tests are "
-                  + "already printed — but their waiver and medical form are "
-                  + "still required, on paper, today."),
-        field({ id: "late-first", label: "First name", control: first, wide: true }),
-        field({ id: "late-last", label: "Last name", control: last, wide: true }),
-      ],
-      confirmLabel: "Add them",
-    });
-    if (!ok) return;
-
-    if (!first.value.trim() && !last.value.trim()) {
-      await tell({ title: "That needs a name",
-                   body: "Give at least a first or last name, then try again." });
-      return;
-    }
-
-    let created;
-    try {
-      created = await api.post("/sponsor/people", {
-        school_id: chapter.school_id,
-        first_name: first.value.trim(),
-        last_name: last.value.trim(),
-        person_type: "delegate",
-      });
-      await api.post(`/admin/people/${created.id}/waive-activity-sheet`,
-                     { waived: true });
-    } catch (error) {
-      await tell({ body: error.message });
-      return;
-    }
-
-    chapter.delegates_active += 1;
-    dialog.close();
-    await tell({
-      title: `${created.first_name} ${created.last_name}`.trim(),
-      body: [
-        el("p", { class: "label" }, "Access code"),
-        el("p", { class: "tabula__code mono", style: "font-size:1.5rem" },
-          created.code),
-        el("p", {}, "Write this down or photograph it now. It is not shown "
-                  + "again and nothing can recover it."),
-      ],
-    });
-    data = await api.get("/admin/checkin");
-    render();
   }
 
   function recount() {

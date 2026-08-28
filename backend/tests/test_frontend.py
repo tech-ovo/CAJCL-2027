@@ -530,3 +530,47 @@ def test_a_sponsor_is_assumed_to_know_latin():
     page = (PUBLIC / "js/pages/adult.js").read_text(encoding="utf-8")
     assert page.count('person.adult_type === "sponsor" ? "advanced" : "none"') == 2, (
         "both the initial value and the post-save reset must apply the default")
+
+
+def test_the_check_in_dialog_cannot_be_closed_before_anything_is_saved():
+    """A note typed and dismissed is a chapter somebody believes they checked
+    in.
+
+    The desk view offers only the two actions. A Close button appears once
+    something has landed, and Escape is refused until then -- a <dialog>
+    dismisses on Escape and on its backdrop for free, which is right afterwards
+    and wrong before.
+    """
+    page = (PUBLIC / "js/pages/checkin.js").read_text(encoding="utf-8")
+
+    desk = page[page.index("function deskView()"):page.index("function settledView()")]
+    assert '"Close"' not in desk, "the desk view must not offer a way out"
+    assert "btn--primary" in desk, "the desk view still needs its actions"
+
+    settled = page[page.index("function settledView()"):page.index("function codeList()")]
+    assert '"Close"' in settled, "there must be a way out once something is saved"
+
+    assert 'addEventListener("cancel"' in page and "event.preventDefault()" in page, (
+        "Escape must be refused while nothing has been saved")
+
+
+def test_opening_the_roster_from_check_in_closes_the_dialog_first():
+    """A modal left open keeps its backdrop over whatever it navigated to, so
+    the roster rendered perfectly and could not be clicked."""
+    page = (PUBLIC / "js/pages/checkin.js").read_text(encoding="utf-8")
+    handler = page[page.index('button("Open the roster"'):]
+    handler = handler[:handler.index("})")]
+    assert handler.index("dialog.close()") < handler.index("location.hash"), (
+        "close the dialog before navigating, not after")
+
+
+def test_a_delegate_added_at_the_desk_needs_all_four_answers():
+    """Grade and Latin level are questions only the person at the desk can
+    answer, and chasing them afterwards means chasing somebody who has gone
+    home."""
+    page = (PUBLIC / "js/pages/checkin.js").read_text(encoding="utf-8")
+    add_view = page[page.index("function addView()"):]
+    for wanted in ("a first name", "a last name", "a grade", "a Latin level"):
+        assert f'missing.push("{wanted}")' in add_view, f"{wanted} is not required"
+    assert "waive-activity-sheet" in add_view, (
+        "a delegate added at the desk must have their sheet waived")

@@ -138,6 +138,25 @@ export async function getText(path) {
   return response.text();
 }
 
+/* The same, for a print view whose input will not fit in a URL.
+ *
+ * The packet is posted rather than fetched because the request body carries
+ * access codes. In a query string they would sit in the browser's history, in
+ * the referrer of anything the printed page links to, and in every access log
+ * between here and Modal. */
+export async function postText(path, body) {
+  const headers = { "Content-Type": "application/json" };
+  const auth = token.get();
+  if (auth) headers["Authorization"] = `Bearer ${auth}`;
+  const response = await fetch(base() + path,
+                               { method: "POST", headers,
+                                 body: JSON.stringify(body) });
+  if (!response.ok) {
+    throw new ApiError(`Could not build those sheets (${response.status}).`);
+  }
+  return response.text();
+}
+
 /* ------------------------------------------------------------------------ */
 
 // Set the first time any request comes back. Modal sleeps when idle, so the

@@ -116,7 +116,13 @@ WHERE pr.person_id = ?;
 SELECT p.id, p.first_name, p.middle_name, p.last_name,
        p.person_type, p.adult_type, p.adult_type_other, p.board_title,
        p.status,
-       p.school_id, s.name AS school_name
+       p.school_id, s.name AS school_name,
+       -- The roles they already hold, so the picker can open straight into the
+       -- same dialog the board table uses. Correlated over at most the 200
+       -- rows this query returns, on the person_roles primary key.
+       (SELECT group_concat(r.key) FROM person_roles pr
+         JOIN roles r ON r.id = pr.role_id
+        WHERE pr.person_id = p.id) AS role_keys
 FROM people p JOIN schools s ON s.id = p.school_id
 WHERE p.school_id = ?
 ORDER BY p.last_name, p.first_name

@@ -241,16 +241,19 @@ def commit(tx: Tx, school: dict, actor: auth.Principal, raw_text: str,
     )
     stats.recompute(tx, school["id"], settings=settings.fee_settings(tx))
 
-    # THE CODES DO NOT COME BACK FROM A PASTE, deliberately.
+    # THE CODES COME BACK, and this is the only moment they can.
     #
-    # `_insert_person` returns each one for the screens that add a single
-    # person and must show it. Nothing reads them here -- a sponsor collects
-    # thirty codes by printing the packet -- and returning them would put the
-    # two paths out of step: a replayed commit reads its rows back from the
-    # database, where the code is a hash and unreadable by design.
+    # They are stored as an HMAC and cannot be read again by anybody, including
+    # this program. An earlier version stripped them here on the reasoning that
+    # nothing read them -- which was true, and was the bug: the sponsor was
+    # sent back to the roster to print a packet that could only ever show
+    # blocks, so a pasted roster produced thirty sheets nobody could sign in
+    # with.
+    #
+    # The REPLAY path below cannot return them and does not pretend to. That
+    # asymmetry is real and the screen says so rather than papering over it.
     return {
-        "created": [{k: v for k, v in row.items() if k != "code"}
-                    for row in created],
+        "created": created,
         "committed_count": len(created),
         "already_committed": False,
     }

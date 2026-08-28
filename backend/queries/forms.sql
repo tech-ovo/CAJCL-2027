@@ -79,3 +79,10 @@ DELETE FROM chapter_entries WHERE id = ? AND school_id = ?;
 
 -- name: forms.chapter_entry_get
 SELECT id, school_id, item_id, team_label FROM chapter_entries WHERE id = ?;
+
+-- name: forms.paper_for_person
+-- Which of a person's paper forms have reached their sponsor. Shown on their
+-- own sheet, because "am I registered?" is not answered by the online half
+-- alone and a delegate has no other way to find out.
+-- Indexed by the primary key on (person_id, form_type).
+SELECT form_type, received FROM paper_forms WHERE person_id = ?;

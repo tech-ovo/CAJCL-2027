@@ -1830,6 +1830,57 @@ def reset_demo(request: Request,
 # WeasyPrint for the PDF. One layout, two renderers.
 # ===========================================================================
 
+@app.post("/sponsor/packet", response_class=HTMLResponse)
+def packet_with_codes(request: Request, payload: dict = Body(...),
+                      principal: auth.Principal = guard("sponsor.packet.print",
+                                                        "sponsor", "registration")):
+    """The packet, printed with codes that were minted seconds ago.
+
+    THE ONLY WAY TO PRODUCE A SHEET SOMEBODY CAN USE. Codes are stored as an
+    HMAC and cannot be read back, so the GET above prints blocks -- correct for
+    a preview, useless for the packet a sponsor is about to hand out. Whoever
+    just minted a code holds the only readable copy, and posts it back here to
+    have it typeset.
+
+    A POST, not a GET, for one reason: the codes are in the BODY. In a query
+    string they would be in the browser's history, in the referrer of anything
+    the printed page links to, and in every access log between here and Modal.
+
+    Nothing is stored. The codes are read, rendered, and dropped; this endpoint
+    does not open a write transaction and writes no audit entry, because
+    printing is not a change to anything.
+    """
+    # A LIST, not a map keyed by id. The printed stack comes out in the order
+    # given, which is the order the sponsor is holding on screen, and a JSON
+    # object would not have preserved it.
+    raw = payload.get("codes") or []
+    if not isinstance(raw, list) or not raw:
+        raise catalog.ValidationError(["There are no codes to print."])
+    if len(raw) > 200:
+        raise catalog.ValidationError(["That is too many sheets at once."])
+
+    order: list[int] = []
+    codes: dict[int, str] = {}
+    for entry in raw:
+        if not isinstance(entry, dict):
+            raise catalog.ValidationError(["That is not a list of codes."])
+        try:
+            person_id = int(entry.get("person_id"))
+        except (TypeError, ValueError):
+            raise catalog.ValidationError(["That is not a list of codes."])
+        order.append(person_id)
+        codes[person_id] = str(entry.get("code") or "")
+
+    with database().read() as tx:
+        # The school first. A sponsor naming somebody else's chapter is refused
+        # here, before any of the ids below are looked at.
+        school = _school_of(tx, principal, payload.get("school_id"))
+        for person_id in order:
+            auth.require_person_in_scope(tx, principal, person_id)
+        return HTMLResponse(printing.render_packet(
+            tx, school, only_people=order, codes=codes))
+
+
 @app.get("/sponsor/packet", response_class=HTMLResponse)
 def packet(school_id: int | None = Query(default=None),
            person_id: int | None = Query(default=None),

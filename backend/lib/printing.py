@@ -301,11 +301,18 @@ def _document_body(tx: Tx, key: str) -> str:
 
 def render_packet(tx: Tx, school: dict, *, only_person: int | None = None,
                   only_people: list[int] | None = None,
+                  codes: dict[int, str] | None = None,
                   base_url: str = "https://state.uhsjcl.org") -> str:
     """One sheet per attendee, plus a chapter cover and the paper-form checklist.
 
     `only_person` renders a single sheet, which is what the reprint after a code
     regeneration uses.
+
+    `codes` maps person id to the PLAINTEXT code, and is supplied only by a
+    caller that has just minted them -- the roster paste, and a reissue. It is
+    never read from the database, because only the HMAC is there. Without it
+    every sheet prints blocks where the code would be, which is correct for a
+    preview and useless for a packet somebody is about to hand out.
 
     THE SHEET IS A BEARER CREDENTIAL. It says so, and it shows the attendee's
     name large enough that a sponsor cannot hand the wrong page to the wrong
@@ -331,7 +338,8 @@ def render_packet(tx: Tx, school: dict, *, only_person: int | None = None,
         parts.append(_packet_cover(tx, school, people))
 
     for person in people:
-        parts.append(_packet_sheet(tx, school, person, base_url))
+        parts.append(_packet_sheet(tx, school, person, base_url,
+                                   (codes or {}).get(person["id"])))
 
     if whole_packet:
         parts.append(_paper_forms_page(tx))
@@ -397,14 +405,17 @@ def _name_size(name: str) -> str:
     return ""
 
 
-def _packet_sheet(tx: Tx, school: dict, person: dict, base_url: str) -> str:
+def _packet_sheet(tx: Tx, school: dict, person: dict, base_url: str,
+                  code: str | None = None) -> str:
     """One attendee's sheet.
 
-    The access code itself is NOT available here -- only its HMAC is stored, and
-    that is the point. The QR therefore carries a sign-in link and the code is
-    filled in at print time only when the caller has just minted it. In normal
-    packet printing the sponsor prints from the code they were shown once; see
-    the reprint flow after a regeneration.
+    THE CODE IS NEVER READ FROM THE DATABASE. Only its HMAC is stored, and that
+    is the point. `code` is passed in by whichever caller has just minted it,
+    lives for one render, and is written nowhere.
+
+    With no code the sheet prints blocks and says the sheet is a preview. That
+    is the honest thing for a preview and the wrong thing for a packet, which is
+    why the paste and the reissue both pass one.
     """
     name = " ".join(filter(None, [
         person["first_name"], person["middle_name"], person["last_name"],
@@ -417,7 +428,11 @@ def _packet_sheet(tx: Tx, school: dict, person: dict, base_url: str) -> str:
         kind, instructions = "Chaperone", "packet_instructions_adult"
     else:
         kind, instructions = "Adult", "packet_instructions_adult"
-    magic = f"{base_url}/#/enter/{person['code_prefix']}-XXXXX-XXXXX"
+    # The code travels in the URL FRAGMENT, which browsers do not send to a
+    # server and which stays out of every access log on the way.
+    shown = code or (person["code_prefix"] + "-█████"
+                                             "-█████")
+    magic = f"{base_url}/#/enter/{shown}"
 
     return f"""
 <section class="sheet">
@@ -427,7 +442,7 @@ def _packet_sheet(tx: Tx, school: dict, person: dict, base_url: str) -> str:
     <div class="label">{_esc(kind.upper())}</div>
     <div class="name{_name_size(name)}">{_esc(name)}</div>
     <div class="row">
-      <span class="code mono">{_esc(person['code_prefix'])}-&#9608;&#9608;&#9608;&#9608;&#9608;-&#9608;&#9608;&#9608;&#9608;&#9608;</span>
+      <span class="code mono">{_esc(shown)}</span>
       <span class="mono label">&#8470;&nbsp; {person['id']:04d}</span>
     </div>
   </div>

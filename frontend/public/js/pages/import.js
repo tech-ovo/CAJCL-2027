@@ -16,7 +16,9 @@
  */
 
 import * as api from "../api.js";
-import { add, el, clear, field, button, errorSummary, table, emptyState } from "../ui.js";
+import { add, el, clear, field, button, errorSummary, table,
+         emptyState } from "../ui.js";
+import { openPrintView } from "./roster.js";
 
 /* Warning copy. Warnings must be rare enough that a sponsor reads them --
  * flagging every third row teaches people to click through without looking. */
@@ -293,18 +295,66 @@ export async function importPage(host, params = []) {
         school_id: schoolId || undefined,
       });
 
+      /* PRINT NOW OR NEVER, and the screen has to say so.
+       *
+       * Codes are stored as an HMAC and cannot be read back by anybody. This
+       * response holds the only readable copy there will ever be, so the print
+       * button belongs HERE — not back on the roster, where the packet can
+       * only print blocks and the sponsor discovers that after leaving.
+       *
+       * A replayed commit has no codes to give. It says so plainly rather than
+       * offering a button that would produce thirty blank sheets. */
+      const issued = (result.created || []).filter((row) => row.code);
+
       clear(host);
-      add(host, 
+      add(host,
         el("h1", {}, result.already_committed
           ? "Already added"
           : `Added ${result.committed_count} ` +
             `${result.committed_count === 1 ? "person" : "people"}`),
-        el("p", { class: "lede" }, result.already_committed
-          ? "This roster was already saved, so nothing was added twice."
-          : "Everyone now has an access code. Print their sheets and hand each " +
-            "one to the person named on it."),
+
+        result.already_committed
+          ? el("p", { class: "lede" },
+              "This roster was already saved, so nothing was added twice. The "
+              + "codes were shown once, when it was first saved. If you no "
+              + "longer have them, issue new ones from the roster.")
+          : el("p", { class: "lede" },
+              "Everyone now has an access code. Print the sheets now and hand "
+              + "each one to the person named on it."),
+
+        issued.length
+          ? el("div", { class: "banner banner--info",
+                        style: "margin:1.5rem 0" },
+              el("span", { class: "banner__label" }, "Print now"),
+              el("span", {}, "This is the only time these codes can be "
+                           + "printed. Nothing can recover them afterwards — "
+                           + "you would have to issue new ones."))
+          : null,
+
         el("div", { class: "btn-row" },
-          el("a", { class: "btn btn--primary", href: backHref }, "Go to roster")));
+          issued.length
+            ? button("Print the sheets", {
+                variant: "btn--primary",
+                onclick: () => openPrintView("/sponsor/packet", {
+                  school_id: schoolId || undefined,
+                  codes: issued.map((row) => ({ person_id: row.id,
+                                                code: row.code })),
+                }),
+              })
+            : null,
+          el("a", { class: issued.length ? "btn" : "btn btn--primary",
+                    href: backHref }, "Go to roster")),
+
+        issued.length
+          ? el("table", { class: "table" },
+              el("caption", { class: "visually-hidden" }, "New access codes"),
+              el("thead", {}, el("tr", {},
+                el("th", { scope: "col" }, "Name"),
+                el("th", { scope: "col" }, "Access code"))),
+              el("tbody", {}, ...issued.map((row) => el("tr", {},
+                el("td", {}, `${row.first_name} ${row.last_name}`.trim()),
+                el("td", { class: "mono" }, row.code)))))
+          : null);
     } catch (error) {
       committing = false;
       errors = error.errors && error.errors.length ? error.errors : [error.message];

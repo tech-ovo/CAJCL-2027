@@ -82,6 +82,9 @@ ROUTES = [
      "/sponsor/chapter-entries/{entry}", None),
     ("sponsor.invoice", "GET", "/sponsor/invoice?school_id={school}", None),
     ("sponsor.packet", "GET", "/sponsor/packet?school_id={school}", None),
+    ("sponsor.packet.print", "POST", "/sponsor/packet",
+     {"school_id": "{school}",
+      "codes": [{"person_id": "{person}", "code": "DEL-K7M2N-9PQ4T"}]}),
     ("sponsor.invoice.html", "GET", "/sponsor/invoice.html?school_id={school}", None),
 
     ("me.activity_sheet", "GET", "/me/activity-sheet", None),
@@ -645,14 +648,19 @@ def test_adding_one_person_returns_a_code_that_works(fx, client):
     assert signed_in.status_code == 200, "the code returned does not sign anybody in"
 
 
-def test_a_paste_does_not_return_thirty_codes(fx, client):
-    """The single-person path returns a code; the paste deliberately does not.
+def test_a_paste_returns_the_codes_it_just_minted(fx, client):
+    """The one moment a pasted roster's codes are readable.
 
-    Nothing reads them there, and returning them would put the two commit paths
-    out of step: a REPLAYED commit reads its rows back from the database, where
-    the code is a hash and unreadable by design.
+    They are stored as an HMAC, so nothing can read them back -- not this test,
+    not the packet renderer, not a chair with a terminal. The commit response
+    is the only place they exist in the clear, and the sponsor needs them to
+    print sheets anybody can sign in with.
+
+    A REPLAYED commit cannot return them, because it reads its rows back from
+    the database. The screen has to say so rather than show a print button that
+    would produce blocks.
     """
-    text = "Ann Example\nBeth Sample"
+    text = "Ann Example" + chr(10) + "Beth Sample"
     headers = as_(fx, "chair")
     preview = client.post("/sponsor/roster/parse",
                           json={"text": text, "school_id": fx.other_id},
@@ -661,11 +669,38 @@ def test_a_paste_does_not_return_thirty_codes(fx, client):
             "rows": preview["rows"], "school_id": fx.other_id}
 
     first = client.post("/sponsor/roster/commit", json=body, headers=headers).json()
-    assert all("code" not in row for row in first["created"])
+    codes = [row.get("code") for row in first["created"]]
+    assert all(codes), "a paste must hand back the codes it minted"
+    assert all(code.startswith("DEL-") for code in codes)
+
+    # And they work, which is the whole point of printing them.
+    assert client.post("/auth/redeem", json={"code": codes[0]}).status_code == 200
 
     replay = client.post("/sponsor/roster/commit", json=body, headers=headers).json()
     assert replay["already_committed"] is True
-    assert all("code" not in row for row in replay["created"])
+    assert all(not row.get("code") for row in replay["created"]), (
+        "a replay reads the database, where the code is a hash")
+
+
+def test_a_packet_prints_a_code_only_when_it_is_handed_one(fx, client):
+    """GET prints blocks; POST prints what it is given.
+
+    The blocks are right for a preview and were wrong for everything else: for
+    months there was no way to produce a sheet carrying a usable code, while
+    the sponsor instructions said to print the packet and hand it out.
+    """
+    headers = as_(fx, "uni_sponsor")
+    preview = client.get(f"/sponsor/packet?person_id={fx.delegate_id}",
+                         headers=headers).text
+    assert "█" in preview, "a preview must not invent a code it cannot know"
+
+    printed = client.post("/sponsor/packet",
+                          json={"codes": [{"person_id": fx.delegate_id,
+                                           "code": "DEL-K7M2N-9PQ4T"}]},
+                          headers=headers)
+    assert printed.status_code == 200, printed.text
+    assert "DEL-K7M2N-9PQ4T" in printed.text
+    assert "█" not in printed.text, "a real code must replace the blocks"
 
 
 def test_a_chair_can_reopen_one_persons_form(fx, client):

@@ -475,7 +475,13 @@ function renderNav() {
     }
     if (administrative.length) {
       add(nav, el("span", { class: "nav__divider", "aria-hidden": "true" }));
-      add(nav, ...administrative.map(([href, text]) => link(href, text)));
+      // Italic as well as divided. On a phone the nav wraps, and the divider
+      // can end up at the end of a line where it separates nothing.
+      add(nav, ...administrative.map(([href, text]) => {
+        const anchor = link(href, text);
+        anchor.classList.add("nav__admin");
+        return anchor;
+      }));
     }
 
     add(nav, el("span", { class: "nav__spacer" }));

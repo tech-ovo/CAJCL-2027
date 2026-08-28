@@ -326,13 +326,14 @@ export async function rosterPage(host, params = []) {
     }
 
     showCode(`${created.first_name} ${created.last_name}`.trim(), created.code,
-             `Give this to ${created.first_name || "them"} with their sheet.`);
+             `Give this to ${created.first_name || "them"} with their sheet.`,
+             created.id);
   }
 
   /* One code, shown once, with nothing else on the screen to compete with it.
    * Used by everything that mints a code: a new sponsor, a new person, and a
    * reissue. */
-  function showCode(name, code, note) {
+  function showCode(name, code, note, personId = null) {
     clear(host);
     add(host, el("section", { class: "panel", role: "alertdialog",
                               "aria-label": `Access code for ${name}` },
@@ -342,6 +343,14 @@ export async function rosterPage(host, params = []) {
       el("p", {}, "This is the only time this code is shown, and nothing can "
                 + "recover it. " + note),
       el("div", { class: "btn-row" },
+        personId
+          ? button("Print their sheet", {
+              onclick: () => openPrintView("/sponsor/packet", {
+                school_id: schoolId || undefined,
+                codes: [{ person_id: personId, code }],
+              }),
+            })
+          : null,
         button("Back to the roster", {
           variant: "btn--primary",
           onclick: () => reload(),
@@ -398,7 +407,8 @@ export async function rosterPage(host, params = []) {
     }
 
     showCode(`${created.first_name} ${created.last_name}`.trim(), created.code,
-             "Send it to them now, in a message addressed to them alone.");
+             "Send it to them now, in a message addressed to them alone.",
+             created.id);
   }
 
   function reissueBar(people) {
@@ -475,10 +485,17 @@ export async function rosterPage(host, params = []) {
           el("td", {}, row.name),
           el("td", { class: "mono" }, row.code))))),
       el("div", { class: "btn-row" },
+        // POSTED with the codes above. The GET version of this URL renders
+        // blocks, because the stored code is an HMAC -- so the sheets it
+        // produced were unusable, which is the opposite of what "print these
+        // sheets" promises after a reissue.
         button("Print these sheets", {
           variant: "btn--primary",
-          onclick: () => openPrintView(result.print_url
-            + (schoolId ? `&school_id=${schoolId}` : "")),
+          onclick: () => openPrintView("/sponsor/packet", {
+            school_id: schoolId || undefined,
+            codes: result.issued.map((row) => ({ person_id: row.person_id,
+                                                 code: row.code })),
+          }),
         }),
         button("Done", {
           onclick: async () => {
@@ -540,7 +557,7 @@ export async function rosterPage(host, params = []) {
               ? el("span", { class: "pill pill--done", style: "margin-left:.5rem" },
                   "Chapter leader")
               : null) },
-        { key: "id", label: "No.", sortable: true,
+        { key: "id", label: "ID", sortable: true,
           render: (row) => el("span", { class: "mono" }, personNumber(row.id)) },
         { key: "position", label: "Position", sortable: true,
           render: (row) => position(row) },
@@ -564,7 +581,7 @@ export async function rosterPage(host, params = []) {
             : null) },
       // The same number printed on their sheet and shown on their account, so
       // a sponsor reading one out over the phone is reading the same thing.
-      { key: "id", label: "No.", sortable: true,
+      { key: "id", label: "ID", sortable: true,
         render: (row) => el("span", { class: "mono" }, personNumber(row.id)) },
       { key: "person_type", label: "Type", sortable: true,
         render: (row) => row.person_type === "delegate"
@@ -812,7 +829,10 @@ export async function rosterPage(host, params = []) {
       el("div", { class: "btn-row" },
         button("Print their new sheet", {
           variant: "btn--primary",
-          onclick: () => openPrintView(`/sponsor/packet?person_id=${row.id}`),
+          onclick: () => openPrintView("/sponsor/packet", {
+            school_id: schoolId || undefined,
+            codes: [{ person_id: row.id, code: result.code }],
+          }),
         }),
         button("Done", { onclick: async () => { dialog.remove(); await reload(); } })));
 
@@ -846,7 +866,10 @@ export async function rosterPage(host, params = []) {
  *  The print views are HTML documents, not JSON, so they are fetched and
  *  written into the new window rather than linked -- a plain link would arrive
  *  without the Authorization header. */
-export async function openPrintView(path) {
+export async function openPrintView(path, body = null) {
+  /* `body` turns this into a POST, which the packet needs when it is carrying
+   * codes: a query string would put them in the browser's history and in every
+   * access log on the way. */
   const target = window.open("", "_blank");
   if (!target) {
     await tell({ title: "The print window was blocked",
@@ -856,7 +879,9 @@ export async function openPrintView(path) {
   }
   target.document.write("<p style=\"font:14px system-ui;padding:2rem\">Preparing…</p>");
   try {
-    const html = await api.getText(path);
+    const html = body
+      ? await api.postText(path, body)
+      : await api.getText(path);
     target.document.open();
     target.document.write(html);
     target.document.close();

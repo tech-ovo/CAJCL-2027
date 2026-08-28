@@ -50,7 +50,13 @@ export async function invoicePage(host) {
             .filter((line) => line.count || line.amount_cents)
             .map((line) => el("div", { class: "totals__row" },
               el("span", {}, line.label,
-                line.note ? el("span", { class: "label" }, ` ${line.note}`) : null,
+                // PARENTHESISED, the same as the printed invoice. The note
+                // is small capitals, which runs into the label beside it and
+                // reads as part of it — "Adults included at no charge one per
+                // 10 delegates" — until the brackets separate them.
+                line.note
+                  ? el("span", { class: "label" }, ` (${line.note})`)
+                  : null,
                 el("span", { class: "muted mono" }, `  ×${line.count}`)),
               el("span", { class: "mono" },
                 line.unit_cents ? money(line.amount_cents) : "included"))),

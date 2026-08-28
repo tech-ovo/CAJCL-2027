@@ -128,6 +128,7 @@ export async function activitySheetPage(host) {
         "what you have decided so far and come back as often as you want " +
         "before the deadline."),
       deadlineNote(),
+      paperNote(),
       restored
         ? el("div", { class: "banner banner--info", style: "margin-bottom:1.5rem" },
             el("span", { class: "banner__label" }, "Restored"),
@@ -254,6 +255,39 @@ export async function activitySheetPage(host) {
         .filter(([, list]) => list && list.length)
         .map(([key, list]) => [key, [...list].sort()])),
     });
+  }
+
+  /* The paper half, on the delegate's own screen.
+   *
+   * Two of the three things that make a delegate "complete" are pieces of
+   * paper their parent signs, and nothing on this page said whether either had
+   * arrived. A delegate who had filled in every box here believed they were
+   * done — and their sponsor was looking at a roster that said otherwise.
+   *
+   * READ ONLY. The sponsor ticks these, because the sponsor is holding the
+   * paper. This says where it got to, and who to give it to.
+   */
+  function paperNote() {
+    const paper = sheet.paper || {};
+    const forms = [["student_waiver", "Waiver"],
+                   ["student_medical", "Medical form"]];
+    const outstanding = forms.filter(([key]) => !paper[key]);
+
+    return el("div", { class: "panel", style: "margin-bottom:1.5rem" },
+      el("p", { class: "label label--ink" }, "Your paper forms"),
+      el("dl", { class: "detail" },
+        ...forms.flatMap(([key, label]) => [
+          el("dt", {}, label),
+          el("dd", {}, paper[key]
+            ? el("span", { class: "pill pill--done" }, "✓ Received")
+            : el("span", { class: "pill" }, "Not yet")),
+        ])),
+      el("p", { class: "small muted" },
+        outstanding.length
+          ? "Your sponsor ticks these off as they reach them. Until both are "
+            + "in you are not fully registered, however much of this form you "
+            + "have filled in."
+          : "Both are in. Nothing further is needed on paper."));
   }
 
   function deadlineNote() {
@@ -522,13 +556,22 @@ export async function activitySheetPage(host) {
       // button is not an answer to "am I registered?", which is the only
       // question a delegate actually has.
       if (!gaps.length) {
+        const paper = sheet.paper || {};
+        const waiting = [["student_waiver", "your waiver"],
+                         ["student_medical", "your medical form"]]
+          .filter(([key]) => !paper[key]).map(([, label]) => label);
+
         await tell({
-          title: "You are registered",
+          title: waiting.length ? "This form is done" : "You are registered",
           body: [
             el("p", {}, "Everything this form needs is filled in and saved."),
-            el("p", {}, "Two things are still on paper and are not done here: "
-                      + "your waiver and your medical form. Give both to your "
-                      + "sponsor."),
+            waiting.length
+              ? el("p", {}, "Still outstanding on paper: "
+                          + waiting.join(" and ")
+                          + ". Give them to your sponsor — you are not fully "
+                          + "registered until both are in.")
+              : el("p", {}, "Your waiver and medical form are both in, so "
+                          + "there is nothing else to do."),
             el("p", {}, "You can change any of these answers until the "
                       + "deadline."),
           ],

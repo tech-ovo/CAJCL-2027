@@ -11,7 +11,7 @@
  */
 
 import * as api from "../api.js";
-import { add, el, clear, field, input, button, errorSummary, table,
+import { add, el, clear, field, input, select, button, errorSummary, table,
          localDate, loadingRows, guardUnsaved, ask, check,
          tell } from "../ui.js";
 import { state, route, adopt, hasScope } from "../main.js";
@@ -239,10 +239,18 @@ export async function adminPage(host) {
       el("section", { class: "panel" },
         el("h2", {}, "Put a banner on every page"),
         el("p", { class: "muted" },
+          // NOTHING POLLS. There is no background request anywhere on this
+          // site asking whether an announcement has appeared, so a page
+          // already open stays as it is until the person using it does
+          // something. Saying "within seconds" promised a mechanism that does
+          // not exist, which is the worst thing to be wrong about on the one
+          // screen used when something has gone wrong.
           "For a schedule change, a room change, or anything that cannot wait. "
-          + "It appears at the top of every page, for everybody, the next time "
-          + "they load or move between pages — so within seconds for "
-          + "anyone using the site, and immediately for anyone arriving."),
+          + "It appears at the top of every page for anyone arriving, and for "
+          + "anyone already on the site the next time they move between "
+          + "pages. A page sitting open and untouched will not change on its "
+          + "own — so this reaches people as they use the site, not the "
+          + "instant you save it."),
         field({ id: "ann-body", label: "What it should say", wide: true,
                 required: true, control: body }),
         el("div", { class: "grid" },
@@ -382,6 +390,22 @@ export async function adminPage(host) {
                 })) },
           ], board.people, { caption: "Board members and their roles" })
         : el("p", { class: "muted" }, "Nobody has been given a role yet."),
+
+      /* GRANTING A ROLE TO SOMEBODY WHO HAS NONE.
+       *
+       * The table above lists people who already hold one, which made it a
+       * list you could edit and never add to — so the first role anybody got
+       * had to come from a script. A new academics chair is a delegate at
+       * their own chapter until somebody says otherwise, and that is the
+       * common case, not the exception.
+       */
+      el("section", { class: "panel", style: "margin-bottom:1.5rem" },
+        el("h2", {}, "Give somebody their first role"),
+        el("p", { class: "muted" },
+          "Anybody on any roster. They keep their own code and their own "
+          + "registration; the role is granted on top."),
+        grantForm(roles.roles)),
+
       el("hr", { class: "hair" }));
 
     const key = input({ placeholder: "colloquia_chair" });
@@ -441,6 +465,71 @@ export async function adminPage(host) {
   /* Roles are toggled one at a time against the endpoint that already exists.
    * There is no bulk save: each grant and each revoke is its own audited
    * action, which is what makes the log readable six months later. */
+  /* Pick a chapter, then a person from it, then open the roles dialog.
+   *
+   * A person id would have been one field instead of two, and it is what the
+   * impersonation form asks for — but that number is printed on a sheet the
+   * chair granting a role has never seen. Two dropdowns beat asking somebody
+   * to go and find a number. */
+  function grantForm(allRoles) {
+    const chapter = select([["", "Choose a chapter…"]], { id: "grant-school" });
+    const who = select([["", "Choose a chapter first"]], { id: "grant-person" });
+    who.disabled = true;
+    let people = [];
+
+    api.get("/admin/schools").then((data) => {
+      for (const school of data.schools) {
+        add(chapter, el("option", { value: String(school.id) }, school.name));
+      }
+    }).catch(() => { /* the error surfaces when they try to use it */ });
+
+    chapter.onchange = async () => {
+      who.disabled = true;
+      clear(who);
+      add(who, el("option", { value: "" }, "Loading…"));
+      if (!chapter.value) {
+        clear(who);
+        add(who, el("option", { value: "" }, "Choose a chapter first"));
+        return;
+      }
+      try {
+        const data = await api.get(`/admin/people?school_id=${chapter.value}`);
+        people = data.people.filter((person) => person.status === "active");
+        clear(who);
+        add(who, el("option", { value: "" },
+                    people.length ? "Choose a person…" : "Nobody on this roster"));
+        for (const person of people) {
+          add(who, el("option", { value: String(person.id) },
+                      `${person.first_name} ${person.last_name}`));
+        }
+        who.disabled = !people.length;
+      } catch (error) {
+        clear(who);
+        add(who, el("option", { value: "" }, error.message));
+      }
+    };
+
+    return el("div", {},
+      el("div", { class: "grid" },
+        el("div", { class: "span-6" },
+          field({ id: "grant-school", label: "Chapter", control: chapter })),
+        el("div", { class: "span-6" },
+          field({ id: "grant-person", label: "Person", control: who }))),
+      el("div", { class: "btn-row" },
+        button("Choose their roles", {
+          variant: "btn--primary",
+          onclick: async () => {
+            const person = people.find((row) => String(row.id) === who.value);
+            if (!person) {
+              await tell({ title: "Pick somebody first",
+                           body: "Choose a chapter, then a person on it." });
+              return;
+            }
+            await editRoles(person, allRoles);
+          },
+        })));
+  }
+
   async function editRoles(person, allRoles) {
     const held = new Set((person.role_keys || "").split(",").filter(Boolean));
     const name = `${person.first_name} ${person.last_name}`;
@@ -623,6 +712,15 @@ export async function adminPage(host) {
     const warm = await api.get("/admin/warm");
     const hours = input({ type: "number", value: "6", min: "0", max: "72" });
 
+    /* IS IT WARM NOW, not "is there a date in this column".
+     *
+     * `warm_until` keeps its last value after it passes, so the panel went on
+     * reporting "Warm until 2:00 PM" long after two o'clock, next to a "Let it
+     * sleep" button that would have done nothing. Both are about a state the
+     * server is no longer in. */
+    const until = warm.warm_until ? new Date(warm.warm_until) : null;
+    const isWarm = !!until && until.getTime() > Date.now();
+
     add(host, 
       el("section", { class: "grid" },
         el("div", { class: "span-6" },
@@ -631,9 +729,13 @@ export async function adminPage(host) {
             "The server sleeps when nobody is using it, which is what keeps it " +
             "free. Before a live event, keep it awake so nobody waits."),
           el("dl", { class: "detail" },
-            el("dt", {}, "Warm until"),
-            el("dd", { class: "mono" },
-              warm.warm_until ? localDate(warm.warm_until, { withTime: true }) : "Not warm")),
+            el("dt", {}, "Right now"),
+            el("dd", {}, isWarm
+              ? el("span", {},
+                  el("span", { class: "pill pill--done" }, "Awake"),
+                  el("span", { class: "small muted" },
+                    ` until ${localDate(warm.warm_until, { withTime: true })}`))
+              : el("span", { class: "pill" }, "Sleeping when idle"))),
           field({ id: "warm-hours", label: "Keep warm for", help: "Hours from now.",
                   control: hours }),
           el("div", { class: "btn-row" },
@@ -645,13 +747,17 @@ export async function adminPage(host) {
                 render();
               },
             }),
-            button("Let it sleep", {
-              onclick: async () => {
-                await api.put("/admin/warm", { hours: 0 });
-                message = "Containers will sleep when idle.";
-                render();
-              },
-            }))),
+            // Only offered when there is something to stop. Pressing it while
+            // the server is already sleeping did nothing and looked broken.
+            isWarm
+              ? button("Let it sleep", {
+                  onclick: async () => {
+                    await api.put("/admin/warm", { hours: 0 });
+                    message = "Containers will sleep when idle.";
+                    render();
+                  },
+                })
+              : null)),
 
         el("div", { class: "span-6" },
           el("h2", {}, "Impersonate someone"),

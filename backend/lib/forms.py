@@ -76,6 +76,14 @@ def activity_sheet(tx: Tx, person: dict) -> dict:
         "deadline": settings.get(tx, "deadline.forms_lock"),
         "selected": [r["item_id"] for r in selections],
         "selected_options": chosen_options,
+        # THE PAPER HALF, on the delegate's own screen.
+        #
+        # "Am I registered?" is not answered by the online form alone, and a
+        # delegate had no way to find out whether the waiver their parent
+        # signed three weeks ago ever reached their sponsor. Read-only here:
+        # only the sponsor ticks these, because only the sponsor is holding
+        # the paper.
+        "paper": _paper_state(tx, person["id"]),
         "catalog": catalog.for_person(
             tx, person_type="delegate", school_level=person["school_level"],
             latin_level=person["latin_level"]),
@@ -226,6 +234,12 @@ def save_adult_sheet(tx: Tx, actor: Principal, person: dict, payload: dict) -> d
     )
     stats.recompute(tx, person["school_id"], settings=settings.fee_settings(tx))
     return {"warnings": warnings}
+
+
+def _paper_state(tx: Tx, person_id: int) -> dict:
+    """Which paper forms have been ticked, as a plain map."""
+    rows = tx.all("forms.paper_for_person", (person_id,))
+    return {row["form_type"]: bool(row["received"]) for row in rows}
 
 
 def _check_delegate_basics(school_level: str, grade, latin_level, meal) -> None:
