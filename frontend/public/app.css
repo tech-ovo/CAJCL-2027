@@ -669,7 +669,11 @@ legend { padding: 0; }
   border-bottom: var(--border);
   vertical-align: baseline;
 }
-.table tbody tr.is-flagged { background: var(--tint); }
+/* A row that needs looking at. TEXT, not a wash: this table has no cell
+ * borders, so a shaded band had no edges to sit inside and read as a smudge
+ * across the row. Never colour alone -- every flagged row also carries the
+ * words saying what is wrong, in its own column. */
+.table tbody tr.is-flagged { color: var(--danger); }
 
 /* A roster is two lists printed as one, and adults are the shorter list.
  *

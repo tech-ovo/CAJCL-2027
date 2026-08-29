@@ -33,9 +33,6 @@ const WARNINGS = {
   possible_header_row: "This looks like a header row rather than a person.",
 };
 
-const MEALS = [["", "—"], ["regular", "Regular"],
-               ["vegetarian", "Vegetarian"], ["gluten_free", "Gluten free"]];
-
 export async function importPage(host, params = []) {
   /* A sponsor reaches this at #/roster/import and it means their own chapter.
    * A registration chair reaches it at #/roster/123/import, having opened a
@@ -225,14 +222,20 @@ export async function importPage(host, params = []) {
         render: (row) => row.person_type === "delegate"
           ? selectFor(row, "latin_level", [["", "—"], ...levels.map((l) => [l, l])])
           : el("span", { class: "muted" }, "—") },
-      { key: "meal", label: "Meal", render: (row) => selectFor(row, "meal", MEALS) },
-      { key: "guardian_name", label: "Parent or guardian",
+      /* NO MEAL COLUMN, AND NO GUARDIAN PHONE.
+       *
+       * Eleven editable columns is a table nobody can read on a laptop, and
+       * these two earned their width least. The PARSER never filled either of
+       * them — it reads names, grades, Latin levels and a phone into
+       * `cell_phone` — so both were empty boxes waiting for a sponsor to type
+       * into, at the one moment they are checking thirty names.
+       *
+       * The meal belongs on the delegate's own form, which asks for it and is
+       * where they would change it anyway. The guardian's phone has no other
+       * screen yet; see docs/TODO.md. */
+      { key: "guardian_name", label: "Parent/guardian",
         render: (row) => row.person_type === "delegate"
           ? textFor(row, "guardian_name")
-          : el("span", { class: "muted" }, "—") },
-      { key: "guardian_phone", label: "Their phone",
-        render: (row) => row.person_type === "delegate"
-          ? textFor(row, "guardian_phone")
           : el("span", { class: "muted" }, "—") },
       { key: "warnings", label: "Check", render: (row) => warningsFor(row) },
     ];
