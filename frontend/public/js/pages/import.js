@@ -238,6 +238,28 @@ export async function importPage(host, params = []) {
           ? textFor(row, "guardian_name")
           : el("span", { class: "muted" }, "—") },
       { key: "warnings", label: "Check", render: (row) => warningsFor(row) },
+      /* REMOVE A ROW HERE, rather than going back and editing the paste.
+       *
+       * The commonest correction is a duplicate — the same person pasted
+       * twice, or somebody already on the roster — and until this existed the
+       * only way to drop one was Start over, retype the whole list, and check
+       * all thirty names again.
+       *
+       * Nothing is saved yet, so this deletes nothing: it takes a name out of
+       * a list on screen. The idempotency key covers the pasted TEXT and the
+       * roster as it stands, not the rows, so a shortened list still commits
+       * exactly once. */
+      { key: "remove", label: "",
+        render: (row) => button("Remove", {
+          variant: "btn--small btn--quiet btn--danger",
+          "aria-label": `Remove ${row.first_name || ""} ${row.last_name || ""}`.trim()
+                        || "Remove this row",
+          onclick: () => {
+            const at = preview.rows.indexOf(row);
+            if (at !== -1) preview.rows.splice(at, 1);
+            renderPreview();
+          },
+        }) },
     ];
   }
 
@@ -266,7 +288,10 @@ export async function importPage(host, params = []) {
 
   function warningsFor(row) {
     if (!row.warnings.length) return el("span", { class: "muted" }, "—");
-    return el("span", {},
+    // A stack, not a run of inline spans. The warnings are block-level and the
+    // Dismiss button was left sitting on the last one's baseline, half a line
+    // low and hard against the text.
+    return el("span", { class: "check-cell" },
       ...row.warnings.map((code) => el("span", { class: "choice__why" },
         WARNINGS[code] || code)),
       button("Dismiss", {

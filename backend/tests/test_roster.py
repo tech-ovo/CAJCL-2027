@@ -663,3 +663,37 @@ def test_a_corrected_title_is_applied_to_somebody_already_there(fx):
 
     back = {(p["first"], p["last"]): p for p in add_board.export(fx.db)}
     assert back[("Grace", "Hopper")]["title"] == "Convention President Emerita"
+
+
+def test_removing_a_row_before_committing_still_commits_once(fx):
+    """The paste preview lets a sponsor drop a row -- a duplicate, usually --
+    without going back and retyping the whole list.
+
+    Safe because the idempotency key covers the pasted TEXT and the roster as
+    it stood, not the rows: a shortened list verifies against the same key and
+    a double-click still produces one roster.
+    """
+    from fastapi.testclient import TestClient
+    from backend import api
+
+    api._db = fx.db
+    client = TestClient(api.app, raise_server_exceptions=False)
+    headers = {"Authorization": f"Bearer {fx.sign_in('uni_sponsor')}"}
+
+    text = "Ann Example\nBeth Sample\nAnn Example"
+    preview = client.post("/sponsor/roster/parse", json={"text": text},
+                          headers=headers).json()
+    assert [row["warnings"] for row in preview["rows"]] == [
+        ["duplicate_in_paste"], [], ["duplicate_in_paste"]]
+
+    kept = preview["rows"][:2]                      # the duplicate is removed
+    body = {"text": text, "idempotency_key": preview["idempotency_key"],
+            "rows": kept}
+
+    first = client.post("/sponsor/roster/commit", json=body, headers=headers)
+    assert first.status_code == 200, first.text
+    assert first.json()["committed_count"] == 2
+
+    replay = client.post("/sponsor/roster/commit", json=body, headers=headers).json()
+    assert replay["already_committed"] is True
+    assert replay["committed_count"] == 2, "the guard still holds on a short list"
