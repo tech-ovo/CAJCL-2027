@@ -197,8 +197,12 @@ td.num, th.num { text-align: right; padding-right: 0; }
   margin-top: 16pt; padding-top: 6pt; border-top: 1px solid var(--mist);
   font-size: 8pt; color: var(--slate);
 }
-.sheet { break-after: page; }
-.sheet:last-child { break-after: auto; }
+/* Each sheet starts a new page, expressed as a break BEFORE rather than
+ * after. `break-after` with a `:last-child` exemption produced a blank final
+ * page every time, because the exemption never matched: `_document` puts the
+ * footer div after the body, so the last sheet always had a sibling. Stated
+ * this way there is nothing to exempt. */
+.sheet + .sheet { break-before: page; }
 /* Nobody's credential may split across two pages. */
 .tabula, .keep { break-inside: avoid; }
 
@@ -342,7 +346,7 @@ def render_packet(tx: Tx, school: dict, *, only_person: int | None = None,
                                    (codes or {}).get(person["id"])))
 
     if whole_packet:
-        parts.append(_paper_forms_page(tx))
+        parts.append(_paper_forms_page(tx, people))
 
     note = (
         '<div class="screen-note"><strong>Print view.</strong> '
@@ -469,13 +473,43 @@ def _packet_sheet(tx: Tx, school: dict, person: dict, base_url: str,
 </section>"""
 
 
-def _paper_forms_page(tx: Tx) -> str:
+def _paper_forms_page(tx: Tx, people: list[dict]) -> str:
+    """The forms THESE people need, not all three unconditionally.
+
+    A chaperone reading "Student Waiver -- every delegate. Requires a parent or
+    guardian signature" has to work out that two of the three lines are not
+    about them, which is exactly the kind of reading nobody does on a form.
+    """
+    has_delegates = any(p["person_type"] == "delegate" for p in people)
+    has_adults = any(p["person_type"] != "delegate" for p in people)
+
+    lines = []
+    if has_delegates:
+        lines.append("<li><strong>Student Waiver</strong> &mdash; every "
+                     "delegate. Requires a parent or guardian signature.</li>")
+        lines.append("<li><strong>Student Medical Form</strong> &mdash; every "
+                     "delegate. Requires a parent or guardian signature.</li>")
+    if has_adults:
+        lines.append("<li><strong>Adult Medical Form</strong> &mdash; every "
+                     "adult attending, including sponsors and chaperones.</li>")
+
+    count = {1: "This form is", 2: "These two forms are",
+             3: "These three forms are"}.get(len(lines), "These forms are")
+
     return f"""
 <section class="sheet">
   <div class="label rail">{_esc(convention_dates(tx))}</div>
   <h1>Required paper forms</h1>
   <hr class="rule">
-  {_document_body(tx, 'packet_paper_forms')}
+  <p>{count} <strong>not</strong> completed online. Print them, sign them by
+  hand, and return them to your sponsor.</p>
+  <ul>{''.join(lines)}</ul>
+  <p>Your sponsor collects {'them' if len(lines) > 1 else 'it'}, marks
+  {'them' if len(lines) > 1 else 'it'} received in the roster, scans the packet
+  into your chapter&rsquo;s Drive folder, and mails the paper with the
+  chapter&rsquo;s check.</p>
+  <p>Legibility and signatures are checked at Friday check-in, so write clearly
+  and do not leave a field blank.</p>
 </section>"""
 
 

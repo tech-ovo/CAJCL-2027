@@ -380,7 +380,10 @@ export async function adminPage(host) {
             { key: "actions", label: "Actions",
               render: (row) => el("span",
                 { style: "display:flex;gap:.5rem;flex-wrap:wrap" },
-                button("Rename", {
+                // "Rename" hid the fact that this is also where a board
+                // POSITION is set — the one field the roles dialog next door
+                // deliberately does not touch.
+                button("Name & position", {
                   variant: "btn--small btn--quiet",
                   onclick: () => renamePerson(row),
                 }),
@@ -390,6 +393,8 @@ export async function adminPage(host) {
                 })) },
           ], board.people, { caption: "Board members and their roles" })
         : el("p", { class: "muted" }, "Nobody has been given a role yet."),
+
+      el("div", { style: "height:var(--space-6)" }),
 
       /* GRANTING A ROLE TO SOMEBODY WHO HAS NONE.
        *
@@ -530,11 +535,27 @@ export async function adminPage(host) {
         })));
   }
 
+  /* IDENTITY ROLES ARE NOT GRANTED FROM HERE.
+   *
+   * `sponsor`, `delegate` and `chapter_leader` say what somebody IS, and they
+   * follow from the roster: a sponsor is a sponsor because their person row is
+   * an adult of that type, and a chapter leader is set from the roster where
+   * the delegate can be seen. Ticking "Sponsor" here would have given a
+   * fourteen-year-old delegate a sponsor's scope over their own chapter while
+   * their row still said delegate — two records disagreeing about the same
+   * person, which is the shape of every authorisation bug worth having.
+   *
+   * What is left is exactly what this screen is for: the convention roles a
+   * board appoints.
+   */
+  const IDENTITY_ROLES = new Set(["sponsor", "delegate", "chapter_leader"]);
+
   async function editRoles(person, allRoles) {
     const held = new Set((person.role_keys || "").split(",").filter(Boolean));
     const name = `${person.first_name} ${person.last_name}`;
+    const grantable = allRoles.filter((role) => !IDENTITY_ROLES.has(role.key));
 
-    const boxes = allRoles.map((role) => el("label", { class: "choice" },
+    const boxes = grantable.map((role) => el("label", { class: "choice" },
       el("input", {
         type: "checkbox", checked: held.has(role.key),
         onchange: async (event) => {
@@ -548,7 +569,7 @@ export async function adminPage(host) {
             // Keep the row behind the dialog honest, so closing it does not
             // reveal a stale list.
             const names = allRoles
-              .filter((r) => held.has(r.key)).map((r) => r.name);
+              .filter((one) => held.has(one.key)).map((one) => one.name);
             person.role_keys = [...held].join(",");
             person.role_names = names.join(",");
             repaint(person.id, "roles", names.join(", ") || "—");
@@ -568,6 +589,10 @@ export async function adminPage(host) {
       el("p", { class: "muted" },
         "Each change is saved as you make it, and each one is logged."),
       el("div", { class: "choices choices--two" }, ...boxes),
+      el("p", { class: "small muted", style: "margin-top:1.25rem" },
+        "Sponsor, delegate and chapter leader are not here. Those say what "
+        + "somebody IS and follow from the roster — a chapter leader is set on "
+        + "the chapter's own roster, where you can see who they are."),
       el("p", { class: "small muted" },
         "Somebody who has left the board keeps their account and their code "
         + "— they are a real person who may still be a sponsor or a "

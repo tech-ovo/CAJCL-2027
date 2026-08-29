@@ -443,14 +443,32 @@ function renderNav() {
      * to fill in like everybody else, and running the two together made their
      * own form the seventh item in a row of eight.
      */
+    /* THEIR OWN REGISTRATION, MARKED WHEN IT IS NOT DONE.
+     *
+     * A tab that looks the same whether or not you have anything left to do
+     * is a tab nobody opens twice. The marker is a dot and the word goes
+     * semibold — never colour alone, which is the rule everywhere else here
+     * too, and the dot carries a title for anyone hovering. */
+    const ownLink = (href) => {
+      const anchor = link(href, "Registration");
+      if (state.me.registration_complete === false) {
+        anchor.classList.add("nav__todo");
+        add(anchor, el("span", { class: "nav__dot", title: "Not finished",
+                                 "aria-hidden": "true" }));
+        add(anchor, el("span", { class: "visually-hidden" },
+                       " — not finished"));
+      }
+      return anchor;
+    };
+
     if (state.me.person_type === "delegate") {
-      add(nav, link("#/activity-sheet", "Registration"));
+      add(nav, ownLink("#/activity-sheet"));
     } else if (state.me.person_type === "adult") {
       // NOT gated on scope. This used to be hidden from anyone holding `*`,
       // on the assumption that an administrator is not an attendee -- but a
       // sponsor with admin rights is very much attending, and their own form
       // sat there reading "Not yet" with no way to reach it.
-      add(nav, link("#/adult-sheet", "Registration"));
+      add(nav, ownLink("#/adult-sheet"));
     }
     if (holdsRole("sponsor")) {
       add(nav, link("#/roster", "Roster"), link("#/invoice", "Invoice"));

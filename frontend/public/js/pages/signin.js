@@ -116,8 +116,7 @@ export async function signInPage(host) {
         const code = codeValue();
 
         if (!checkSymbolOk(code)) {
-          error = "Check that code again — one of the characters does not look " +
-                  "right. It is printed on your registration sheet.";
+          error = "Check that code again. It is printed on your registration sheet.";
           render();
           return;
         }

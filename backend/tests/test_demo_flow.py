@@ -127,7 +127,7 @@ def test_the_whole_demo(fx, client, capsys):
     assert "This sheet is your key" in html         # it says it is a credential
     assert "aequam mement" in html                  # the theme, macrons intact
     assert "Required paper forms" in html
-    assert "break-after: page" in html
+    assert ".sheet + .sheet { break-before: page; }" in html
     step("Rendered the packet", f"{html.count('class=\"sheet\"')} pages, QR codes inline")
 
     # -- 7. a delegate signs in by QR (magic link) ------------------------

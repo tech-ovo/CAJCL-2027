@@ -947,6 +947,15 @@ th[aria-sort] { color: var(--text); }
  * and the grouping it was carrying disappears. The slant survives the wrap. */
 .nav__admin { font-style: italic; }
 
+/* Their own registration, when it is not finished. Weight AND a mark, never
+ * colour on its own -- the same rule the status pills follow. */
+.nav__todo { font-weight: var(--weight-semi); color: var(--danger); }
+.nav__dot {
+  display: inline-block; width: 0.45rem; height: 0.45rem;
+  margin-left: 0.35rem; vertical-align: 0.1em;
+  border-radius: 50%; background: var(--danger);
+}
+
 .nav__divider {
   width: 1px; align-self: stretch;
   background: var(--rule);

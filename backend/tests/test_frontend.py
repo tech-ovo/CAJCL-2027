@@ -532,26 +532,32 @@ def test_a_sponsor_is_assumed_to_know_latin():
         "both the initial value and the post-save reset must apply the default")
 
 
-def test_the_check_in_dialog_cannot_be_closed_before_anything_is_saved():
+def test_the_check_in_dialog_does_not_discard_a_note_silently():
     """A note typed and dismissed is a chapter somebody believes they checked
     in.
 
-    The desk view offers only the two actions. A Close button appears once
-    something has landed, and Escape is refused until then -- a <dialog>
-    dismisses on Escape and on its backdrop for free, which is right afterwards
-    and wrong before.
+    Refusing to close at all was worse -- the one modal on the site with no way
+    out reads as a trap. The way out before anything is saved is "Cancel", in
+    red so it cannot be mistaken for a save, and it asks first only when there
+    is something to lose. Warning about an empty box teaches people to dismiss
+    warnings.
     """
     page = (PUBLIC / "js/pages/checkin.js").read_text(encoding="utf-8")
 
     desk = page[page.index("function deskView()"):page.index("function settledView()")]
-    assert '"Close"' not in desk, "the desk view must not offer a way out"
-    assert "btn--primary" in desk, "the desk view still needs its actions"
+    assert '"Cancel"' in desk and "btn--danger" in desk, (
+        "leaving without saving must be offered, and must not look like a save")
+    assert '"Close"' not in desk, (
+        '"Close" reads as "done"; before anything is saved the honest word is '
+        '"Cancel"')
 
     settled = page[page.index("function settledView()"):page.index("function codeList()")]
-    assert '"Close"' in settled, "there must be a way out once something is saved"
+    assert '"Close"' in settled, "there must be a plain way out once saved"
 
-    assert 'addEventListener("cancel"' in page and "event.preventDefault()" in page, (
-        "Escape must be refused while nothing has been saved")
+    assert "unsavedNote()" in page and "confirmDiscard()" in page, (
+        "a typed note must not be discarded silently")
+    assert 'addEventListener("cancel"' in page, (
+        "Escape and the backdrop must go through the same question")
 
 
 def test_opening_the_roster_from_check_in_closes_the_dialog_first():

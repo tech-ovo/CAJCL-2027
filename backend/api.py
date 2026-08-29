@@ -267,9 +267,13 @@ def redeem(request: Request, payload: dict = Body(...)):
     # page fetches /auth/me for itself.
     with database().read() as tx:
         demo = settings.get_bool(tx, "ops.demo_mode")
+        own = tx.one("forms.own_completeness", (principal.person_id,))
 
     body = principal.to_public_dict()
     body["demo_mode"] = demo
+    # So the navigation can mark their own Registration tab from the first
+    # frame, rather than only after /auth/me is next called.
+    body["registration_complete"] = _own_registration_complete(own)
     return {"token": token, "person": body}
 
 
@@ -279,10 +283,26 @@ def me(principal: auth.Principal = Depends(any_session)):
         sessions = [dict(r) for r in tx.all("auth.sessions_for_person",
                                             (principal.person_id,))]
         demo = settings.get_bool(tx, "ops.demo_mode")
+        # IS THEIR OWN REGISTRATION FINISHED? One row, by primary key, so the
+        # navigation can mark the tab that still needs them. Same definition
+        # the chapter counters use, so a delegate and their sponsor never
+        # disagree about whether that person is done.
+        own = tx.one("forms.own_completeness", (principal.person_id,))
     body = principal.to_public_dict()
     body["sessions"] = sessions
     body["demo_mode"] = demo
+    body["registration_complete"] = _own_registration_complete(own)
     return body
+
+
+def _own_registration_complete(row) -> bool:
+    if row is None:
+        return False
+    if not row["form_done"]:
+        return False
+    if row["person_type"] == "delegate":
+        return bool(row["waiver_received"] and row["medical_received"])
+    return bool(row["adult_medical_received"])
 
 
 @app.post("/auth/logout")
@@ -396,11 +416,17 @@ def get_roster(school_id: int | None = Query(default=None),
         counters = tx.one("stats.for_school", (school["id"],))
         entries = [dict(r) for r in tx.all("forms.chapter_entries_for_school",
                                            (school["id"],))]
+        # Whether the deadline has passed at all. Reopening a form is only
+        # meaningful once it has: before that every form is already open, and a
+        # "Reopen form" button on every row is a control that does nothing.
+        forms_closed = clock.is_past(
+            settings.get_datetime(tx, "deadline.forms_lock"))
     return {
         "school": _school_public(school, principal),
         "people": people,
         "stats": dict(counters) if counters else {},
         "chapter_entries": entries,
+        "forms_closed": forms_closed,
     }
 
 

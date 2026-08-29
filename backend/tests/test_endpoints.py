@@ -804,3 +804,41 @@ def test_a_name_can_be_corrected_from_the_roster(fx, client):
     # in their hand.
     assert client.post("/auth/redeem",
                        json={"code": fx.codes["other_delegate"]}).status_code == 200
+
+
+def test_a_person_is_told_whether_their_own_registration_is_finished(fx, client):
+    """The marker on their own Registration tab.
+
+    Same definition the chapter counters use, so a delegate and their sponsor
+    never disagree about whether that person is done: the online form plus,
+    for a delegate, both pieces of paper.
+    """
+    signed_in = client.post("/auth/redeem",
+                            json={"code": fx.codes["delegate"]}).json()
+    assert signed_in["person"]["registration_complete"] is False, (
+        "a delegate who has submitted nothing is not complete")
+
+    me = client.get("/auth/me", headers=as_(fx, "delegate")).json()
+    assert me["registration_complete"] is False, (
+        "/auth/me and /auth/redeem must agree; the nav is drawn from both")
+
+    # Their sponsor ticks both papers, and they submit the form.
+    sponsor = as_(fx, "uni_sponsor")
+    for form_type in ("student_waiver", "student_medical"):
+        client.post("/sponsor/paper-forms",
+                    json={"person_id": fx.delegate_id, "form_type": form_type,
+                          "received": True}, headers=sponsor)
+    # Academic Testing is a hard minimum, so a sheet with nothing on it is
+    # refused. One test is enough to make this one complete.
+    sheet = client.get("/me/activity-sheet", headers=as_(fx, "delegate")).json()
+    testing = next(category for category in sheet["catalog"]
+                   if category["min_selections"])
+    saved = client.put("/me/activity-sheet",
+                       json={"grade": 10, "latin_level": "HS-2",
+                             "meal": "regular",
+                             "selected": [testing["items"][0]["id"]]},
+                       headers=as_(fx, "delegate"))
+    assert saved.status_code == 200, saved.text
+
+    me = client.get("/auth/me", headers=as_(fx, "delegate")).json()
+    assert me["registration_complete"] is True

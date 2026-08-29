@@ -234,8 +234,9 @@ export async function rosterPage(host, params = []) {
     if (!unlocked) {
       const ok = await check({
         title: `Close ${fullName(row)}'s form again?`,
-        body: "They go back to whatever the deadline says. Anything they have "
-            + "already saved is kept.",
+        body: `${fullName(row)} will no longer be able to edit their own `
+            + "answers, the same as everybody else after the deadline. "
+            + "Everything they have already saved is kept.",
         confirmLabel: "Close it",
       });
       if (!ok) return;
@@ -745,7 +746,10 @@ export async function rosterPage(host, params = []) {
        * meant to stop a chair. Until this button existed the only way through
        * was somebody with a terminal, which meant every "she picked the wrong
        * Latin level" became an email to an admin. */
-      if (hasScope("registration")) {
+      // ONLY ONCE THE DEADLINE HAS PASSED. Before it, every form is open
+      // already and this button does nothing you could see — so it sat on
+      // every row all season looking like a control that was broken.
+      if (hasScope("registration") && (data.forms_closed || row.forms_unlocked)) {
         add(wrap, button(row.forms_unlocked ? "Close form" : "Reopen form", {
           variant: "btn--small btn--quiet",
           onclick: () => setUnlocked(row, !row.forms_unlocked),

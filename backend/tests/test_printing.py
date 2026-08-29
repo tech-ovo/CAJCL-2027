@@ -99,7 +99,12 @@ def test_the_sheet_shows_the_name_large(fx):
 def test_nobodys_credential_splits_across_two_pages(fx):
     html = packet_for(fx)
     assert "break-inside: avoid" in html
-    assert "break-after: page" in html
+    # A break BEFORE each sheet after the first, not after each one. Stated the
+    # other way it needed a `:last-child` exemption that never matched --
+    # `_document` puts the footer after the body -- so every packet ended with
+    # a blank page carrying nothing but the footer.
+    assert ".sheet + .sheet { break-before: page; }" in html
+    assert "break-after: page" not in html
 
 
 def test_a_ninety_character_name_stays_inside_the_tabula(fx):
@@ -494,3 +499,28 @@ def test_an_empty_item_still_prints_a_usable_sheet(fx):
 
     assert "0 entered" in html
     assert item["name"] in html
+
+
+def test_the_paper_forms_page_lists_only_the_forms_that_apply(fx):
+    """A chaperone reading "Student Waiver — every delegate" has to work out
+    that two of the three lines are not about them, which is exactly the
+    reading nobody does on a form."""
+    from backend.lib import printing
+
+    with fx.db.read() as tx:
+        delegates_only = printing._paper_forms_page(
+            tx, [{"person_type": "delegate"}])
+        adults_only = printing._paper_forms_page(
+            tx, [{"person_type": "adult"}])
+        both = printing._paper_forms_page(
+            tx, [{"person_type": "delegate"}, {"person_type": "adult"}])
+
+    assert "Student Waiver" in delegates_only
+    assert "Adult Medical Form" not in delegates_only
+    assert "These two forms are" in delegates_only
+
+    assert "Adult Medical Form" in adults_only
+    assert "Student Waiver" not in adults_only
+    assert "This form is" in adults_only
+
+    assert "These three forms are" in both

@@ -86,3 +86,27 @@ SELECT id, school_id, item_id, team_label FROM chapter_entries WHERE id = ?;
 -- alone and a delegate has no other way to find out.
 -- Indexed by the primary key on (person_id, form_type).
 SELECT form_type, received FROM paper_forms WHERE person_id = ?;
+
+-- name: forms.own_completeness
+-- Is THIS person's registration finished? One row, by primary key.
+--
+-- Feeds the marker on their own Registration tab. Deliberately the same
+-- definition the chapter counters use (see stats.count_school), so a delegate
+-- and their sponsor never disagree about whether they are done.
+SELECT
+  CASE WHEN p.person_type = 'delegate'
+       THEN (fs.status = 'submitted' OR p.activity_sheet_waived = 1)
+       ELSE (fs.status = 'submitted' OR p.adult_type = 'scl') END AS form_done,
+  COALESCE(pf_w.received, 0) AS waiver_received,
+  COALESCE(pf_m.received, 0) AS medical_received,
+  COALESCE(pf_a.received, 0) AS adult_medical_received,
+  p.person_type
+FROM people p
+LEFT JOIN form_submissions fs
+       ON fs.person_id = p.id
+      AND fs.form_type = CASE WHEN p.person_type = 'delegate'
+                              THEN 'student_activity' ELSE 'adult_registration' END
+LEFT JOIN paper_forms pf_w ON pf_w.person_id = p.id AND pf_w.form_type = 'student_waiver'
+LEFT JOIN paper_forms pf_m ON pf_m.person_id = p.id AND pf_m.form_type = 'student_medical'
+LEFT JOIN paper_forms pf_a ON pf_a.person_id = p.id AND pf_a.form_type = 'adult_medical'
+WHERE p.id = ?;

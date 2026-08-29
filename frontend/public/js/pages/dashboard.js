@@ -235,7 +235,7 @@ export async function dashboardPage(host) {
       add(wrap,
         el("h2", {}, `Records for ${school.name}`),
 
-        el("dl", { class: "detail" },
+        el("dl", { class: "detail", style: "margin-bottom:var(--space-6)" },
           el("dt", {}, "Owed"),
           el("dd", { class: "mono" }, school.billing_exempt
             ? "Not billed" : money(school.amount_owed_cents)),
@@ -265,8 +265,15 @@ export async function dashboardPage(host) {
               { key: "reference", label: "Check", render: (row) => row.reference || "—" },
               { key: "note", label: "Note", render: (row) => row.note || "—" },
               { key: "recorded_by", label: "Recorded by",
-                render: (row) => [row.recorded_by_first, row.recorded_by_last]
-                  .filter(Boolean).join(" ") || "—" },
+                render: (row) => el("span", {},
+                  [row.recorded_by_first, row.recorded_by_last]
+                    .filter(Boolean).join(" ") || "—",
+                  // Two different dates, and a dispute needs both: the day
+                  // written on the cheque, and the moment somebody entered it.
+                  row.created_at
+                    ? el("span", { class: "small muted" },
+                        `, ${localDate(row.created_at, { withTime: true })}`)
+                    : null) },
             ], rows, { caption: `Payments from ${school.name}` })
           : el("p", { class: "muted" },
                "Nothing recorded yet. A payment entered here would appear in "

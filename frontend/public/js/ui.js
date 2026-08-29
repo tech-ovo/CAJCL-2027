@@ -78,13 +78,31 @@ export function money(cents) {
  *  zone this convention has ever cared about. */
 export function localDate(iso, { withTime = false } = {}) {
   if (!iso) return "";
-  const date = new Date(iso);
+
+  /* A BARE DATE IS A CALENDAR DATE, NOT AN INSTANT.
+   *
+   * `received_on` is stored as "2027-01-12" — the day somebody wrote on a
+   * cheque, with no time and no time zone. `new Date("2027-01-12")` reads it
+   * as UTC midnight, which in California is four o'clock the PREVIOUS
+   * afternoon, so every cheque was logged a day early. Rendered here from its
+   * own parts, it stays the day it was written.
+   */
+  const calendarDay = /^\d{4}-\d{2}-\d{2}$/.test(iso);
+  const date = calendarDay
+    ? new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1,
+               Number(iso.slice(8, 10)))
+    : new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
-  const options = {
-    timeZone: "America/Los_Angeles",
-    year: "numeric", month: "long", day: "numeric",
-  };
-  if (withTime) { options.hour = "numeric"; options.minute = "2-digit"; }
+
+  const options = { year: "numeric", month: "long", day: "numeric" };
+  // A calendar day has no zone to convert into. Everything else is a real
+  // instant and is shown in California time, because that is where the
+  // convention is and where every deadline falls.
+  if (!calendarDay) options.timeZone = "America/Los_Angeles";
+  if (withTime && !calendarDay) {
+    options.hour = "numeric";
+    options.minute = "2-digit";
+  }
   return date.toLocaleString("en-US", options);
 }
 

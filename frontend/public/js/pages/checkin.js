@@ -21,7 +21,7 @@
 
 import * as api from "../api.js";
 import { add, el, clear, button, loadingRows, localDate,
-         field, input, select, errorSummary } from "../ui.js";
+         field, input, select, errorSummary, check } from "../ui.js";
 
 /* What a delegate added at the desk can be. Both are required, and both are
  * questions only the person standing there can answer. */
@@ -129,11 +129,12 @@ export async function checkinPage(host) {
    * double-clicked at a desk sends two opposite requests and lands wherever
    * the network decides; two buttons that each assert a state cannot.
    *
-   * THERE IS NO CLOSE BUTTON UNTIL SOMETHING HAS BEEN SAVED. Somebody who
-   * typed a note about a missing waiver, closed the panel and walked away had
-   * every reason to believe they had registered that chapter. The panel now
-   * holds until an action lands, then collapses to what it recorded, and only
-   * then offers a way out.
+   * LEAVING WITHOUT SAVING IS ALLOWED, AND SAYS SO. The way out before
+   * anything is recorded is "Cancel", in red, so nobody mistakes it for a
+   * save — and if there is text in the notes box it asks first, because a note
+   * typed and dismissed is a chapter somebody believes they checked in. With
+   * an empty box it just closes; warning about nothing teaches people to
+   * dismiss warnings.
    *
    * Adding a delegate happens INSIDE this dialog rather than in a second one
    * stacked on top of it. Two dialogs meant two backdrops and two boxes of
@@ -152,9 +153,32 @@ export async function checkinPage(host) {
 
     // Escape and the backdrop dismiss a <dialog> for free. That is right once
     // something is saved and wrong before it, which is the whole point.
+    // Escape and the backdrop go through the same question as the Cancel
+    // button, rather than being refused outright.
+    let noteBox = null;
     dialog.addEventListener("cancel", (event) => {
-      if (!settled) event.preventDefault();
+      if (settled || !unsavedNote()) return;
+      event.preventDefault();
+      confirmDiscard();
     });
+
+    function unsavedNote() {
+      const typed = noteBox ? noteBox.value.trim() : "";
+      return typed && typed !== (chapter.checkin_note || "").trim();
+    }
+
+    async function confirmDiscard() {
+      const ok = await check({
+        title: "Close without saving?",
+        body: "You have typed a note for " + chapter.school_name
+            + ", and nothing here has been saved. Closing now discards it and "
+            + "leaves the chapter unregistered.",
+        confirmLabel: "Discard and close",
+        cancelLabel: "Keep editing",
+        danger: true,
+      });
+      if (ok) { settled = true; dialog.close(); }
+    }
     dialog.addEventListener("close", () => { dialog.remove(); render(); });
 
     function show(node) { clear(body); add(body, node); }
@@ -166,6 +190,7 @@ export async function checkinPage(host) {
         id: "checkin-note", rows: "5", class: "checkin__note",
         placeholder: NOTE_PLACEHOLDER,
       }, chapter.checkin_note || "");
+      noteBox = note;
 
       const status = el("p", { class: "form-note", "aria-live": "polite" },
         chapter.arrived_at
@@ -207,9 +232,17 @@ export async function checkinPage(host) {
         status,
         el("label", { class: "label", for: "checkin-note" }, "Notes"),
         note,
-        // No Close. Nothing has been recorded, and the note in that box is not
-        // saved until one of these is pressed.
-        el("div", { class: "btn-row" }, done, undo),
+        // Cancel is red because nothing here has been saved yet, and it is
+        // the only control in this row that does not save.
+        el("div", { class: "btn-row" }, done, undo,
+          button("Cancel", {
+            variant: "btn--quiet btn--danger",
+            onclick: () => {
+              if (unsavedNote()) return confirmDiscard();
+              settled = true;                 // nothing to lose
+              dialog.close();
+            },
+          })),
         added.length ? codeList() : null,
         el("div", { class: "checkin__extras" },
           button("Add a delegate", {
