@@ -21,3 +21,7 @@ demo-codes.txt
 board.json
 
 board-codes.txt
+
+# Certamen bot dependencies & artifacts
+certamen-bot/node_modules/
+.DS_Store

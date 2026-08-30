@@ -42,6 +42,7 @@ const ROUTES = [
   [/^\/?$/,                      welcomePage,       { public: true }],
   [/^\/enter\/(.+)$/,            magicLink,         { public: true }],
   [/^\/sign-in$/,                signInPage,        { public: true }],
+  [/^\/certamen$/,               () => { window.location.href = "/certamen/"; }, { public: true }],
   [/^\/account$/,                accountPage,       {}],
   [/^\/roster$/,                 rosterPage,        { scope: "sponsor" }],
   // A chair opening one chapter's roster. Same page, same endpoint -- the
@@ -432,7 +433,7 @@ function renderNav() {
     return a;
   };
 
-  add(nav, link("#/", "Welcome"));
+  add(nav, link("#/", "Welcome"), el("a", { href: "/certamen/" }, "Certamen"));
 
   if (state.me) {
     /* TWO GROUPS, AND THE ORDER IS THE POINT.

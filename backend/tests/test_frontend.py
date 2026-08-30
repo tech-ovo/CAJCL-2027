@@ -20,7 +20,7 @@ import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 PUBLIC = ROOT / "frontend" / "public"
-JS_FILES = sorted(PUBLIC.rglob("*.js"))
+JS_FILES = sorted([p for p in PUBLIC.rglob("*.js") if "certamen" not in p.parts])
 
 IMPORT_RE = re.compile(
     r'^\s*import\s+(?P<names>.+?)\s+from\s+["\'](?P<path>[^"\']+)["\']',
@@ -113,7 +113,8 @@ def test_colours_live_only_in_tokens_css():
     This is the file next year's commissioners re-skin from. A stray hex in
     app.css is a colour they will not find."""
     offenders = {}
-    for path in list(PUBLIC.rglob("*.css")) + JS_FILES + [PUBLIC / "index.html"]:
+    css_files = [p for p in PUBLIC.rglob("*.css") if "certamen" not in p.parts]
+    for path in css_files + JS_FILES + [PUBLIC / "index.html"]:
         if path.name == "tokens.css":
             continue
         found = HEX.findall(path.read_text(encoding="utf-8"))

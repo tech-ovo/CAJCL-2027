@@ -1,0 +1,6 @@
+{
+  "name": "Certamen Master - Latin Quiz Bowl Practice",
+  "description": "Interactive Latin Certamen quiz bowl practice with typewriter question reveal, spacebar buzzing, category analytics, leaderboards, and Google Sheets cloud sync via Google Apps Script.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
