@@ -70,6 +70,16 @@ EXEMPT: dict[str, str] = {
         "few thousand rows at convention peak. An index on attempted_at would "
         "cost a write on every login attempt to save one scan a day."
     ),
+    "audit.recent_logins": (
+        "The same table, and the same argument. login_attempts is pruned to 7 "
+        "days and holds a few thousand rows at convention peak. This is a "
+        "backwards walk of the rowid stopped by LIMIT, which the planner "
+        "reports as a SCAN because it cannot see the LIMIT -- and even read in "
+        "full it is a few thousand rows on an admin page opened when somebody "
+        "suspects a problem, not on any request path a delegate touches. An "
+        "index on attempted_at would cost a write on every login at "
+        "registration to serve it."
+    ),
     "people.with_prefix": (
         "A one-off migration query, run by hand when a code prefix is retired. "
         "It scans people once, ever, and is on no request path. An index on "

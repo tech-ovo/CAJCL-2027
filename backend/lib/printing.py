@@ -409,6 +409,32 @@ def _name_size(name: str) -> str:
     return ""
 
 
+def _person_number(school: dict, person: dict) -> str:
+    """07014 -- chapter 07, their 14th person.
+
+    Read aloud over a phone this identifies somebody exactly, and a stack of
+    two chapters' sheets shuffled together sorts back apart without opening the
+    site. The old number was `people.id` padded to four digits, which is a row
+    id and reads like one.
+
+    NOT A SECRET, and it must never become one. It is printed beside the access
+    code and is deliberately guessable, like a seat number. The code itself
+    stays nine random characters and encodes nothing about who holds it.
+    """
+    chapter = _field(school, "number") or 0
+    within = _field(person, "school_seq") or 0
+    return f"{chapter:02d}{within:03d}"
+
+
+def _field(row, key):
+    """A column that may be absent. `sqlite3.Row` has no `.get`, and a caller
+    passing one straight through should not take the whole page down."""
+    try:
+        return row[key]
+    except (KeyError, IndexError):
+        return None
+
+
 def _packet_sheet(tx: Tx, school: dict, person: dict, base_url: str,
                   code: str | None = None) -> str:
     """One attendee's sheet.
@@ -447,7 +473,7 @@ def _packet_sheet(tx: Tx, school: dict, person: dict, base_url: str,
     <div class="name{_name_size(name)}">{_esc(name)}</div>
     <div class="row">
       <span class="code mono">{_esc(shown)}</span>
-      <span class="mono label">&#8470;&nbsp; {person['id']:04d}</span>
+      <span class="mono label">#&nbsp;{_person_number(school, person)}</span>
     </div>
   </div>
 
@@ -645,7 +671,7 @@ def render_invoice(tx: Tx, school: dict) -> str:
   <div class="label">Chapter</div>
   <div class="name">{_esc(school['name'])}</div>
   <div class="row"><span class="mono">Nothing due</span>
-  <span class="mono label">&#8470;&nbsp; {school['id']:04d}</span></div>
+  <span class="mono label">#&nbsp;{_field(school, 'number') or 0:02d}</span></div>
 </div>
 {_document_body(tx, 'invoice_exempt_note')}"""
         return _document(f"Invoice - {school['name']}", body, _footer(tx))
@@ -700,7 +726,7 @@ def render_invoice(tx: Tx, school: dict) -> str:
   <div class="name">{_esc(school['name'])}</div>
   <div class="row">
     <span class="mono">{_esc(school['level'])} &middot; {_esc(school['city'] or '')}</span>
-    <span class="mono label">&#8470;&nbsp; {school['id']:04d}</span>
+    <span class="mono label">#&nbsp;{_field(school, 'number') or 0:02d}</span>
   </div>
 </div>
 

@@ -559,7 +559,7 @@ export async function rosterPage(host, params = []) {
                   "Chapter leader")
               : null) },
         { key: "id", label: "ID", sortable: true,
-          render: (row) => el("span", { class: "mono" }, personNumber(row.id)) },
+          render: (row) => el("span", { class: "mono" }, personNumber(school, row)) },
         { key: "position", label: "Position", sortable: true,
           render: (row) => position(row) },
         { key: "form_status", label: "Activities", render: formState },
@@ -583,7 +583,7 @@ export async function rosterPage(host, params = []) {
       // The same number printed on their sheet and shown on their account, so
       // a sponsor reading one out over the phone is reading the same thing.
       { key: "id", label: "ID", sortable: true,
-        render: (row) => el("span", { class: "mono" }, personNumber(row.id)) },
+        render: (row) => el("span", { class: "mono" }, personNumber(school, row)) },
       { key: "person_type", label: "Type", sortable: true,
         render: (row) => row.person_type === "delegate"
           ? "Delegate"

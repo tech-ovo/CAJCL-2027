@@ -54,3 +54,20 @@ LIMIT ?;
 -- name: audit.max_id
 -- The starting cursor for keyset pagination. Reads one row.
 SELECT COALESCE(MAX(id), 0) + 1 AS next_cursor FROM audit_log;
+
+-- name: audit.recent_logins
+-- Who has been trying to sign in, newest first.
+--
+-- Reads login_attempts, which the daily prune keeps to seven days, and is
+-- bounded by LIMIT. Uses idx_login_attempts_ip only incidentally; this is a
+-- backwards walk of the primary key, which is what "newest first" means on a
+-- table whose ids are assigned in time order.
+--
+-- THE IP IS A PEPPERED HMAC AND STAYS ONE. It comes back so that two attempts
+-- from the same place can be seen to be from the same place -- which is the
+-- entire question anybody asks of this table -- without anybody, including
+-- this program, being able to say where that place is.
+SELECT id, code_prefix, ip_hash, succeeded, attempted_at
+FROM login_attempts
+ORDER BY id DESC
+LIMIT ?;

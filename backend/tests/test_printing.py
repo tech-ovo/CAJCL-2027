@@ -398,7 +398,8 @@ def _person_with_name(fx, first, middle, last, suffix):
             first, middle, last, suffix, None,
             11, "HS-3", None, None, None, None, None, None, None,
             f"fixture-{last}-{clock.now_iso()}", "DEL", 1,
-            clock.now_iso(), clock.now_iso(), clock.now_iso(), None))
+            clock.now_iso(), clock.now_iso(), clock.now_iso(), None,
+            fx.uni_id))
         tx.audit("person.create", "long-name fixture", school_id=fx.uni_id,
                  entity_type="person", entity_id=person_id)
     return person_id

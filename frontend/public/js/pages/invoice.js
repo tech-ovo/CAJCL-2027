@@ -9,7 +9,7 @@
  */
 
 import * as api from "../api.js";
-import { add, el, clear, tabula, table, money, localDate, renderMarkdown, personNumber } from "../ui.js";
+import { add, el, clear, tabula, table, money, localDate, renderMarkdown, chapterNumber } from "../ui.js";
 import { openPrintView } from "./roster.js";
 
 export async function invoicePage(host) {
@@ -22,7 +22,7 @@ export async function invoicePage(host) {
     label: "Chapter",
     name: school.name,
     left: invoice.exempt ? "Nothing due" : money(invoice.balance_cents) + " outstanding",
-    right: personNumber(school.id),
+    right: chapterNumber(school),
   }));
 
   if (invoice.exempt) {

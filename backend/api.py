@@ -72,6 +72,39 @@ async def limit_body_size(request: Request, call_next):
     return await call_next(request)
 
 
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    """Headers every response carries.
+
+    None of these is the control that keeps a roster private -- that is the
+    scope check on each endpoint. These close the gaps around it: a hostile
+    page framing the sign-in form and collecting a code typed into it, and a
+    browser guessing that a JSON body is really HTML.
+
+    `frame-ancestors 'none'` is the modern form and `X-Frame-Options` is the
+    old one; both are sent because the audience includes school Chromebooks
+    that are not always current.
+    """
+    response = await call_next(request)
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    # FRAME-ANCESTORS AND BASE-URI ONLY, deliberately.
+    #
+    # A `default-src 'none'` here would also apply to the two responses that
+    # are real HTML documents -- the printed packet and the printed invoice --
+    # both of which carry an inline <style> and would have rendered as
+    # unstyled text. The packet is the most important thing this system
+    # produces on paper, and a policy that breaks it to defend a JSON endpoint
+    # is a bad trade.
+    #
+    # What is left is the part that was actually missing: nothing may frame
+    # this API, and nothing may retarget its relative URLs.
+    response.headers["Content-Security-Policy"] = (
+        "frame-ancestors 'none'; base-uri 'none'")
+    return response
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -825,6 +858,8 @@ def _self(tx, principal: auth.Principal) -> dict:
     school = tx.one("schools.get", (person["school_id"],))
     person["school_level"] = school["level"]
     person["school_name"] = school["name"]
+    # The chapter half of the number printed beside their name: 07014.
+    person["school_number"] = school["number"]
     return person
 
 
@@ -1304,6 +1339,31 @@ def academics_item(item_id: int,
         "people": people,
         "total": len(people),
     }
+
+
+@app.get("/admin/logins")
+def recent_logins(limit: int = Query(default=100, le=500),
+                  principal: auth.Principal = guard("admin.logins", "*",
+                                                    school_rule="any")):
+    """Recent sign-in attempts, successful and not.
+
+    What this answers is "is somebody grinding at this", and the shape of the
+    answer is repetition: the same address failing over and over, or one prefix
+    being tried across many addresses. Both are visible without knowing whose
+    address it is.
+
+    THE IP NEVER BECOMES AN ADDRESS AGAIN. It is a peppered HMAC in the
+    database and it is returned as one, truncated to twelve characters -- long
+    enough to tell two places apart by eye, short enough to be no use for
+    anything else. The pepper is in Modal Secrets, so even this program cannot
+    turn it back into an address.
+    """
+    with database().read() as tx:
+        rows = [dict(r) for r in tx.all("audit.recent_logins", (limit,))]
+    for row in rows:
+        row["ip_hash"] = row["ip_hash"][:12]
+        row["succeeded"] = bool(row["succeeded"])
+    return {"logins": rows}
 
 
 @app.get("/admin/audit")

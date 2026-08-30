@@ -102,6 +102,8 @@ ROUTES = [
      {"school_id": "{school}", "amount_cents": 100}),
     ("admin.people.unlock", "POST", "/admin/people/{person}/unlock-forms", {}),
     ("admin.audit", "GET", "/admin/audit", None),
+    ("admin.logins", "GET", "/admin/logins", None),
+
     ("admin.settings.get", "GET", "/admin/settings", None),
     ("admin.settings.put", "PUT", "/admin/settings",
      {"settings": {"convention.year": "2027"}}),

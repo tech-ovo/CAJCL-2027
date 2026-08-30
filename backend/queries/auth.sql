@@ -11,6 +11,7 @@ SELECT p.id, p.school_id, p.person_type, p.adult_type, p.first_name,
        p.pepper_version, p.forms_unlocked, p.latin_level, p.grade,
        p.latin_knowledge, p.meal, p.email, p.cell_phone,
        s.name AS school_name, s.level AS school_level, s.kind AS school_kind,
+       s.number AS school_number, p.school_seq,
        s.billing_exempt, s.status AS school_status
 FROM people p
 JOIN schools s ON s.id = p.school_id
@@ -52,6 +53,7 @@ SELECT sess.id AS session_id, sess.person_id, sess.impersonator_person_id,
        p.last_name, p.suffix, p.status, p.code_prefix, p.forms_unlocked,
        p.latin_level, p.grade, p.latin_knowledge, p.meal, p.email, p.cell_phone,
        s.name AS school_name, s.level AS school_level, s.kind AS school_kind,
+       s.number AS school_number, p.school_seq,
        s.billing_exempt, s.status AS school_status,
        imp.first_name AS impersonator_first_name,
        imp.last_name  AS impersonator_last_name

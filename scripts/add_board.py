@@ -271,7 +271,7 @@ def run(db, people: list[dict], *,
                     # a valid placeholder; the real prefix depends on the scopes
                     # the roles grant, which are not attached yet.
                     f"pending-{school_id}-{first}-{last}-{now}",
-                    "VOL", 1, now, now, now, None))
+                    "VOL", 1, now, now, now, None, school_id))
                 tx.run("people.set_board_title", (title, now, person_id))
                 action = "created"
 

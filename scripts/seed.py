@@ -160,7 +160,7 @@ class Seeder:
             extra.get("availability_note"),
             extra.get("guardian_name"), extra.get("guardian_phone"),
             f"seed-placeholder-{school_id}-{first}-{last}-{self.rng.random()}",
-            "DEL", 1, created, created, created, None))
+            "DEL", 1, created, created, created, None, school_id))
 
         if role:
             role_row = tx.one("roles.by_key", (role,))

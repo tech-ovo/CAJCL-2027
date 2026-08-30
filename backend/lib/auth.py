@@ -24,6 +24,7 @@ SCOPES REACH A PERSON ONLY THROUGH ROLES
 from __future__ import annotations
 
 import hashlib
+import hmac
 import os
 import secrets
 from dataclasses import dataclass, field, replace
@@ -82,8 +83,20 @@ def _pepper() -> bytes:
 
 
 def hash_ip(ip: str | None) -> str:
-    """IPs are hashed, never stored raw. Most subjects here are minors."""
-    return hashlib.sha256(f"ip:{ip or ''}".encode("utf-8")).hexdigest()
+    """IPs are hashed, never stored raw. Most subjects here are minors.
+
+    PEPPERED, NOT PLAIN. An unpeppered SHA-256 of an IP address is barely a
+    hash at all: IPv4 is 2^32 addresses, so anybody holding the database can
+    recover every one of them by hashing the whole space, which is minutes of
+    ordinary hardware. That is the same argument the access codes are peppered
+    for, and it applies here with far more force -- a code has 44.6 bits of
+    entropy and an IP has 32 at the very most.
+
+    Changing this invalidates existing rows, which costs nothing: they are rate
+    limit counters, pruned daily, and used for nothing else.
+    """
+    return hmac.new(_pepper(), f"ip:{ip or ''}".encode("utf-8"),
+                    hashlib.sha256).hexdigest()
 
 
 def hash_token(token: str) -> str:
@@ -111,6 +124,10 @@ class Principal:
     school_name: str
     school_level: str
     school_kind: str
+    # The two halves of the number printed beside their name: 07014 is
+    # chapter 07, their 14th person. Not a secret -- see migration 017.
+    school_number: int | None = None
+    school_seq: int | None = None
     scopes: frozenset[str] = field(default_factory=frozenset)
     roles: tuple[str, ...] = ()
     session_id: int | None = None
@@ -149,11 +166,13 @@ class Principal:
             "first_name": self.first_name,
             "last_name": self.last_name,
             "person_type": self.person_type,
+            "school_seq": self.school_seq,
             "school": {
                 "id": self.school_id,
                 "name": self.school_name,
                 "level": self.school_level,
                 "kind": self.school_kind,
+                "number": self.school_number,
             },
             "scopes": sorted(self.scopes),
             "roles": list(self.roles),
@@ -347,6 +366,10 @@ def _principal_from_person(tx: Tx, person: dict, *, session_id: int | None = Non
         school_name=person["school_name"],
         school_level=person["school_level"],
         school_kind=person["school_kind"],
+        school_number=person.get("school_number") if hasattr(person, "get")
+                      else person["school_number"],
+        school_seq=person.get("school_seq") if hasattr(person, "get")
+                   else person["school_seq"],
         scopes=scopes,
         roles=roles,
         session_id=session_id,
@@ -428,6 +451,8 @@ def authenticate(tx: Tx, token: str | None, *, touch: bool = True) -> Principal:
             "school_name": session["school_name"],
             "school_level": session["school_level"],
             "school_kind": session["school_kind"],
+            "school_number": session["school_number"],
+            "school_seq": session["school_seq"],
             "billing_exempt": session["billing_exempt"],
             "forms_unlocked": session["forms_unlocked"],
             "latin_level": session["latin_level"],

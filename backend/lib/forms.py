@@ -66,8 +66,12 @@ def activity_sheet(tx: Tx, person: dict) -> dict:
             "grade": person["grade"],
             "latin_level": person["latin_level"],
             "meal": person["meal"],
+            "school_seq": person["school_seq"],
         },
         "school_level": person["school_level"],
+        # For the number printed beside their name: 07014. `_self` in api.py
+        # joins the school and puts its number on the person.
+        "school": {"number": person.get("school_number")},
         "status": submission["status"] if submission else "draft",
         "submitted_at": submission["submitted_at"] if submission else None,
         "locked": is_locked(tx, person),
@@ -111,7 +115,9 @@ def adult_sheet(tx: Tx, person: dict) -> dict:
             "meal": person["meal"],
             "latin_knowledge": person["latin_knowledge"],
             "availability_note": person["availability_note"],
+            "school_seq": person["school_seq"],
         },
+        "school": {"number": person.get("school_number")},
         "status": submission["status"] if submission else "draft",
         "submitted_at": submission["submitted_at"] if submission else None,
         "locked": is_locked(tx, person),

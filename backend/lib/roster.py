@@ -259,6 +259,13 @@ def commit(tx: Tx, school: dict, actor: auth.Principal, raw_text: str,
     }
 
 
+# The three-digit half of a printed person number: 07014 is chapter 07, their
+# 14th person. Nine hundred and ninety-nine is far beyond any real chapter --
+# the largest here brings about sixty -- so this is a backstop against a script
+# or a repeated paste, not a rule anybody registers into.
+MAX_PER_SCHOOL = 999
+
+
 def _insert_person(tx: Tx, school: dict, row: dict, created_at: str,
                    *, import_id: int | None = None) -> dict:
     """Insert one parsed row and mint their code.
@@ -273,6 +280,19 @@ def _insert_person(tx: Tx, school: dict, row: dict, created_at: str,
 
     if not (row.get("first_name") or row.get("last_name")):
         raise RosterError("One of those rows has no name at all.")
+
+    # THREE DIGITS, SO NINE HUNDRED AND NINETY-NINE PEOPLE.
+    #
+    # The largest chapter at this convention brings about sixty, so this is not
+    # a limit anybody meets by registering; it is a limit somebody meets by
+    # pasting the same list two hundred times or by pointing a script at it.
+    # Refused here with a sentence, rather than by the UNIQUE index with a
+    # constraint error nobody can act on.
+    if tx.value("people.next_school_seq", (school["id"],), default=1) > MAX_PER_SCHOOL:
+        raise RosterError(
+            f"{school['name']} already has {MAX_PER_SCHOOL} people, which is "
+            "as many as one chapter can hold. If that is wrong, a registration "
+            "chair can look at what is on the roster.")
 
     person_id = tx.insert("people.create", (
         school["id"], person_type, adult_type, row.get("adult_type_other"),
@@ -290,6 +310,7 @@ def _insert_person(tx: Tx, school: dict, row: dict, created_at: str,
         f"pending-{secrets.token_hex(16)}",   # replaced by issue_code below
         "DEL" if is_delegate else "VOL", 1, created_at,
         created_at, created_at, import_id,
+        school["id"],          # again, for the school_seq subquery
     ))
 
     role_key = "delegate" if is_delegate else "sponsor" if adult_type == "sponsor" else "delegate"

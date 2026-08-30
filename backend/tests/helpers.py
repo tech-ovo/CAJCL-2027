@@ -69,7 +69,7 @@ class Fixture:
             extra.get("email"), extra.get("latin_knowledge"), None,
             extra.get("guardian_name"), extra.get("guardian_phone"),
             f"placeholder-{key}", "DEL", 1, clock.now_iso(),
-            clock.now_iso(), clock.now_iso(), None))
+            clock.now_iso(), clock.now_iso(), None, school_id))
 
         if role:
             role_row = tx.one("roles.by_key", (role,))

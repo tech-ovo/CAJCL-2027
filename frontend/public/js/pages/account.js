@@ -21,7 +21,7 @@ export async function accountPage(host) {
         label: me.person_type === "delegate" ? "Delegate" : "Adult",
         name: `${me.first_name} ${me.last_name}`,
         left: me.school.name,
-        right: personNumber(me.person_id),
+        right: personNumber(me.school || {}, me),
       }),
 
       el("section", { class: "grid" },

@@ -100,7 +100,7 @@ export async function activitySheetPage(host) {
         label: "Delegate",
         name: `${person.first_name} ${person.last_name}`,
         left: level || "Latin level not set",
-        right: personNumber(person.id),
+        right: personNumber(sheet.school || {}, person),
       }));
 
     if (sheet.locked) {

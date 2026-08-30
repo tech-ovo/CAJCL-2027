@@ -697,3 +697,40 @@ def test_removing_a_row_before_committing_still_commits_once(fx):
     replay = client.post("/sponsor/roster/commit", json=body, headers=headers).json()
     assert replay["already_committed"] is True
     assert replay["committed_count"] == 2, "the guard still holds on a short list"
+
+
+def test_a_chapter_cannot_exceed_its_three_digit_numbering(fx):
+    """07014 is chapter 07, their 14th person, so a chapter holds 999.
+
+    Not a limit anybody registers into -- the largest chapter here brings about
+    sixty -- but a script or a repeated paste would otherwise run past the end
+    of the number and be refused by a UNIQUE index with an error nobody can act
+    on.
+    """
+    from backend.lib import clock, roster
+
+    # Pretend this chapter has already used the last number. Written straight
+    # to the file rather than through a transaction: this is a fixture, not an
+    # action, and nothing in the application ever renumbers anybody.
+    import sqlite3
+    raw = sqlite3.connect(fx.path)
+    person_id = raw.execute(
+        "SELECT id FROM people WHERE school_id = ? LIMIT 1",
+        (fx.other_id,)).fetchone()[0]
+    raw.execute("UPDATE people SET school_seq = ? WHERE id = ?",
+                (roster.MAX_PER_SCHOOL, person_id))
+    raw.commit()
+    raw.close()
+
+    with fx.db.tx() as tx:
+        school = dict(tx.one("schools.get", (fx.other_id,)))
+        try:
+            roster._insert_person(tx, school, {"first_name": "One", "last_name": "Too"},
+                                  clock.now_iso())
+            raised = None
+        except roster.RosterError as error:
+            raised = str(error)
+        tx.audit("person.create", "test fixture")
+
+    assert raised is not None, "the thousandth person must be refused"
+    assert "999" in raised and "chapter can hold" in raised

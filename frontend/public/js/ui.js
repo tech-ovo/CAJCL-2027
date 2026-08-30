@@ -113,9 +113,16 @@ export function localDate(iso, { withTime = false } = {}) {
  * smudge, and half the people who saw it did not know what it was. `#` is the
  * sign everyone already reads as "number".
  */
-export function personNumber(id) {
-  const text = (id === null || id === undefined) ? "" : String(id);
-  return `#${text.padStart(4, "0")}`;
+export function chapterNumber(school) {
+  return `#${String(school && school.number ? school.number : 0).padStart(2, "0")}`;
+}
+
+export function personNumber(school, person) {
+  const chapter = String(school && school.number ? school.number : 0)
+    .padStart(2, "0");
+  const within = String(person && person.school_seq ? person.school_seq : 0)
+    .padStart(3, "0");
+  return `#${chapter}${within}`;
 }
 
 export function fullName(person) {

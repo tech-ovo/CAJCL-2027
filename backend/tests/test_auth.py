@@ -366,3 +366,29 @@ def test_value_detail_is_restricted_to_payments(fx):
     with pytest.raises(ValueError):
         with fx.db.tx() as tx:
             tx.audit("person.update", "x", value_detail={"first_name": "Bob"})
+
+
+def test_an_ip_hash_cannot_be_reversed_by_hashing_the_whole_address_space():
+    """IPv4 is 2^32 addresses. A plain SHA-256 of one is barely a hash.
+
+    Anybody holding the database could recover every IP it stores by hashing
+    the entire space -- minutes on ordinary hardware -- which is the same
+    argument the access codes are peppered for, applying with more force: a
+    code has 44.6 bits of entropy and an IP has at most 32.
+
+    The check is that the stored value depends on the pepper, so the space
+    cannot be enumerated without also stealing a secret that is not in the
+    database.
+    """
+    import hashlib
+    from backend.lib import auth
+
+    stored = auth.hash_ip("203.0.113.7")
+    naive = hashlib.sha256(b"ip:203.0.113.7").hexdigest()
+    assert stored != naive, (
+        "the IP hash is computable without the pepper, so the whole IPv4 "
+        "space can be enumerated against it")
+
+    # Still deterministic, or the rate limiter counts nothing.
+    assert auth.hash_ip("203.0.113.7") == stored
+    assert auth.hash_ip("203.0.113.8") != stored

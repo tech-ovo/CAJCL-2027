@@ -6,7 +6,8 @@
 
 -- name: schools.get
 SELECT id, name, level, kind, city, drive_folder_id, billing_exempt,
-       discount_cents, discount_reason, status, notes, created_at, updated_at
+       discount_cents, discount_reason, status, notes, number,
+       created_at, updated_at
 FROM schools WHERE id = ?;
 
 -- name: schools.all_ids
@@ -26,9 +27,19 @@ WHERE kind = 'chapter'
 ORDER BY name;
 
 -- name: schools.create
+-- `number` is the two-digit half of every printed person number, assigned here
+-- rather than in Python so that the single writer settles it: two chapters
+-- created in the same second cannot take the same one, and the UNIQUE index
+-- would refuse them anyway.
+--
+-- MAX + 1, never COUNT. A chapter that is deleted must not hand its number to
+-- the next one created -- two chapters would then share an identifier on two
+-- stacks of paper printed a month apart.
 INSERT INTO schools (name, level, kind, city, billing_exempt,
-                     discount_cents, discount_reason, notes, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                     discount_cents, discount_reason, notes, created_at, updated_at,
+                     number)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+        (SELECT COALESCE(MAX(number), 0) + 1 FROM schools));
 
 -- name: schools.update
 UPDATE schools

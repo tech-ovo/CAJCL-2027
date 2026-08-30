@@ -140,7 +140,7 @@ export async function adultSheetPage(host) {
       label: "Adult",
       name: `${person.first_name} ${person.last_name}`,
       left: shortType(person.adult_type),
-      right: personNumber(person.id),
+      right: personNumber(sheet.school || {}, person),
     }));
 
     if (restored) {

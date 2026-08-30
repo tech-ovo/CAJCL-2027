@@ -6,6 +6,12 @@ FROM people p JOIN schools s ON s.id = p.school_id
 WHERE p.id = ?;
 
 -- name: people.create
+-- `school_seq` is the three-digit half of the printed person number, counted
+-- within this chapter. Assigned here so the single writer settles it, and
+-- MAX + 1 so a cancelled person's number is never handed to somebody else.
+--
+-- The application refuses a chapter its thousandth person before reaching this
+-- point; the UNIQUE index on (school_id, school_seq) is the backstop.
 INSERT INTO people (
   school_id, person_type, adult_type, adult_type_other,
   first_name, middle_name, last_name, suffix, raw_name_input,
@@ -13,8 +19,10 @@ INSERT INTO people (
   email, latin_knowledge, availability_note,
   guardian_name, guardian_phone,
   code_hmac, code_prefix, pepper_version, code_issued_at,
-  created_at, updated_at, roster_import_id
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+  created_at, updated_at, roster_import_id,
+  school_seq
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          (SELECT COALESCE(MAX(school_seq), 0) + 1 FROM people WHERE school_id = ?));
 
 -- name: people.update_details
 -- The sponsor's inline roster edit. Delegates cannot change their own name --
@@ -148,3 +156,10 @@ UPDATE people SET meal = ?, updated_at = ? WHERE id = ?;
 -- change. Without this they would sit in their chapter's completion figure as
 -- permanently unfinished.
 UPDATE people SET activity_sheet_waived = ?, updated_at = ? WHERE id = ?;
+
+-- name: people.next_school_seq
+-- What number the next person added to this chapter would get. Read before an
+-- insert so the application can refuse a thousandth person with a sentence
+-- rather than letting the UNIQUE index refuse them with a constraint error.
+-- Indexed by idx_people_school_seq.
+SELECT COALESCE(MAX(school_seq), 0) + 1 AS next FROM people WHERE school_id = ?;
