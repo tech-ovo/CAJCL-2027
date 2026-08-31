@@ -26,7 +26,7 @@ from dataclasses import dataclass
 
 from fastapi import Body, Depends, FastAPI, Header, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from .lib import auth, catalog, clock, codes, forms, printing, roster, settings, stats
 from .lib.db import connect
@@ -1319,7 +1319,7 @@ def registration_overview(principal: auth.Principal = guard("admin.overview",
         "adults": 0, "sponsors": 0, "chaperones": 0,
         "other_adults": 0, "complete": 0, "people": 0,
         "meal_regular": 0, "meal_vegetarian": 0, "meal_gluten_free": 0,
-        "meal_unanswered": 0,
+        "meal_unanswered": 0, "meal_none": 0,
         "owed_cents": 0, "paid_cents": 0, "outstanding_cents": 0,
     }
 
@@ -1352,7 +1352,7 @@ def registration_overview(principal: auth.Principal = guard("admin.overview",
         for key in ("delegates_active", "adults_active", "adults_sponsors",
                     "adults_chaperones", "other_adults", "complete", "people",
                     "meal_regular", "meal_vegetarian", "meal_gluten_free",
-                    "meal_unanswered"):
+                    "meal_unanswered", "meal_none"):
             target = {"delegates_active": "delegates", "adults_active": "adults",
                       "adults_sponsors": "sponsors",
                       "adults_chaperones": "chaperones"}.get(key, key)
@@ -1373,6 +1373,54 @@ def registration_overview(principal: auth.Principal = guard("admin.overview",
             totals["outstanding_cents"] += max(0, row["balance_cents"])
 
     return {"chapters": rows, "totals": totals}
+
+
+@app.patch("/admin/academics/item/{item_id}/code")
+def set_item_code(item_id: int, request: Request, payload: dict = Body(...),
+                  principal: auth.Principal = guard("admin.academics.code",
+                                                    "academics", "awards",
+                                                    school_rule="any",
+                                                    writes=True)):
+    """The four-digit number printed on a test's answer sheet.
+
+    A NARROW HOLE ON PURPOSE. The Academics chairs need this one field and hold
+    `academics`, not `*` -- they have no business renaming a test, changing who
+    may enter it, or touching the fee, and the catalog editor next door does
+    all three. So this endpoint sets exactly one column and nothing else.
+
+    The alternative was a scoped view of Settings, which would have meant
+    deciding per setting who may see it and getting that right forever. One
+    endpoint that can only write one column is a smaller thing to be sure of.
+    """
+    raw = (payload.get("item_code") or "").strip()
+    code = raw or None
+    if code is not None and (len(code) != 4 or not code.isdigit()):
+        raise catalog.ValidationError([
+            "A test number is four digits, like 0142."])
+
+    with database().tx(request_id=request_id(request)) as tx:
+        item = catalog.load(tx)["items_by_id"].get(item_id)
+        if item is None:
+            raise catalog.ValidationError(["There is no such test or activity."])
+
+        if code is not None:
+            holder = tx.one("catalog.item_by_code", (code,))
+            if holder is not None and holder["id"] != item_id:
+                raise catalog.ValidationError([
+                    f"{code} is already {holder['name']}. Two tests cannot "
+                    "share a number: the answer sheets would be unsortable."])
+
+        tx.run("catalog.item_set_code", (code, item_id))
+        tx.audit("catalog.update",
+                 f"{principal.display_name} "
+                 + (f"numbered {item['name']} {code}." if code
+                    else f"cleared the number on {item['name']}."),
+                 actor_person_id=principal.person_id,
+                 impersonator_person_id=principal.impersonator_person_id,
+                 entity_type="catalog_item", entity_id=item_id,
+                 changed_fields=["item_code"])
+        catalog.invalidate()
+    return {"ok": True, "item_code": code}
 
 
 @app.get("/admin/academics/counts")
@@ -2186,6 +2234,63 @@ def reset_demo(request: Request,
 # Print -- one HTML template per document, served as a print view and fed to
 # WeasyPrint for the PDF. One layout, two renderers.
 # ===========================================================================
+
+@app.post("/sponsor/packet.pdf")
+def packet_pdf(request: Request, payload: dict = Body(...),
+               principal: auth.Principal = guard("sponsor.packet.pdf",
+                                                 "sponsor", "registration")):
+    """The packet as a PDF, rendered from the same HTML the print view serves.
+
+    SLOW ON PURPOSE, AND SAY SO. WeasyPrint needs Pango and Cairo, which live
+    on a second, heavier Modal image that only cold-starts when somebody asks
+    for a PDF -- thirty seconds or more the first time. Putting it on the web
+    image would make every delegate on a phone pay for it.
+
+    The print view is the fast path and produces the same document. This is for
+    somebody who wants a file to keep or to email.
+
+    Codes come in the body, as they do for the HTML version, because a stored
+    code is an HMAC and cannot be read back. Without them every sheet prints
+    blocks -- which is what this path did before it had a caller.
+    """
+    raw = payload.get("codes") or []
+    if not isinstance(raw, list):
+        raise catalog.ValidationError(["That is not a list of codes."])
+    if len(raw) > 200:
+        raise catalog.ValidationError(["That is too many sheets at once."])
+
+    codes: dict[int, str] = {}
+    for entry in raw:
+        if not isinstance(entry, dict):
+            raise catalog.ValidationError(["That is not a list of codes."])
+        try:
+            codes[int(entry.get("person_id"))] = str(entry.get("code") or "")
+        except (TypeError, ValueError):
+            raise catalog.ValidationError(["That is not a list of codes."])
+
+    with database().read() as tx:
+        school = _school_of(tx, principal, payload.get("school_id"))
+        for person_id in codes:
+            auth.require_person_in_scope(tx, principal, person_id)
+
+    try:
+        import modal
+
+        renderer = modal.Function.from_name("cajcl-2027", "render_pdf")
+        pdf = renderer.remote(document="packet", school_id=school["id"],
+                              codes={str(k): v for k, v in codes.items()})
+    except Exception as error:
+        # Never take the page down for this. The print view is right there and
+        # produces the same document.
+        raise catalog.ValidationError([
+            f"The PDF renderer did not answer ({error}). Use Print instead — "
+            "it is the same document."])
+
+    name = school["name"].replace(" ", "-").lower()
+    return Response(content=pdf, media_type="application/pdf",
+                    headers={"Content-Disposition":
+                             f'attachment; filename="packet-{name}.pdf"'})
+
 
 @app.post("/sponsor/packet", response_class=HTMLResponse)
 def packet_with_codes(request: Request, payload: dict = Body(...),

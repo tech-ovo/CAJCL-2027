@@ -39,7 +39,15 @@ FONTS = pathlib.Path(__file__).resolve().parents[2] / "frontend" / "public" / "f
 
 
 def build_html(db, document: str, school_id: int,
-               person_id: int | None = None) -> str:
+               person_id: int | None = None,
+               codes: dict[int, str] | None = None) -> str:
+    """The same HTML the browser print view is served.
+
+    `codes` maps person id to the plaintext access code, and is passed in by
+    whoever just minted them. WITHOUT IT EVERY SHEET PRINTS BLOCKS, because the
+    stored code is an HMAC and cannot be read back -- which is correct, and was
+    silently making this whole path produce packets nobody could sign in with.
+    """
     with db.read() as tx:
         school = tx.one("schools.get", (school_id,))
         if school is None:
@@ -47,7 +55,8 @@ def build_html(db, document: str, school_id: int,
         school = dict(school)
 
         if document == "packet":
-            return printing.render_packet(tx, school, only_person=person_id)
+            return printing.render_packet(tx, school, only_person=person_id,
+                                          codes=codes)
         if document == "invoice":
             return printing.render_invoice(tx, school)
     raise SystemExit(f"unknown document {document!r}; expected packet or invoice")
@@ -56,18 +65,27 @@ def build_html(db, document: str, school_id: int,
 def to_pdf(html: str, base_url: str | None = None) -> bytes:
     from weasyprint import HTML
 
-    # base_url lets WeasyPrint resolve the self-hosted font files. Without it
-    # the PDF silently falls back to a system serif, and the macrons in the
-    # theme are the first thing to go.
+    # `base_url` is where a relative URL in the document would resolve from.
+    #
+    # NOTHING IN THE DOCUMENT USES ONE TODAY. The print stylesheet declares no
+    # @font-face -- it names "Literata" and falls back to Georgia, which is
+    # what both the browser print view and this PDF actually render in -- and
+    # the QR codes are inline SVG rather than images. This is here so that the
+    # day somebody does reference a file, it resolves against the frontend
+    # rather than against nothing.
+    #
+    # An earlier comment claimed this loaded the self-hosted fonts. It did not,
+    # and never had: there were no @font-face rules for it to resolve.
     return HTML(string=html, base_url=base_url or str(FONTS.parent)).write_pdf()
 
 
 def render(document: str, school_id: int, person_id: int | None = None,
-           db_path: str | None = None) -> bytes:
+           db_path: str | None = None,
+           codes: dict[int, str] | None = None) -> bytes:
     """The entry point Modal calls."""
     db = connect(db_path)
     try:
-        html = build_html(db, document, school_id, person_id)
+        html = build_html(db, document, school_id, person_id, codes)
     finally:
         db.close()
     return to_pdf(html)

@@ -4,7 +4,7 @@
     python scripts/add_board.py --db dev.db         # against a local file
 
 WHY THE NAMES ARE NOT IN THIS FILE
-    This repository is public, and the demonstration is projected in a room.
+    This repository is public, and a screen is sometimes shared in a meeting.
     Everything in scripts/seed.py is invented for exactly that reason. Real
     board members are real people, so their names live in `board.json` in the
     project folder, which is listed in .gitignore and never committed.
@@ -416,7 +416,7 @@ def export(db) -> list[dict]:
 
 
 def report(result: dict) -> str:
-    """One line per person, code first. The same shape as demo-codes.txt.
+    """One line per person, code first. The same shape as codes.txt.
 
     EVERYBODY IS LISTED, including the people whose code did not change. A
     report that showed only new codes looked like the run had missed somebody

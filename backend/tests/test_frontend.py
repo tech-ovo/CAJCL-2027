@@ -642,3 +642,300 @@ def test_every_dialog_closes_when_the_page_behind_it_is_clicked():
     assert hand_built == [], (
         "these build a <dialog> by hand and never let a backdrop click close "
         "it: " + ", ".join(hand_built))
+
+
+# Names a browser supplies. Not exhaustive -- just what these pages touch.
+BROWSER_GLOBALS = {
+    "document", "window", "location", "localStorage", "sessionStorage",
+    "console", "fetch", "setTimeout", "clearTimeout", "setInterval",
+    "clearInterval", "Promise", "Object", "Array", "String", "Number",
+    "Boolean", "Math", "Date", "JSON", "Set", "Map", "Error", "RegExp",
+    "encodeURIComponent", "decodeURIComponent", "isNaN", "parseInt",
+    "parseFloat", "alert", "confirm", "prompt", "navigator", "Event",
+    "URL", "URLSearchParams", "AbortController", "Intl", "undefined", "NaN",
+    "Infinity", "requestAnimationFrame", "matchMedia", "getComputedStyle",
+}
+
+
+def _walk(node, visit, parent=None):
+    """Depth-first over an esprima AST, carrying each node's parent."""
+    if isinstance(node, list):
+        for item in node:
+            _walk(item, visit, parent)
+        return
+    if not hasattr(node, "type"):
+        return
+    visit(node, parent)
+    for key in dir(node):
+        if key.startswith("_") or key in ("type", "range", "loc"):
+            continue
+        _walk(getattr(node, key), visit, node)
+
+
+def _binds(node):
+    """Every name bound anywhere in this subtree.
+
+    NESTED FUNCTIONS COUNT. `render()` is full of `(row) => ...` callbacks, and
+    `row` there is that arrow's own parameter, not a read of some sibling's
+    variable of the same name. Missing those made the check unusable: eighty
+    false positives, which is a check nobody would keep.
+    """
+    names = set()
+
+    def take(target):
+        if target is None:
+            return
+        kind = getattr(target, "type", None)
+        if kind == "Identifier":
+            names.add(target.name)
+        elif kind == "ObjectPattern":
+            for prop in getattr(target, "properties", None) or []:
+                take(getattr(prop, "value", None) or getattr(prop, "argument", None))
+        elif kind == "ArrayPattern":
+            for element in getattr(target, "elements", None) or []:
+                take(element)
+        elif kind == "AssignmentPattern":
+            take(getattr(target, "left", None))
+        elif kind == "RestElement":
+            take(getattr(target, "argument", None))
+
+    def visit(node, _parent):
+        if node.type == "VariableDeclarator":
+            take(node.id)
+        elif node.type in ("FunctionDeclaration", "ClassDeclaration")                 and getattr(node, "id", None):
+            names.add(node.id.name)
+        if node.type in ("FunctionDeclaration", "FunctionExpression",
+                         "ArrowFunctionExpression"):
+            for param in getattr(node, "params", None) or []:
+                take(param)
+        if node.type == "CatchClause":
+            take(getattr(node, "param", None))
+
+    _walk(node, visit)
+    return names
+
+
+def _declared_in(function):
+    """Every name this function binds, including inside its own callbacks.
+
+    Its OWN parameters go through the same unpacking as everything else:
+    `loadMore(first = false)` and `textFor(row, key, { size } = {})` bind
+    `first` and `size` just as surely as a plain name does, and treating only
+    plain names as bindings reported all four as unresolvable reads.
+    """
+    names = _binds(getattr(function, "body", None))
+    names |= _binds_params(function)
+    return names
+
+
+def _binds_params(function):
+    """The names a function's own parameter list binds, patterns included."""
+    holder = type("_Params", (), {"type": "Program", "body": []})()
+    names = set()
+
+    def visit(node, _parent):
+        pass
+
+    # Reuse the same unpacking by handing `_binds` a throwaway function whose
+    # body is empty: what it returns for the params is what matters.
+    class _Shim:
+        type = "ArrowFunctionExpression"
+        params = getattr(function, "params", None) or []
+        body = holder
+
+    names |= _binds(_Shim())
+    return names
+
+
+def _reads(function):
+    """Identifiers this function READS, ignoring property names and its own
+    declarations. Approximate on purpose: a false positive is a name to
+    rename, and a false negative is the bug this exists to catch."""
+    used = set()
+
+    def visit(node, parent):
+        if node.type != "Identifier":
+            return
+        if parent is not None:
+            # `a.b` reads `a`, not `b`.
+            if parent.type == "MemberExpression" and not getattr(parent, "computed", False) \
+                    and getattr(parent, "property", None) is node:
+                return
+            # `{ b: value }` declares the key `b`, it does not read it.
+            if parent.type == "Property" and getattr(parent, "key", None) is node \
+                    and not getattr(parent, "computed", False):
+                return
+            if parent.type in ("VariableDeclarator", "FunctionDeclaration",
+                               "ClassDeclaration") \
+                    and getattr(parent, "id", None) is node:
+                return
+        used.add(node.name)
+
+    _walk(getattr(function, "body", None), visit)
+    return used
+
+
+def test_no_page_helper_reads_a_variable_from_a_sibling_function():
+    """The bug esprima parsing could not see, and the suite was blind to.
+
+    `columns()` in roster.js read `school`, which is declared with `const`
+    inside `render()` -- a SIBLING, not an enclosing scope. Valid JavaScript
+    to parse and a ReferenceError to run, and it only threw for a chapter with
+    people on its roster: an empty one renders an empty state, never calls
+    `columns`, and looked perfectly fine. It reached a real sponsor.
+
+    This walks each page module: for every top-level function inside the page
+    function, it collects the names that function declares, then asserts no
+    OTHER function at the same level reads one of them without declaring or
+    receiving it.
+    """
+    esprima = pytest.importorskip("esprima")
+
+    problems = []
+    for path in sorted(PUBLIC.glob("js/pages/*.js")):
+        # `range` so the page function can be told from its helpers by span.
+        tree = esprima.parseModule(path.read_text(encoding="utf-8"),
+                                   {"range": True})
+
+        found = []
+
+        def collect(node, _parent, into=found):
+            if node.type == "FunctionDeclaration" and getattr(node, "id", None):
+                into.append(node)
+
+        _walk(tree, collect)
+        if len(found) < 2:
+            continue
+
+        # The page function is the one that contains all the others: the widest
+        # range. Everything declared DIRECTLY inside it is a sibling helper.
+        page = max(found, key=lambda n: n.range[1] - n.range[0])
+        inside = [n for n in found
+                  if n is not page
+                  and page.range[0] < n.range[0] < page.range[1]]
+        # DIRECT children only. A function nested inside another helper closes
+        # over that helper's variables perfectly legally -- `unsavedNote()`
+        # lives inside `open_()` and reads its `noteBox`. Only functions that
+        # are siblings of each other can fail to see one another.
+        helpers = [n for n in inside
+                   if not any(other is not n
+                              and other.range[0] < n.range[0]
+                              and n.range[1] <= other.range[1]
+                              for other in inside)]
+        if len(helpers) < 2:
+            continue
+
+        # Names the page binds OUTSIDE any helper: `data`, `sheet`, `errors`.
+        # Shared closure state, and every helper may read it.
+        #
+        # Found by range rather than by subtracting the helpers' own bindings:
+        # a page-level `levels` that a helper also declares locally would be
+        # subtracted away, and every other helper reading the page-level one
+        # would then look like the bug.
+        spans = [(h.range[0], h.range[1]) for h in helpers]
+
+        shared = set()
+
+        def take_shared(node, _parent):
+            if node.type != "VariableDeclarator":
+                return
+            start = node.range[0]
+            if any(lo <= start < hi for lo, hi in spans):
+                return
+            if node.id.type == "Identifier":
+                shared.add(node.id.name)
+
+        _walk(page.body, take_shared)
+        shared |= {h.id.name for h in helpers}
+        for param in getattr(page, "params", None) or []:
+            if getattr(param, "type", None) == "Identifier":
+                shared.add(param.name)
+
+        # Module scope: imports, and anything declared at the top of the file.
+        module_names = set()
+
+        def take_module(node, _parent):
+            if node.type in ("ImportSpecifier", "ImportDefaultSpecifier",
+                             "ImportNamespaceSpecifier"):
+                module_names.add(node.local.name)
+            elif node.type == "VariableDeclarator"                     and node.id.type == "Identifier"                     and not (page.range[0] <= node.range[0] < page.range[1]):
+                module_names.add(node.id.name)
+            elif node.type == "FunctionDeclaration" and getattr(node, "id", None):
+                module_names.add(node.id.name)
+
+        _walk(tree, take_module)
+
+        owned = {h.id.name: _declared_in(h) for h in helpers}
+        for helper in helpers:
+            # Everything this helper can legitimately see.
+            visible = (owned[helper.id.name] | {helper.id.name} | shared
+                       | module_names | BROWSER_GLOBALS)
+            for name in sorted(_reads(helper)):
+                if name in visible:
+                    continue
+                # It resolves NOWHERE it can reach. If a sibling declares it,
+                # say so -- that is the shape the real bug took.
+                #
+                # NOT "declared by exactly one sibling": three helpers took
+                # `school` as a parameter, so the real bug had four owners and
+                # an earlier version of this check let it straight through. A
+                # test that passes without catching its own bug is worse than
+                # no test.
+                owners = sorted(other for other, names in owned.items()
+                                if other != helper.id.name and name in names)
+                where = (f", which {' and '.join(o + '()' for o in owners)} "
+                         f"declare{'s' if len(owners) == 1 else ''}"
+                         if owners else " and nothing in scope declares it")
+                problems.append(
+                    f"{path.name}: {helper.id.name}() reads '{name}'{where}")
+
+    assert problems == [], (
+        "these read a variable that lives in a sibling function, which is a "
+        "ReferenceError the moment the line runs:\n  " + "\n  ".join(problems))
+
+
+def test_the_csp_allows_the_inline_theme_script():
+    """A stale hash blocks the script silently.
+
+    The theme has to run before the first paint, so it cannot move into a file,
+    so `script-src` names it by the hash of its contents rather than opening
+    the page to every inline script. Edit that script by one character without
+    recomputing and the browser refuses to run it -- with no error anybody
+    reads, and one symptom: a white flash on a dark-mode phone.
+
+    The hash is taken over the LF form. Git stores this file with LF and checks
+    it out on Windows with CRLF, so hashing the working copy gives an answer
+    the browser will never compute.
+    """
+    import importlib.util
+
+    root = pathlib.Path(__file__).resolve().parents[2]
+    spec = importlib.util.spec_from_file_location(
+        "check_csp_hash", root / "scripts" / "check_csp_hash.py")
+    checker = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(checker)
+
+    html = (PUBLIC / "index.html").read_text(encoding="utf-8")
+    want, have = checker.wanted(html), checker.recorded(html)
+
+    assert want, "no inline script found; the pattern or the page has changed"
+    assert want == have, (
+        "the policy does not allow the inline script on the page. Run "
+        "`python scripts/check_csp_hash.py --write`.\n"
+        f"  on the page: {want}\n  in the policy: {have}")
+
+
+def test_the_csp_does_not_allow_every_inline_script():
+    """`script-src 'unsafe-inline'` would allow anything injected onto the page,
+    which is most of what a policy is for."""
+    html = (PUBLIC / "index.html").read_text(encoding="utf-8")
+    policy = re.search(r'http-equiv="Content-Security-Policy" content="(.*?)"',
+                       html, re.S)
+    assert policy, "index.html has no Content-Security-Policy"
+    directives = policy.group(1)
+
+    script_src = re.search(r"script-src([^;]*)", directives)
+    assert script_src, "the policy sets no script-src"
+    assert "unsafe-inline" not in script_src.group(1)
+    assert "unsafe-eval" not in directives, "nothing here evaluates a string"
+    assert "object-src 'none'" in directives

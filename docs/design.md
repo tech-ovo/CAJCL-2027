@@ -118,9 +118,9 @@ US Letter, 0.75in margins, 11pt body. Everything must be legible in **grayscale*
 
 ## Imagery
 
-**This is a design demo. Do not generate, source, or place any stock photography, AI-generated classical imagery, campus photography, statues, temples, or placeholder imagery.** Every image on the finished site must be tied to CAJCL — real convention photography, real delegate work, the real CAJCL mark.
+**Do not generate, source, or place any stock photography, AI-generated classical imagery, campus photography, statues, temples, or placeholder imagery.** Every image on the finished site must be tied to CAJCL — real convention photography, real delegate work, the real CAJCL mark.
 
-There is **no logo image in the demo.** The available CAJCL mark is 216×184 and the NJCL mark belongs to a different organization. Ship a **type-only masthead**: "CAJCL" set in Literata with the convention line beneath it, with a reserved, correctly proportioned slot in the layout for the real vector mark when it arrives. Given the brief's thesis that typography carries the identity, this is the stronger choice regardless.
+There is **no logo image on the site.** The available CAJCL mark is 216×184 and the NJCL mark belongs to a different organization. Ship a **type-only masthead**: "CAJCL" set in Literata with the convention line beneath it, with a reserved, correctly proportioned slot in the layout for the real vector mark when it arrives. Given the brief's thesis that typography carries the identity, this is the stronger choice regardless.
 
 Image regions elsewhere may be represented by intentionally empty space or a flat lavender field with a label naming what will go there. The absence of imagery must not make the design feel unfinished.
 

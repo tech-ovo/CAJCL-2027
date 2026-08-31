@@ -63,7 +63,7 @@ jobs:
           python -m backend.lib.migrate --db fresh.db
           python -m backend.lib.migrate --db fresh.db   # must be idempotent
 
-      - name: Seed it, and check the demo numbers are what we say they are
+      - name: Seed it, and check the sample numbers are what we say they are
         env:
           CODE_PEPPER: ci-pepper-not-a-secret
         run: |

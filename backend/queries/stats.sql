@@ -54,8 +54,14 @@ SELECT
   SUM(CASE WHEN p.status = 'active' AND p.meal = 'regular'     THEN 1 ELSE 0 END) AS meal_regular,
   SUM(CASE WHEN p.status = 'active' AND p.meal = 'vegetarian'  THEN 1 ELSE 0 END) AS meal_vegetarian,
   SUM(CASE WHEN p.status = 'active' AND p.meal = 'gluten_free' THEN 1 ELSE 0 END) AS meal_gluten_free,
+  -- NOT ANSWERED is not the same as NO MEAL. Somebody who has not decided is
+  -- still to be chased; somebody bringing their own has answered and is not
+  -- eating. Folding them together would have the caterer cook for one and
+  -- the chairs chase the other.
   SUM(CASE WHEN p.status = 'active' AND (p.meal IS NULL OR p.meal = '')
            THEN 1 ELSE 0 END) AS meal_unanswered,
+  SUM(CASE WHEN p.status = 'active' AND p.meal = 'none'
+           THEN 1 ELSE 0 END) AS meal_none,
 
   SUM(CASE WHEN p.status = 'active' AND p.adult_type = 'sponsor'   THEN 1 ELSE 0 END) AS adults_sponsors,
   SUM(CASE WHEN p.status = 'active' AND p.adult_type = 'chaperone' THEN 1 ELSE 0 END) AS adults_chaperones
@@ -84,10 +90,10 @@ INSERT INTO school_stats (
   school_id, delegates_active, delegates_cancelled, delegates_cancelled_paid,
   adults_active, adults_cancelled, adults_cancelled_paid,
   delegates_complete, adults_complete,
-  meal_regular, meal_vegetarian, meal_gluten_free, meal_unanswered,
+  meal_regular, meal_vegetarian, meal_gluten_free, meal_unanswered, meal_none,
   adults_sponsors, adults_chaperones,
   discount_cents, amount_owed_cents, amount_paid_cents, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (school_id) DO UPDATE SET
   delegates_active         = excluded.delegates_active,
   delegates_cancelled      = excluded.delegates_cancelled,
@@ -101,6 +107,7 @@ ON CONFLICT (school_id) DO UPDATE SET
   meal_vegetarian          = excluded.meal_vegetarian,
   meal_gluten_free         = excluded.meal_gluten_free,
   meal_unanswered          = excluded.meal_unanswered,
+  meal_none                = excluded.meal_none,
   adults_sponsors          = excluded.adults_sponsors,
   adults_chaperones        = excluded.adults_chaperones,
   discount_cents           = excluded.discount_cents,
@@ -183,7 +190,7 @@ SELECT s.id AS school_id, s.name AS school_name, s.level, s.city, s.kind,
        ss.adults_sponsors, ss.adults_chaperones,
        ss.delegates_complete, ss.adults_complete,
        ss.meal_regular, ss.meal_vegetarian, ss.meal_gluten_free,
-       ss.meal_unanswered,
+       ss.meal_unanswered, ss.meal_none,
        ss.discount_cents, ss.amount_owed_cents, ss.amount_paid_cents
 FROM schools s
 JOIN school_stats ss ON ss.school_id = s.id

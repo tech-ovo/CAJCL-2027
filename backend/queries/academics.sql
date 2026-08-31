@@ -20,6 +20,7 @@ SELECT c.name          AS category,
        c.sort_order    AS category_sort,
        i.id, i.name, i.sort_order,
        i.registration_scope,
+       i.item_code,
        i.eligible_latin_levels,
        (SELECT COUNT(*)
           FROM activity_selections s

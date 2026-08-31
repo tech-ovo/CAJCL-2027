@@ -1,116 +1,145 @@
-# What is not built yet
+# What is left
 
-Everything known to be missing, with a rough estimate. Estimates assume someone
-who has read `RUNBOOK.md` and has the project running — not a first day.
+Everything between here and **March 12–13, 2027**, worked out from
+`docs/structure.md` and from what is actually in the repository.
 
-They are **working hours, not calendar time**. Halve your confidence in
-anything above four hours; that is where estimates start being wishes.
+Read the first two sections and you know what to do next. The rest is reference.
 
-Ordered by ratio of value to effort, not by importance. Where something is
-blocked, the blocker is named.
-
-Status: **NEXT** (worth doing now) · **SOON** (before registration opens,
-autumn 2026) · **BEFORE CONVENTION** (March 2027) · **LATER** · **DECIDED
-AGAINST**
+**Hours are one person's working hours**, not calendar time, and they assume
+somebody who already knows this codebase. Double them for somebody who does
+not.
 
 ---
 
-## Straight after the demonstration, in this order
+## How to read the columns
 
-Both were deliberately deferred: each one breaks the deployed site until a
-reset follows it, which is not a thing to do five days before showing it to a
-board. `docs/DEPLOY.md`, "After the demonstration", has the reset commands.
+| | |
+| --- | --- |
+| **NOW** | Nothing blocks it. It can start today. |
+| **NEEDS YOU** | Blocked on a decision, an account, or a document only you can get. The blocker is named. |
+| **NOT DOING** | Ruled out. Left here so nobody reopens it without new information. |
 
-| | What | Hours | Notes |
-| --- | --- | --- | --- |
-| AFTER 29 AUG | Merge `010_welcome_wording` and `011_board_title` into the migrations they correct | 1 | Then delete both files and re-run `scripts/checksum_migrations.py`. **The deploy will refuse to start until the database is reset**, because the hashes of `001` and `005` change — so do it in the same sitting as the reset, not before. The reasoning that lives in those two files belongs in `RUNBOOK.md`, not in a migration comment. |
-| AFTER 29 AUG | A "no meal" option | 0.5 | For somebody bringing their own for an allergy. Last in the list, never the default. Blocked today because `people.meal` carries `CHECK (meal IN ('regular','vegetarian','gluten_free'))`, SQLite cannot alter a CHECK, and the pragmas a table rebuild needs are refused by Turso. **Trivial the moment `001_core.sql` is edited directly** — do it in the same sitting as the merge. |
-| AFTER 29 AUG | Let an organization have no level | 0.5 | `schools.level` is NOT NULL with `CHECK (level IN ('MS','HS'))`, so SCL is stored as 'HS' and the frontend just hides the level for organizations. Nullable is honest; it needs a table rebuild, which is free while `001_core.sql` is being edited anyway. |
-| AFTER 29 AUG | Add "At Large (MS)" and "At Large (HS)" | 0.5 | **Two rows, not one.** Members at large can be either level, and every rule that gates Latin levels, tests and grades reads `schools.level` — one row would have to be wrong for half of them. Both `kind = 'organization'`, and **neither is billing_exempt** — members at large pay like everybody else. Only SCL is exempt. |
-| AFTER 29 AUG | A sponsor serving more than one chapter | 3 | `people.school_id` is one column, so this needs a grant table: a primary school, plus rows saying which others that person may manage. Touches `auth.require_school`, which is the most safety-critical code here — do it on its own, not alongside anything else. Has never happened; this is future-proofing. |
+The **Who** column says whether it needs you at all:
 
-## Small
+| | |
+| --- | --- |
+| **auto** | Buildable start to finish with no input. |
+| **ask** | One question, then buildable. |
+| **you** | Genuinely yours: an account, a policy, a document. |
 
-| | What | Hours | Notes |
-| --- | --- | --- | --- |
-| LATER | Draft restore on the settings form | 1 | The activity and adult sheets keep a `localStorage` draft. Settings warns before leaving but keeps nothing. |
+---
 
-## The board and the chapter it lives in
+## 1. Before registration opens
 
-The state-board pseudo-chapter should go, and its people should sit in their
-real schools. Agreed in principle; not done.
+**This is the critical path.** Codes go out to fifty chapters once, and
+anything that changes how somebody signs in, or what their sheet says, is far
+cheaper before that than after.
 
-| | What | Hours | Notes |
-| --- | --- | --- | --- |
+| | What | Hrs | Who | Notes |
+| --- | --- | --- | --- | --- |
+| NEEDS YOU | Two-factor for adults and the board | 8 | you | Deliberately on hold until the `conventionpresidents@cajcl.org` Workspace account exists. Design and reasoning are in `docs/SECURITY.md` §7. **Do it before codes are sent**, or fifty sponsors have to be told sign-in changed. |
+| NEEDS YOU | The opening email | 1 | you | Drafted in `docs/REGISTRATION.md` §4. Check every figure against Settings → Values, then send one message per chapter. |
+| NEEDS YOU | Click **Save as PDF** once, on Modal | 0.2 | you | Everything either side of WeasyPrint is built and tested. WeasyPrint itself needs Pango and Cairo and cannot run on Windows, so the render has never executed. One click after the next deploy settles it. **Print is unaffected either way** — it is the same document, built by the same code, and it works. |
+| NEEDS YOU | Real chapters and sponsors | 2 | you | Chapters → Add a chapter, then Add the sponsor on each. About fifty. Nothing technical; it is the data the whole year runs on. |
 
+**"At Large" is two chapters, not one** — one MS, one HS — because every rule
+that gates Latin levels, tests and grades reads `schools.level`. Neither is
+billing-exempt; only SCL is. Make them the same way as any other chapter.
 
-**The prefix is fully retired.** `ADM` is gone from `VALID_PREFIXES`, so those
-codes no longer sign anybody in, and `modal run backend/app.py::retire_adm_codes`
-reissues for everyone who held one. A code now says what somebody *is* and never
-changes when a role is granted — the same model as chapter leader.
+---
 
-**The bootstrap is documented**, in DEPLOY.md step 4b: the first commissioner
-adds themselves through `board.json`, which is the one door that opens from
-outside a signed-in session, and everybody else is added from Settings → Roles.
+## 2. Before the forms deadline — 13 February 2027
 
-**Moving people between chapters is safe.** The prefix is part of the hashed
-string, so changing it breaks a code — but a chapter move does not touch it.
-Only a change in what somebody *is* (a sponsor becoming a chaperone) forces a
-reissue and a reprinted sheet.
+Registration is running by now. These make the months in between bearable.
 
-## Asked for, not yet built
+| | What | Hrs | Who | Notes |
+| --- | --- | --- | --- | --- |
+| NOW | Reuse database connections | 4 | auto | **Measured.** An authenticated request opens two connections and each costs a TLS handshake to Turso: one ≈ 350 ms, three ≈ 3 s. The session touch was the third and is now daily, which took most of it. What is left is the remaining doubling. Attempted twice and reverted twice — see §6. |
+| NOW | Four-digit test IDs | 3 | auto | A number per test, entered on a **subset** of Settings → Values. The scoped settings view is the real work: `academics` must not reach the fee or the deadlines. |
+| NEEDS YOU | Apps Script for Drive exports | 5 | you | Needs the Workspace account and its Drive root. Exports download to the browser today, which works; this is for contest submissions. |
+| NOW | Pre-convention contest uploads | 8 | auto | Modern Myth, Poetry, Slogan. Depends on Apps Script above. Schema exists (`docs/schema.md`, "Contest submissions"). |
+| NOW | A sponsor serving more than one chapter | 3 | auto | `people.school_id` is one column, so this needs a grant table. Touches `auth.require_school`, the most safety-critical code here — do it alone. Has never happened; this is future-proofing. |
 
-Five rows left this table on 26 August 2026, all of them the same shape: a
-working, tested endpoint with no button. Pasting a roster for another chapter,
-adding one person, reopening a submitted form, editing a chapter, and adding a
-delegate at the check-in desk. Correcting a person's NAME turned out to be a
-sixth nobody had written down.
+---
 
-They were found by writing docs/REGISTRATION.md and checking each claim against
-the code. That is the cheap way to find this class of gap, and it is worth
-repeating before handing the site to next year's chairs.
+## 3. Before convention — March 2027
 
+**The awards side is the largest unbuilt piece**, and the one with the most
+unknowns.
 
-| | What | Hours | Notes |
-| --- | --- | --- | --- |
-| SOON | Reuse database connections across transactions | 4 | **Measured, and the diagnosis is confirmed.** An authenticated request opens TWO connections — authentication takes a read, the handler takes another — and each costs a TLS handshake to Turso. One connection ≈ 350ms, three ≈ 3s. The session touch was the third and is now daily, which removes most of it. What is left is the remaining doubling. ATTEMPTED AND REVERTED TWICE: middleware runs on the event loop while handlers run on a threadpool thread, so a connection opened there is used cross-thread (sqlite3 refuses outright); a per-thread pool works but leaks connections on threadpool threads that nothing can close, because sqlite3 also refuses `close()` from another thread. A correct version needs a real pool with an owning thread per connection and a shutdown hook. Do not attempt without a way to soak-test it against Turso. |
-| SOON | Four-digit test IDs, editable by Academic Chairs | 3 | A number per test, entered on a **subset** of Settings → Values — which means a scoped settings view, since `academics` scope must not reach the fee or the deadlines. That gating is the real work; the column is trivial. |
+| | What | Hrs | Who | Notes |
+| --- | --- | --- | --- | --- |
+| NEEDS YOU | Tabulation rules, in writing | — | you | **Get these from the awards chair before anything below is built.** Ties, sweepstakes, per-chapter totals, what counts toward what. Building against a guess and rewriting it is the expensive path. |
+| NEEDS YOU | Score entry | 12 | ask | Needs an offline story: the gym has no wifi. One question first — do scores go in on paper and get typed after, or on a laptop in the room? |
+| NEEDS YOU | Tabulation and placings | 10 | you | Blocked on the rules above. |
+| NOT DOING | Certamen brackets | 16 | — | You have said not to build grading infrastructure. Rounds, rooms and buzzer order are a scheduling problem wearing a scoring hat. |
+| NOW | Nametag PDFs | 3 | auto | The print pipeline exists; this is a template and a page size. |
+| NOW | Printed award certificates | 4 | auto | Same pipeline, same shape. |
+| NOW | A quota check the week before | 0.5 | auto | Settings → Operations shows it. Look at it in February, not in March. |
 
-## Awards and academics
+---
 
-Nothing here is built. This is the largest remaining piece of the convention.
+## 4. Ruled out for this year
 
-| | What | Hours | Notes |
-| --- | --- | --- | --- |
-| BEFORE CONVENTION | Score entry | 12 | Per test, per delegate. Needs an offline story: the gym has no wifi. |
-| BEFORE CONVENTION | Tabulation and placings | 10 | Ties, sweepstakes, per-chapter totals. Get the rules in writing from the awards chair **first**. |
-| BEFORE CONVENTION | Certamen brackets | 16 | Rounds, rooms, buzzer order. Consider not building this at all in year one. |
-| LATER | Printed award certificates | 4 | The print pipeline already exists; this is templates. |
-
-Danny Yoo and Isa Baucum are in `board.json` as Awards Chairs at University
-High School, so **Entries** is already open to them.
-
-## Known gaps in what already exists
-
-| | What | Hours | Notes |
-| --- | --- | --- | --- |
-| BEFORE CONVENTION | PDF generation, tested end to end | 3 | The print view works and is the same document. The PDF path has never been run against a real request. **Demo the print view.** |
-| BEFORE CONVENTION | Check-in screen | 6 | Friday afternoon, fifty chapters arriving at once after school. Wants to work on a phone with bad wifi. |
-| SOON | Apps Script for Drive exports | 5 | Exports currently download to the browser. Only needed for contest submissions. |
-| LATER | Chapter team entries UI | 4 | The data model and endpoints exist. No screen. |
-
-## Decided against
-
-Recorded so nobody re-opens them without new information.
+You have said not to build these. Recorded so the reasoning survives.
 
 | What | Why |
 | --- | --- |
+| **The map** | Your call. An interactive campus map with live event locations. |
+| **The schedule** | Your call. Per-delegate schedules, signups, mobile notifications. |
+| **Grading infrastructure** | Your call. Score entry, tabulation, Certamen brackets — §3 keeps the pieces that are not grading. |
 | Refunds | The convention runs on pre-payment. `cancelled_paid` keeps the balance honest without a refund path. |
 | Moving delegates between chapters | Has not come up. Cancel and re-add if it ever does. |
 | A fee snapshot per school | The fee does not change once registration opens. If it must, a discount or a negative payment handles it, and both leave a trail. |
-| Storing codes reversibly | It would make packet reprints easy and make a database dump useful to a thief. The selective reissue flow solves the same problem. |
-| Deleting a board member | They are real people who are usually also a sponsor or a delegate, and the audit log refers to them. Removing every role takes away the powers and leaves the person, which is what "they have left the board" actually means. **Settings → Roles → Remove every role.** |
+| Storing codes reversibly | It would make packet reprints easy and make a database dump useful to a thief. Selective reissue solves the same problem. |
+| Deleting a board member | They are real people, usually also a sponsor or a delegate, and the audit log refers to them. **Settings → Roles → Remove every role** is what "they have left the board" actually means. |
 | An idle session timeout | Would mostly punish an honest delegate filling in a long form on a school Chromebook. Sign-out is on every page. |
+| Voting, scavenger hunt, feedback form | In `structure.md` under Miscellaneous. None is on the critical path; all are cheap to add later if somebody wants one. |
+
+---
+
+## 5. What I need from you, in one list
+
+Everything above marked **you** or **ask**, gathered:
+
+1. **The Workspace account** (`conventionpresidents@cajcl.org`). Unblocks
+   two-factor and Apps Script — two of the five remaining large items.
+2. **Tabulation rules from the awards chair**, in writing. Blocks all of §3.
+3. **How scores are entered at convention** — paper then typed, or live on a
+   laptop in a room with no wifi. One sentence unblocks 12 hours of work.
+4. **The real chapter list**, with sponsors' names and emails.
+5. **Whether "At Large" exists this year**, and whether both levels are needed.
+
+---
+
+## 6. Things that were tried and abandoned
+
+Kept because the next person will otherwise try them again.
+
+**Per-request connection reuse.** Middleware runs on the event loop while
+handlers run on a threadpool thread, so a connection opened in middleware is
+used cross-thread and `sqlite3` refuses outright. A per-thread pool works and
+then leaks: connections on threadpool threads that nothing can close, because
+`sqlite3` also refuses `close()` from another thread. A correct version needs a
+real pool with an owning thread per connection and a shutdown hook. **Do not
+attempt without a way to soak-test it against Turso.**
+
+---
+
+## 7. Known-good, and worth not breaking
+
+Short list of things that took a while to get right and look ordinary now.
+
+- **The roster parser.** `docs/structure.md` Appendix A is the reference paste;
+  `backend/tests/test_names.py` covers the same ground automatically.
+- **Idempotent roster commit.** A double-click cannot create two rosters. The
+  key covers the pasted text and the roster as it stood, not the rows, which is
+  why removing a row before committing still works.
+- **Counters in the same transaction as the change.** No aggregate is ever
+  computed live. `backend/queries/stats.sql` explains the arithmetic.
+- **Scopes only through roles.** There is no table attaching a scope to a
+  person and there must never be one.
+- **Every endpoint declares its scope**, and the test suite walks all of them.
 
 ---
 
@@ -118,7 +147,8 @@ Recorded so nobody re-opens them without new information.
 
 Add a row when you notice something missing, not when you get round to fixing
 it. A file that only records completed work is a changelog, and there is
-already one of those in the git history.
+already one of those in the commit history.
 
-When something here is done, **delete the row** — do not mark it done. What is
-left undone is the only thing this file is for.
+When something ships, delete its row. When something is ruled out, move it to
+§4 with the reason — a row that quietly disappears teaches the next person
+nothing.

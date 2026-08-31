@@ -278,3 +278,55 @@ def test_setup_passes_the_reset_through_to_the_migrate_step():
     assert "seed_database.remote(reset=False)" in body, (
         "the wipe has already happened by then; doing it twice would drop the "
         "schema that was just built")
+
+
+def test_schema_md_documents_every_column_that_exists(tmp_path):
+    """`docs/schema.md` is the authority on data, so it has to be true.
+
+    It had drifted on four tables: eight counter columns added by one
+    migration, the printed person number added by another, a column that was
+    deliberately dropped and left documented. Nothing failed, because a
+    document cannot fail -- which is exactly why this check exists.
+
+    Comments and constraints are not checked, only that every column in the
+    database appears in the block that claims to describe it, and that no
+    column is described which does not exist.
+    """
+    import re
+    import sqlite3
+
+    from backend.lib import migrate
+    from backend.lib.db import connect
+
+    path = str(tmp_path / "documented.db")
+    database = connect(path)
+    migrate.run(database)
+    database.close()
+
+    doc = (pathlib.Path(__file__).resolve().parents[2]
+           / "docs" / "schema.md").read_text(encoding="utf-8")
+    raw = sqlite3.connect(path)
+
+    problems = []
+    for match in re.finditer(r"CREATE TABLE (\w+) \((.*?)\n\);", doc, re.S):
+        table, block = match.group(1), match.group(2)
+        try:
+            real = [r[1] for r in raw.execute(f'PRAGMA table_info("{table}")')]
+        except sqlite3.Error:
+            continue
+        if not real:
+            problems.append(f"{table} is documented and does not exist")
+            continue
+        documented = set(re.findall(r"^\s{2}(\w+)\s", block, re.M))
+        for column in real:
+            if column not in documented:
+                problems.append(f"{table}.{column} exists and is not documented")
+        for column in documented - set(real):
+            if column in ("UNIQUE", "CHECK", "PRIMARY", "FOREIGN"):
+                continue
+            problems.append(f"{table}.{column} is documented and does not exist")
+    raw.close()
+
+    assert problems == [], (
+        "docs/schema.md has drifted from the migrations:\n  "
+        + "\n  ".join(problems))

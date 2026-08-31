@@ -241,13 +241,16 @@ footer.page > .hair { margin-top: 0; }
 @media (max-width: 60rem) {
   .grid > [class*="span-"] { grid-column: 1 / -1; }
 
-  /* Stacked, the gutter is paid TWICE: once as the grid's row gap and once as
-   * each field's own bottom margin. Two inches of nothing between "Grade" and
-   * "Latin level" on a phone, while the heading above them sat almost on top
-   * of the first label. The column gap still matters when two things do share
-   * a row, so only the row gap goes. */
-  .grid { row-gap: 0; }
-  .grid > [class*="span-"] > .field:last-child { margin-bottom: var(--space-5); }
+  /* Stacked, the gutter used to be paid TWICE: once as the grid's row gap and
+   * once as each field's own bottom margin -- two inches of nothing between
+   * "Grade" and "Latin level" on a phone.
+   *
+   * The ROW GAP is the one to keep. Zeroing it fixed the fields and broke
+   * every other stacked grid, because a column holding a heading has no margin
+   * of its own to fall back on: the invoice's "Where to send it" ended up hard
+   * against the buttons above it. Drop the field's own margin instead, and the
+   * space between rows is the grid's, paid once. */
+  .grid > [class*="span-"] > .field:last-child { margin-bottom: 0; }
 }
 
 /* A fieldset's heading needs air under it on a phone, where it is the only
@@ -499,7 +502,7 @@ footer.page > .hair { margin-top: 0; }
  * is the last thing in a panel, because the panel's own padding is already
  * there. Both rules together are the whole story. */
 .btn-row { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center;
-           margin: var(--space-5) 0 var(--space-6); }
+           margin: var(--space-6) 0; }
 .btn-row + h2, .btn-row + h3 { margin-top: var(--space-2); }
 /* A button row at the bottom of a panel or a dialog already has that
  * container's padding under it. Its own bottom margin on top of that is

@@ -1,6 +1,6 @@
 # **Stack**
 
-**GitHub Pages** serves the static site from a public repository. Everything on the page is populated by API calls to **Modal**, which holds all business logic and is the only thing that talks to the database. The database is **Turso** (hosted libSQL, which is SQLite). **Google Apps Script** is a narrow puppet that writes to and lists Timothy's personal Google Drive, because it is the only thing that can act as his Google identity. All code lives in a single GitHub repository, including a mirrored copy of the Apps Script source.
+**GitHub Pages** serves the static site from a public repository. Everything on the page is populated by API calls to **Modal**, which holds all business logic and is the only thing that talks to the database. The database is **Turso** (hosted libSQL, which is SQLite). **Google Apps Script** is a narrow puppet that writes to and lists the Google Drive, because it is the only thing that can act as the convention's Google identity. All code lives in a single GitHub repository, including a mirrored copy of the Apps Script source.
 
 Every request routes through Modal, including basic reads, because Modal is where authentication and authorization happen. The frontend never holds a database credential and never talks to Turso.
 
@@ -27,7 +27,7 @@ Everything must stay free. Sized against an upper bound of 50 schools, 1,000 del
 | GitHub Pages | 1 GB site, 100 GB/mo bandwidth | a few MB, negligible traffic | large |
 | GitHub Actions | free on public repos | trivial | — |
 | Apps Script | ~20k UrlFetch/day, 90 min/day runtime | a few hundred calls/day at peak | large |
-| Google Drive | 5 TB | scanned packets only | large |
+| Google Drive | 100 TB | scanned packets only | enormous |
 
 Storage is dominated by the audit log (~8 MB) and medical-adjacent free text (~1 MB); the rest is rounding error. Writes are trivial because registration is a months-long trickle, not a firehose.
 
@@ -60,7 +60,7 @@ Workers must be written so that each one is **a single self-contained script tha
 
 ## Warm and cold
 
-Modal scales to zero by default, which is what keeps the bill near zero. Convention weekend and live demos need warmth.
+Modal scales to zero by default, which is what keeps the bill near zero. Convention weekend, and any hour registration is being used heavily, need warmth.
 
 **The database is the source of truth for desired warmth, not the Modal API.** A `settings` row holds `warm_until` as a UTC timestamp. The admin dashboard sets it — "keep warm for N hours" — and a Modal cron running every five minutes reconciles reality to it: if `now < warm_until`, ensure `min_containers=1` via `Function.update_autoscaler()`; otherwise ensure `min_containers=0`.
 
@@ -90,11 +90,11 @@ Because the printed sheet is now a bearer credential, it says so, it shows the d
 
 ## Google Apps Script
 
-Apps Script is a puppet with exactly one reason to exist: only it can act as Timothy's Google identity and write to his personal Drive under his 5 TB quota. Modal cannot, absent domain-wide delegation.
+Apps Script is a puppet with exactly one reason to exist: only it can act as the convention's Google identity and write to the Drive under its 100 TB organisational quota. Modal cannot, absent domain-wide delegation.
 
 It exposes four operations — `upload`, `list`, `mkdir`, `trash` — and holds no configuration. Folder IDs, filenames, and retention rules all travel in the request payload from Modal. The **one** secret that must live in Script Properties is a shared HMAC key, because the web app is deployed as "execute as me / anyone with the link" and needs some way to verify the caller is actually your backend. Requests carry an HMAC signature and a timestamp; the script rejects anything older than five minutes.
 
-Everything Apps Script touches lives under a single **automated root folder** in Timothy's Drive, writable only through this script. `list` lets Modal cache that folder's structure and file IDs in the database, so later features — pre-convention contest submissions, art voting galleries, lost and found — resolve Drive IDs from the database rather than crawling Drive on every request.
+Everything Apps Script touches lives under a single **automated root folder** in the Google Drive, writable only through this script. `list` lets Modal cache that folder's structure and file IDs in the database, so later features — pre-convention contest submissions, art voting galleries, lost and found — resolve Drive IDs from the database rather than crawling Drive on every request.
 
 **The scanned medical forms and waivers are not under that root and this script never sees them.** Those live in a separate per-school folder that the sponsor uploads to with their own Google account and shares manually with the Convention Presidents. The database stores only a URL string. Keeping the two roots physically separate means no future change to the automated path can widen access to minors' medical data by accident. Do not merge them for convenience.
 
@@ -121,13 +121,13 @@ One public repository. Secrets live only in Modal Secrets and GitHub Actions sec
 
 `CNAME` in the repository is how GitHub Pages tracks the custom domain, so no separate domain-tracking file is needed. GitHub Actions deploys Modal on push to `main` using a Modal token stored as a repository secret. The repository must stay public: GitHub Pages from a private repository requires a paid plan, and while the Student Developer Pack grants Pro, the site 404s when student status lapses — a landmine for future commissioners.
 
-Because the repository is public, the demo database contains **only fabricated data**. No real student names, ever.
+Because the repository is public, the seeded database contains **only fabricated data**. No real student names, ever.
 
 # **Emergencies**
 
 Because this is a new system, assume it will fail in a way nobody predicted, and make sure the convention runs anyway.
 
-**Exports.** Four files per export: Excel and SQL, each in a full version with personal information and an anonymized version showing only user IDs. The anonymized versions exist so they can be handed to an AI or an outside helper without exposing minors' data. During the demo and normal operation there is a **manual export button** only. An admin can later enable **auto-export on a 10-minute interval**, setting both the start and the automatic shut-off time from the dashboard; this matters most during live grading, when losing ten minutes of scores is the difference between a smooth awards ceremony and a disaster. Exports write to Drive through the Apps Script puppet.
+**Exports.** Four files per export: Excel and SQL, each in a full version with personal information and an anonymized version showing only user IDs. The anonymized versions exist so they can be handed to an AI or an outside helper without exposing minors' data. In normal operation there is a **manual export button** only. An admin can later enable **auto-export on a 10-minute interval**, setting both the start and the automatic shut-off time from the dashboard; this matters most during live grading, when losing ten minutes of scores is the difference between a smooth awards ceremony and a disaster. Exports write to Drive through the Apps Script puppet.
 
 If Modal fails, the ten-minute-old SQL file is the *last* resort, not the first. First reboot the Modal endpoint and fix forward, then generate a current export. The old file is for the case where the database itself is destroyed — a bad migration, a deletion, an attack — in which case restore from the most recent export and scrape what remains from the audit log, which is append-only and therefore reconstructs the sequence of changes even when the current-state tables are gone.
 
@@ -141,7 +141,7 @@ If Modal fails, the ten-minute-old SQL file is the *last* resort, not the first.
 
 **Quota.** Watch the Turso usage page during convention. A `BLOCKED` error stops the database and cannot be resolved by paying, so a query regression is an outage. Anything that changes a query goes through the `EXPLAIN QUERY PLAN` check in CI.
 
-**Demo day.** Warm the container before the board meeting. Rehearse the full flow against production at least twice, and have a recorded screen capture as a fallback if the venue's network fails.
+**Convention weekend.** Warm the containers before the doors open and leave them warm until the last award is read. Registration's busiest hours — the week the deadline falls — are worth warming too.
 
 # **Continual paranoia**
 

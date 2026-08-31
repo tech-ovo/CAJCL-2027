@@ -1,8 +1,7 @@
 # Putting the site online
 
 This document takes you from a fresh checkout of the repository to a working
-public website. It was written for the demonstration given to the CAJCL board
-on August 29th, 2026, and it is the same procedure every year afterwards.
+public website. It is the same procedure every convention year.
 
 Three services are involved, and each does one job:
 
@@ -12,11 +11,11 @@ Three services are involved, and each does one job:
 | **Modal** | the backend — all the code that reads and writes the database | free tier |
 | **GitHub Pages** | the frontend — the pages a browser downloads | free |
 
-Google Apps Script appears elsewhere in these documents. It is **not needed**
-for the demonstration and is not set up here. Exports download straight to
-your computer instead.
+Google Apps Script appears elsewhere in these documents. It is **not needed
+to run registration** and is not set up here. Exports download straight to your
+computer instead.
 
-Budget about **90 minutes** the first time you do this, then rehearse twice.
+Budget about **90 minutes** the first time you do this.
 
 ---
 
@@ -116,11 +115,11 @@ need to think about it again.
 
 ---
 
-## After the demonstration: turning it into the real thing
+## Turning a sample database into the real one
 
-The database the board saw on August 29th is full of invented chapters. This is
-how it becomes the one registration actually runs on. Half an hour, and there
-is nothing subtle in it.
+A freshly seeded database is full of invented chapters. This is how it becomes
+the one registration actually runs on. Half an hour, and there is nothing
+subtle in it.
 
 ### 1. Decide whether to start from scratch
 
@@ -133,25 +132,23 @@ modal run backend/app.py::setup --reset      # empty, then the tables
 modal run backend/app.py::board              # the board, with new codes
 ```
 
-`--reset` drops everything, so **the demonstration chapters, delegates and
-codes all go**, which is the point. The board's codes go with them and are
-reissued.
+`--reset` drops everything, so **the sample chapters, delegates and codes all
+go**, which is the point. The board's codes go with them and are reissued.
 
 **Or run it the way a chapter will.** Reduce `board.json` to one person —
 yourself, as the host chapter's sponsor with `admin` — reset, provision, and
 then add everybody else from **Settings → Roles** in the browser. That is
-exactly the path next year's commissioners take, and doing it once now is the
-cheapest possible test of whether it works. Half an hour, and you find out in
-August rather than next August.
+exactly the path next year's commissioners take, and doing it once is the
+cheapest possible test of whether it works.
 
 Either way, **print the codes and hand them out the same day.** They are shown
 once.
 
-### 2. Turn the demonstration banner off
+### 2. Turn the sample-data banner off
 
-**Settings → Values → `ops.demo_mode`**, set to `0`. The "Demonstration data"
-banner disappears from every page. Do this only after the reset — a database
-still full of invented students should say so.
+**Settings → Values → `ops.demo_mode`**, set to `0`. The "Sample data" banner
+disappears from every page. Do this only after the reset — a database still
+full of invented students should say so.
 
 ### 3. Check the convention facts
 
@@ -225,9 +222,8 @@ databases that exist. Files are added, never edited, and never deleted — see
 `backend/migrations/CHECKSUMS.txt`. A new convention runs all of them from
 scratch and arrives at the same schema.
 
-**And you do not need the demonstration.** `docs/DEMO.md` exists to convince a
-board that this is worth adopting. That argument was made in August 2026. What
-you need is this document and `docs/RUNBOOK.md`.
+**What you need is this document and `docs/RUNBOOK.md`.** Between them they
+cover everything from an empty account to a running convention.
 
 ---
 
@@ -500,7 +496,7 @@ That is the expected result at this point.
 
 ---
 
-## 4. Create the tables and load the demonstration data — 5 minutes
+## 4. Create the tables and load the sample data — 5 minutes
 
 ```bash
 modal run backend/app.py::setup --reset
@@ -508,17 +504,17 @@ modal run backend/app.py::setup --reset
 
 This does three things: it deletes anything already in the database
 (`--reset`), it creates all the tables, and it loads the fabricated
-demonstration data. It finishes by printing every access code and writing them
-to a file called `demo-codes.txt` on your own computer.
+sample data. It finishes by printing every access code and writing them
+to a file called `codes.txt` on your own computer.
 
 **Print that file on paper.** New codes are generated every time the
-demonstration data is loaded, so a printout from an earlier rehearsal will not
+sample data is loaded, so a printout from an earlier run will not
 work.
 
 Two variations, for later:
 
 ```bash
-# Load fresh demonstration data, keeping the existing tables.
+# Load fresh sample data, keeping the existing tables.
 modal run backend/app.py::setup
 
 # Apply a change to the tables and columns, without touching the data.
@@ -537,7 +533,7 @@ have actually happened here and what each one means.
 
 ## 4b. Give the real board their accounts — 5 minutes
 
-The demonstration data is entirely invented, so nobody real can sign in to it.
+The sample data is entirely invented, so nobody real can sign in to it.
 Board members and chapter sponsors get accounts from a separate file that is
 **never committed**, because this repository is public.
 
@@ -894,11 +890,14 @@ expires on its own so nobody has to remember.
 
 ---
 
-## 10. Rehearse — twice
+## 10. Walk the whole thing once
 
-Against the real deployed site, start to finish, with the projector if you can
-get hold of one. Time it. Then have somebody else drive while you watch,
-because you will click straight past the thing that is broken.
+Against the real deployed site, start to finish: sign in as a sponsor, paste a
+roster, print a packet, sign in as one of those delegates with the code you
+just printed, fill in a form, record a payment.
+
+Then have somebody else drive while you watch. You will click straight past the
+thing that is broken, because you know where it is meant to go.
 
 ---
 
@@ -907,15 +906,15 @@ because you will click straight past the thing that is broken.
 - [ ] `curl .../health` returns `{"ok": true}`
 - [ ] `curl .../public/stats` returns real numbers
 - [ ] The published site loads and shows statistics, not dashes
-- [ ] The **Demonstration data** banner appears on every page
-- [ ] Every code in `demo-codes.txt` signs in
+- [ ] The **Sample data** banner appears on every page
+- [ ] Every code in `codes.txt` signs in
 - [ ] A QR code from a printed sheet scans and signs in on a **phone**
 - [ ] The packet prints; the invoice prints; the exempt invoice explains itself
-- [ ] Warm is set to last past the end of the meeting
+- [ ] Warm is set to cover the hours registration is being used
 - [ ] `LIVE_GRADING` in `backend/app.py` is still `False` — it is for
       convention weekend only
 - [ ] Every board member in `board.json` has signed in once with their code
-- [ ] `demo-codes.txt` is printed on paper
+- [ ] `codes.txt` is printed on paper
 - [ ] A screen recording of the full flow exists
 - [ ] A local copy runs offline, in case the venue Wi-Fi fails
 
@@ -923,10 +922,15 @@ because you will click straight past the thing that is broken.
 
 ## Known gaps, so that nothing surprises you live
 
-- **PDF generation has not been tested end to end.** The print view works, and
-  it is the same document. The first PDF request has to start a second, heavier
-  container and takes 30 seconds or more. **Demonstrate the print view, not the
-  PDF.**
+- **The PDF renderer has never actually run.** Everything either side of it is
+  built and tested — the button, the endpoint, the scope checks, the HTML — but
+  WeasyPrint needs Pango and Cairo, which do not install on Windows, so the one
+  line that turns HTML into PDF has only ever run on Modal in theory. Click
+  **Save as PDF** once after deploying and you will know.
+
+  The first click of the day starts a second, heavier container and takes 30
+  seconds or more, which is why the button says so. **Print is the fast path,
+  produces the identical document, and does not depend on any of this.**
 - **There is no usage page either.** `GET /admin/usage` returns the row counts
   and needs the three optional Turso settings from step 2; nothing on the site
   calls it. To see the numbers, run `python scripts/measure_usage.py`, which

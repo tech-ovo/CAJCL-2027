@@ -79,6 +79,17 @@ CREATE TABLE catalog_items (
   -- CSV of latin_level values; NULL means all levels. CSV rather than a join
   -- table because this is read into memory whole and never queried against.
   eligible_latin_levels  TEXT,
+  -- The number printed on the answer sheet and read back by the scanner.
+  --
+  -- Four digits, and a STRING rather than an integer because it is an
+  -- identifier that is read and typed, not a quantity: leading zeros are part
+  -- of it, and 0042 is not 42. UNIQUE because two tests sharing one is a stack
+  -- of bubble sheets nobody can sort.
+  --
+  -- Set by the Academics chairs, who do not hold `*` and cannot reach the rest
+  -- of the catalog. See `PATCH /admin/academics/item/{id}/code`.
+  item_code              TEXT UNIQUE CHECK (item_code IS NULL
+                                            OR item_code GLOB '[0-9][0-9][0-9][0-9]'),
   -- NO eligible_school_levels. A chapter is wholly middle or high school --
   -- one sending both registers as two chapters -- and the Latin levels
   -- above already say which: MS-1..MS-3 belong to a middle school and

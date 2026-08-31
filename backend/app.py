@@ -63,7 +63,7 @@ slim_image = (
     .pip_install("fastapi[standard]", "libsql", "segno", "openpyxl", "tzdata")
     .add_local_dir(".", remote_path="/root/cajcl", ignore=[
         "**/.git/**", "**/__pycache__/**", "**/.pytest_cache/**",
-        "*.db", "*.db-wal", "*.db-shm", "demo-codes.txt",
+        "*.db", "*.db-wal", "*.db-shm", "codes.txt", "demo-codes.txt",
     ])
 )
 
@@ -79,7 +79,7 @@ fat_image = (
     .pip_install("weasyprint", "openpyxl", "libsql", "segno", "tzdata")
     .add_local_dir(".", remote_path="/root/cajcl", ignore=[
         "**/.git/**", "**/__pycache__/**", "**/.pytest_cache/**",
-        "*.db", "*.db-wal", "*.db-shm", "demo-codes.txt",
+        "*.db", "*.db-wal", "*.db-shm", "codes.txt", "demo-codes.txt",
     ])
 )
 
@@ -107,7 +107,8 @@ def web():
 # ---------------------------------------------------------------------------
 
 @app.function(image=fat_image, secrets=secrets, timeout=600)
-def render_pdf(document: str, school_id: int, person_id: int | None = None) -> bytes:
+def render_pdf(document: str, school_id: int, person_id: int | None = None,
+               codes: dict | None = None) -> bytes:
     """Render the packet or the invoice to PDF.
 
     Takes the SAME HTML the browser print view is served. There is one layout,
@@ -118,7 +119,11 @@ def render_pdf(document: str, school_id: int, person_id: int | None = None) -> b
     sys.path.insert(0, "/root/cajcl")
     from backend.workers.pdf import render
 
-    return render(document=document, school_id=school_id, person_id=person_id)
+    # Keys arrive over the wire as strings; render_packet looks them up by the
+    # integer person id.
+    by_id = {int(k): str(v) for k, v in (codes or {}).items()}
+    return render(document=document, school_id=school_id, person_id=person_id,
+                  codes=by_id or None)
 
 
 @app.function(image=fat_image, secrets=secrets, timeout=900)
@@ -471,14 +476,14 @@ def setup(reset: bool = False, seed: bool = True):
     # not by code: somebody looking at this sheet is looking for a name.
     lines = [f"{code:16} — {label}"
              for label, code in sorted(codes.items())]
-    pathlib.Path("demo-codes.txt").write_text(
+    pathlib.Path("codes.txt").write_text(
         "\n".join(lines) + "\n", encoding="utf-8")
 
     print()
     for line in lines:
         print("  " + line)
     print()
-    print(f"{len(lines)} codes, also written to demo-codes.txt")
+    print(f"{len(lines)} codes, also written to codes.txt")
 
 
 # ---------------------------------------------------------------------------

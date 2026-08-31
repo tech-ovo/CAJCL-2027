@@ -15,6 +15,39 @@
 <link rel="icon" href="img/favicon.ico" sizes="16x16 32x32 48x48">
 <link rel="icon" href="img/favicon.png" type="image/png" sizes="192x192">
 <link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+<!-- What this page is allowed to load, enforced by the browser.
+     GitHub Pages sends no headers of its own, so the policy has to be a meta
+     tag. That costs one thing worth knowing: `frame-ancestors` is IGNORED in a
+     meta tag and only works as a real header, so clickjacking of the SIGN-IN
+     PAGE is not covered here. The API sends it, which protects every response
+     carrying data; a static page with a form on it is the gap.
+
+     Everything else this site needs is local:
+       'self'          the pages, scripts, stylesheets and self-hosted fonts
+       connect-src     also the Modal API, which is the only host it talks to
+       img-src data:   the QR codes, which are inline SVG built in JavaScript
+     `object-src 'none'` and `base-uri 'none'` close two old holes that nothing
+     here uses. Nothing on this site evaluates a string, so no 'unsafe-eval'.
+
+     SCRIPTS ARE NOT 'unsafe-inline'. The one inline script -- the theme, which
+     has to run before the first paint -- is allowed by the HASH of its
+     contents. Change that script by one character and it stops running, which
+     is the trade: a policy that cannot be widened by an injected script tag,
+     against remembering to update one line. `scripts/check_csp_hash.py`
+     recomputes it, and a test fails if it is stale.
+
+     Styles do get 'unsafe-inline', because a handful of components set a style
+     attribute directly. That is a far smaller hole than the script one. -->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self';
+  script-src 'self' 'sha256-zJhoCkFJ+lmliFye2xaVAw3k2TCEwQ1TkDcLVTBoATo=';
+  style-src 'self' 'unsafe-inline';
+  img-src 'self' data:;
+  font-src 'self';
+  connect-src 'self' https://techuhsjcl--cajcl-2027-web.modal.run http://127.0.0.1:8000;
+  form-action 'none';
+  object-src 'none';
+  base-uri 'none'">
 <link rel="stylesheet" href="tokens.css">
 <link rel="stylesheet" href="app.css">
 

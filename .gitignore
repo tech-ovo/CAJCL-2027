@@ -13,6 +13,10 @@ __pycache__/
 .pytest_cache/
 .venv/
 venv/
+# Access codes, printed once and never recoverable. `codes.txt` is what the
+# seed and the board script write now; the older name is kept so an existing
+# checkout cannot commit one by accident.
+codes.txt
 demo-codes.txt
 
 # Real board members' names. The repository is public and the demonstration is

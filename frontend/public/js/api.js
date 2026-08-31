@@ -157,6 +157,46 @@ export async function postText(path, body) {
   return response.text();
 }
 
+/* A file the browser saves, rather than a page it shows.
+
+   The response is bytes, so none of the JSON handling above applies -- but an
+   ERROR is still JSON, and a sponsor who gets one deserves the sentence rather
+   than "failed to fetch". So: read the body once, and decide by status which
+   of the two it was. */
+export async function postFile(path, body, fallbackName) {
+  const headers = { "Content-Type": "application/json" };
+  const auth = token.get();
+  if (auth) headers["Authorization"] = `Bearer ${auth}`;
+
+  const response = await fetch(base() + path,
+                               { method: "POST", headers,
+                                 body: JSON.stringify(body) });
+  if (!response.ok) {
+    let message = `Something went wrong (${response.status}).`;
+    try {
+      const payload = await response.json();
+      if (payload && payload.error) message = payload.error;
+    } catch (ignored) { /* not JSON; keep the status. */ }
+    throw new ApiError(message, { status: response.status });
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = el("a", { href: url, download: fileName(response, fallbackName) });
+  // Firefox needs the anchor in the document before a click counts.
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  // Not immediately: Safari has not started the download when click() returns.
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+function fileName(response, fallback) {
+  const header = response.headers.get("Content-Disposition") || "";
+  const match = header.match(/filename="([^"]+)"/);
+  return match ? match[1] : fallback;
+}
+
 /* ------------------------------------------------------------------------ */
 
 // Set the first time any request comes back. Modal sleeps when idle, so the

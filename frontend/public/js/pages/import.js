@@ -1,6 +1,6 @@
 /* Paste a roster: preview, correct inline, then commit once.
  *
- * This is the most visible part of the demo and the part a board will judge, so
+ * This is the most visible part of the site and the part a sponsor judges it by, so
  * the behaviour matters more here than anywhere else on the site.
  *
  * ACCEPT ANY FORMAT. Sponsors paste from a spreadsheet with tabs, from Word
@@ -18,7 +18,7 @@
 import * as api from "../api.js";
 import { add, el, clear, field, button, errorSummary, table,
          emptyState } from "../ui.js";
-import { openPrintView } from "./roster.js";
+import { openPrintView, savePacketPdf } from "./roster.js";
 
 /* Warning copy. Warnings must be rare enough that a sponsor reads them --
  * flagging every third row teaches people to click through without looking. */
@@ -368,6 +368,13 @@ export async function importPage(host, params = []) {
                   codes: issued.map((row) => ({ person_id: row.id,
                                                 code: row.code })),
                 }),
+              })
+            : null,
+          issued.length
+            ? button("Save as PDF (slow)", {
+                variant: "btn--quiet",
+                onclick: () => savePacketPdf(schoolId,
+                  issued.map((row) => ({ person_id: row.id, code: row.code }))),
               })
             : null,
           el("a", { class: issued.length ? "btn" : "btn btn--primary",

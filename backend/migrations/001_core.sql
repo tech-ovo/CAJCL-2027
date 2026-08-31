@@ -25,7 +25,11 @@
 CREATE TABLE schools (
   id              INTEGER PRIMARY KEY,
   name            TEXT NOT NULL,
-  level           TEXT NOT NULL CHECK (level IN ('MS','HS')),
+  -- NULL for an organization. SCL is neither a middle nor a high school, and
+  -- storing it as 'HS' to satisfy a NOT NULL made every level-gated rule read
+  -- a value nobody had chosen. A chapter must still declare one: the CHECK
+  -- allows NULL through but not a third spelling.
+  level           TEXT CHECK (level IS NULL OR level IN ('MS','HS')),
   kind            TEXT NOT NULL DEFAULT 'chapter' CHECK (kind IN ('chapter','organization')),
   city            TEXT,
   -- Packet scans: waivers and medical forms. A URL string and nothing else.
@@ -90,7 +94,10 @@ CREATE TABLE people (
 
   grade            INTEGER CHECK (grade BETWEEN 6 AND 12),
   latin_level      TEXT CHECK (latin_level IN ('MS-1','MS-2','MS-3','HS-1','HS-2','HS-3','HS-Adv')),
-  meal             TEXT CHECK (meal IN ('regular','vegetarian','gluten_free')),
+  -- 'none' is for somebody bringing their own, usually for an allergy the
+  -- caterer cannot safely cover. Last in the list on the form and never the
+  -- default: a meal nobody ordered is a delegate with nothing to eat.
+  meal             TEXT CHECK (meal IN ('regular','vegetarian','gluten_free','none')),
   cell_phone       TEXT,
 
   -- Adults only. Delegates are as young as eleven; we collect no contact

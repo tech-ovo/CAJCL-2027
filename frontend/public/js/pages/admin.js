@@ -1,4 +1,4 @@
-/* Settings, prose, announcements, roles, warmth, impersonation, and the demo
+/* Settings, prose, announcements, roles, warmth, impersonation, and the sample-data
  * reset.
  *
  * THIS PAGE IS WHAT MAKES THE SITE INHERITABLE. Every value a future
@@ -1163,14 +1163,14 @@ export async function adminPage(host) {
                                          onclick: () => download("xlsx", true) })),
 
           el("hr", { class: "rule" }),
-          el("h2", {}, "Demonstration data"),
+          el("h2", {}, "Sample data"),
           state.demoMode
             ? el("div", {},
                 el("p", { class: "muted" },
                   "This database holds invented data. Resetting rebuilds it " +
-                  "exactly as it started — useful if a demo goes sideways."),
+                  "exactly as it started — useful after trying something out."),
                 el("div", { class: "btn-row" },
-                  button("Reset demo data", {
+                  button("Rebuild sample data", {
                     variant: "btn--danger",
                     onclick: async () => {
                       const ok = await check({
@@ -1183,7 +1183,7 @@ export async function adminPage(host) {
                       });
                       if (!ok) return;
                       await api.post("/admin/demo/reset", {});
-                      message = "Demonstration data rebuilt. New codes were issued.";
+                      message = "Sample data rebuilt. New codes were issued.";
                       render();
                     },
                   })))

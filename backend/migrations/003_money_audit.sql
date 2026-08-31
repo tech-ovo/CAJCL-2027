@@ -66,6 +66,9 @@ CREATE TABLE school_stats (
   meal_vegetarian          INTEGER NOT NULL DEFAULT 0,
   meal_gluten_free         INTEGER NOT NULL DEFAULT 0,
   meal_unanswered          INTEGER NOT NULL DEFAULT 0,
+  -- Bringing their own. Counted apart from `meal_unanswered`: one is a
+  -- person to chase, the other is a person to cook nothing for.
+  meal_none                INTEGER NOT NULL DEFAULT 0,
   adults_sponsors          INTEGER NOT NULL DEFAULT 0,
   adults_chaperones        INTEGER NOT NULL DEFAULT 0,
   -- When this chapter arrived at the Friday desk, or NULL. Arrival is per

@@ -183,3 +183,15 @@ UPDATE catalog_item_options SET name = ?, sort_order = ?, active = ? WHERE id = 
 -- that order, and the alphabet does not agree.
 SELECT COALESCE(MAX(sort_order), 0) + 10 AS next
 FROM catalog_items WHERE category_id = ?;
+
+-- name: catalog.item_set_code
+-- The four-digit number on the answer sheet. The ONLY catalog field an
+-- Academics chair may change: they do not hold `*`, and nothing else about an
+-- item is theirs to edit.
+UPDATE catalog_items SET item_code = ? WHERE id = ?;
+
+-- name: catalog.item_by_code
+-- Who already holds this number. Uses the UNIQUE index on item_code, so the
+-- application can say WHICH test has it rather than surfacing a constraint
+-- error nobody can act on.
+SELECT id, name FROM catalog_items WHERE item_code = ?;

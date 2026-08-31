@@ -16,9 +16,10 @@ import * as api from "../api.js";
 import { add, el, clear, tabula, field, input, select, button, errorSummary,
          renderMarkdown, personNumber, guardUnsaved, draft } from "../ui.js";
 
-// See the note in activity.js: a "no meal" option lands with the reset.
+// Last and never the default; see the note in activity.js.
 const MEALS = [["", "Choose one"], ["regular", "Regular"],
-               ["vegetarian", "Vegetarian"], ["gluten_free", "Gluten free"]];
+               ["vegetarian", "Vegetarian"], ["gluten_free", "Gluten free"],
+               ["none", "No meal — I am bringing my own"]];
 
 /* The original four-level scale. Every current role needs either nothing or
  * advanced, but all four are here so a future chair can mark a role as needing

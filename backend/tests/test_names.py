@@ -426,9 +426,13 @@ def test_case_is_judged_from_the_name_not_the_whole_row():
     assert (rows[1].first_name, rows[1].last_name) == ("Miranda", "Oyelaran")
 
 
-def test_the_demonstration_paste_comes_through_clean():
-    """The exact roster in docs/DEMO.md. If this stops being clean, the demo
-    stops being a demonstration of anything."""
+def test_the_reference_paste_comes_through_clean():
+    """The exact roster in docs/structure.md, Appendix A.
+
+    Every line in it is deliberate -- an inverted name, a particle surname, a
+    generational suffix, shouting, a numbered list, a comma that is not
+    `Last, First`, and one duplicate. Kept in step with the appendix so that
+    reading the preview by eye and running this check the same thing."""
     paste = "\n".join([
         "Aurelia Vance\t9\tHS-1",
         "Marcus DeLuca\t10\tHS-2",

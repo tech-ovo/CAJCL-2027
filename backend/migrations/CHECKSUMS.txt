@@ -14,10 +14,10 @@
 # the result with it. Changing an applied one is what this exists to stop --
 # write a new migration instead.
 
-# rewritten-after: 2026-08-31T15:31:30+00:00
-a24f682f05f1ec870a0269b97aa5f97a71e2b55ee73d9cd89f5e4c389c635d62  001_core.sql
-dc31a82e24f1bf5af656a53a0e70e7e4b042135a4541a1d294cddeb197feb831  002_forms_catalog.sql
-9facc34b335bec282692a01297b0f1ba838ee0a54ed0183c28acf05587054647  003_money_audit.sql
+# rewritten-after: 2026-08-31T20:33:30+00:00
+32c2689e2f436fb69e52cf69a5dbb6af5f404402d92726f2f58cb055dc28cf7a  001_core.sql
+277adaad69107017e736bdd9e97440bb383a5aace1269da8d99049c847a0cf3a  002_forms_catalog.sql
+55b67189c7db52dc42b383ef21a05cf96f4c59c84a362495a60e7902ed2352ed  003_money_audit.sql
 c83ce1135f31340e49e81190773d39a950a6b4cdc5d64fe7824093e72dca829b  004_future.sql
 91737d43a8631ed91a272122a9de1bceaab53272dd51801a192b7ba5652cddd6  005_seed_roles_settings.sql
 2bb9a92124b3e4fcf8d3a0298c495995257f64e437eef3888637b1848d677d5a  006_seed_catalog.sql

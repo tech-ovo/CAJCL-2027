@@ -109,7 +109,7 @@ def main() -> int:
     # Scaling honestly matters here. A sponsor's roster does NOT grow with the
     # total number of delegates -- it grows with delegates per CHAPTER, and at
     # 50 chapters and 1,000 delegates that is 20 delegates plus 3 adults, which
-    # is SMALLER than the 30-delegate host chapter in the demo. Multiplying
+    # is SMALLER than the 30-delegate host chapter in the sample data. Multiplying
     # every query by a single "6.7x more delegates" factor would overstate the
     # roster page by an order of magnitude and understate nothing, which makes
     # the projection useless in both directions.

@@ -90,6 +90,9 @@ ROUTES = [
      "/sponsor/chapter-entries/{entry}", None),
     ("sponsor.invoice", "GET", "/sponsor/invoice?school_id={school}", None),
     ("sponsor.packet", "GET", "/sponsor/packet?school_id={school}", None),
+    ("sponsor.packet.pdf", "POST", "/sponsor/packet.pdf",
+     {"school_id": "{school}",
+      "codes": [{"person_id": "{person}", "code": "DEL-K7M2N-9PQ4T"}]}),
     ("sponsor.packet.print", "POST", "/sponsor/packet",
      {"school_id": "{school}",
       "codes": [{"person_id": "{person}", "code": "DEL-K7M2N-9PQ4T"}]}),
@@ -142,6 +145,8 @@ ROUTES = [
     ("admin.people.waive", "POST",
      "/admin/people/{person}/waive-activity-sheet", {"waived": True}),
     ("admin.academics.counts", "GET", "/admin/academics/counts", None),
+    ("admin.academics.code", "PATCH",
+     "/admin/academics/item/1/code", {"item_code": "0142"}),
     ("admin.academics.item", "GET", "/admin/academics/item/1", None),
     ("admin.academics.sheet", "GET", "/admin/academics/item/1/sheet", None),
     ("admin.board.list", "GET", "/admin/board", None),
@@ -1074,3 +1079,54 @@ def test_a_sub_choice_cannot_be_added_where_none_may_be_picked(fx, client):
                           json={"name": "Nope"}, headers=headers)
     assert refused.status_code == 422
     assert "does not take sub-choices" in refused.json()["error"]
+
+
+def test_an_academics_chair_can_number_a_test_and_nothing_else(fx, client):
+    """The narrowest hole that does the job.
+
+    The Academics chairs need the four-digit number on each answer sheet. They
+    hold `academics`, not `*`, and have no business renaming a test, changing
+    who may enter it, or touching the fee -- all of which the catalog editor
+    next door can do. So this endpoint writes exactly one column.
+
+    The alternative considered was a scoped view of Settings, which would have
+    meant deciding per setting who may see it, and getting that right forever.
+    """
+    with fx.db.tx() as tx:
+        role = tx.one("roles.by_key", ("academics_chair",))
+        tx.run("people.grant_role",
+               (fx.chair_id, role["id"], None, "2027-01-01T00:00:00Z"))
+        tx.audit("role.grant", "test fixture")
+
+    headers = as_(fx, "chair")
+    items = client.get("/admin/academics/counts", headers=headers).json()["items"]
+    first, second = items[0]["id"], items[1]["id"]
+
+    numbered = client.patch(f"/admin/academics/item/{first}/code",
+                            json={"item_code": "0142"}, headers=headers)
+    assert numbered.status_code == 200, numbered.text
+    assert numbered.json()["item_code"] == "0142"
+
+    # A STRING, so the leading zero survives. 0042 is not 42.
+    again = client.get("/admin/academics/counts", headers=headers).json()["items"]
+    assert next(i for i in again if i["id"] == first)["item_code"] == "0142"
+
+    clash = client.patch(f"/admin/academics/item/{second}/code",
+                         json={"item_code": "0142"}, headers=headers)
+    assert clash.status_code == 422
+    assert "cannot share a number" in clash.json()["error"]
+
+    short = client.patch(f"/admin/academics/item/{second}/code",
+                         json={"item_code": "42"}, headers=headers)
+    assert short.status_code == 422
+
+    # Clearing it is allowed: a test whose sheets are not laid out yet has no
+    # number, and that is not an error.
+    cleared = client.patch(f"/admin/academics/item/{first}/code",
+                           json={"item_code": ""}, headers=headers)
+    assert cleared.status_code == 200 and cleared.json()["item_code"] is None
+
+    # And the rest of the catalog stays shut to them.
+    assert client.get("/admin/catalog", headers=headers).status_code == 403
+    assert client.put(f"/admin/catalog/items/{first}", json={"name": "Renamed"},
+                      headers=headers).status_code == 403

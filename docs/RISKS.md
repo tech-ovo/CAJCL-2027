@@ -233,7 +233,7 @@ concern at a few hundred calls/day.
 ### The board meeting venue has no working Wi-Fi
 **OPEN — operational, not code.** Warm the container beforehand, rehearse the
 full flow against production at least twice, and have a recorded screen capture
-as a fallback. A local `dev.db` plus the seed script also runs the whole demo
+as a fallback. A local `dev.db` plus the seed script also runs the whole site
 offline, which is the better fallback because it is interactive. See `RUNBOOK.md`.
 
 ### Modal is unreachable
@@ -392,9 +392,13 @@ install on Windows without GTK — and both commissioners develop on Windows. Th
 PDF builds correctly on Modal's Debian image, from the same HTML.
 
 `backend/workers/pdf.py --html` writes the HTML instead, so a layout change can
-be checked locally without any of that. The build order also puts the PDF
-renderer first on the list of things to cut, and the print view — which is the
-same document — is what actually matters.
+be checked locally without any of that, and `backend/tests/test_printing.py`
+covers the endpoint, the scope checks and the HTML with WeasyPrint stubbed out.
+What none of that can prove is that WeasyPrint itself works, which is why one
+click on Modal is on the list in `docs/TODO.md` §1.
+
+The print view — which is the same document, built by the same code — is what
+actually matters, and it does not depend on any of this.
 
 ### `%-d` and `%-I` in date formatting
 **FIXED.** They are a glibc extension: they work on Modal and raise `ValueError`
@@ -449,7 +453,7 @@ and the token then travels in an `Authorization` header, where a newline is
 illegal. The driver reports this as
 `Hrana: http error: http::Error(InvalidHeaderValue)` — which names neither the
 setting nor the character, arrives before any SQL runs, and looks for all the
-world like a network fault. It cost an evening of the demo build.
+world like a network fault. It cost an evening.
 
 `db.py` now trims surrounding whitespace from `TURSO_DATABASE_URL` and
 `TURSO_AUTH_TOKEN` and refuses an interior control character by name, without
@@ -602,7 +606,7 @@ when somebody real joins.
 `invoice.remit_to` setting is whose name a chapter writes on a cheque: a
 business fact printed on a real invoice, specified in `structure.md`, and
 editable from Settings. `docs/TODO.md` says who is meant to do what, which is
-what that file is for. Neither is demonstration data.
+what that file is for. Neither is sample data.
 
 **Why a docstring was not enough.** It described an intention, and intentions
 do not survive somebody adding themselves to a list of administrators at

@@ -52,9 +52,9 @@ backup this system produces is an ordinary SQLite file that you can open in a
 free program called DB Browser, or load into a Google Colab notebook, without
 any special tools.
 
-**Google Apps Script** is a small helper that writes files into Timothy's Google
+**Google Apps Script** is a small helper that writes files into the Google
 Drive. It exists only because nothing else can act as his Google identity. It is
-**not needed for the demo** and can be ignored until pre-convention contests are
+**not needed to run registration** and can be ignored until pre-convention contests are
 built.
 
 ### How a single click travels
@@ -159,7 +159,7 @@ would be worse than stopping.
 
 | Script | What it does |
 |---|---|
-| `seed.py` | Fills the database with invented demo data. |
+| `seed.py` | Fills the database with invented sample data. |
 | `build_fonts.py` | Downloads and trims the fonts; fails if the theme cannot render. |
 | `build_snapshot.py` | Bakes the current numbers into the welcome page. |
 | `check_query_plans.py` | Checks no database question is accidentally slow. |
@@ -292,7 +292,7 @@ modal run backend/app.py::setup --no-seed  # migrate only, leave data alone
 
 That runs on Modal, whose machines are x86_64, so the driver is simply there.
 The access codes come back to your terminal and are written to
-`demo-codes.txt` on your own machine, exactly as if you had run it locally.
+`codes.txt` on your own machine, exactly as if you had run it locally.
 
 This is better practice anyway: the migration runs in the same environment as
 the code that will use it.
@@ -325,7 +325,7 @@ python -m http.server 8080 --directory frontend/public
 
 Open <http://localhost:8080>.
 
-The seed prints the access codes you need and writes them to `demo-codes.txt`.
+The seed prints the access codes you need and writes them to `codes.txt`.
 They are freshly generated every time you seed, so an old copy will not work.
 
 Run the automated checks with:
@@ -832,7 +832,7 @@ involved at all.
 
 ### The venue has no Wi-Fi
 
-Run everything locally — section 4. The whole demo works offline. Have a screen
+Run everything locally — section 4. The whole site works offline. Have a screen
 recording as a second fallback.
 
 ---
@@ -865,7 +865,7 @@ or write it down before navigating away.
 
 ---
 
-## Rebuilding the demo data
+## Rebuilding the sample data
 
 ```bash
 python scripts/seed.py --db dev.db --reset
@@ -874,10 +874,10 @@ python scripts/seed.py --db dev.db --reset
 Twelve chapters, about 150 delegates, a filled-in activity log, one partial
 payment, and a chapter that is not billed — the same every time.
 
-In production the same thing is at **Settings → Operations → Reset demo data**,
-and it refuses to run unless the database is marked as demonstration data. That
+In production the same thing is at **Settings → Operations → Rebuild sample
+data**, and it refuses to run unless the database is marked as sample data. That
 mark is the only thing standing between a mis-click and an erased convention.
 
-Whenever it is set, every page carries a **"Demonstration data"** banner. The
-demo gets projected in a room full of teachers, and nobody should have to wonder
+Whenever it is set, every page carries a **"Sample data"** banner. The
+site is sometimes shown to a room full of teachers, and nobody should have to wonder
 whether the names on the screen belong to real children.

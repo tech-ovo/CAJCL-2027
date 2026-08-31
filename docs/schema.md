@@ -46,9 +46,11 @@ CREATE TABLE schools (
   discount_cents  INTEGER NOT NULL DEFAULT 0 CHECK (discount_cents >= 0),
   discount_reason TEXT,               -- shown on the invoice in words
   status          TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','withdrawn')),
-  notes           TEXT,               -- fellowship room, volunteer liaison, chair notes
+  notes           TEXT,               -- what the CHAPTER said: machines, arrival, when the bus leaves
   created_at      TEXT NOT NULL,
   updated_at      TEXT NOT NULL,
+  checkin_note    TEXT,               -- what the DESK wrote on the Friday about what turned up
+  number          INTEGER,            -- 01..99; the chapter half of a printed person number
   UNIQUE (name, level)
 );
 CREATE INDEX idx_schools_kind_status_level ON schools (kind, status, level);
@@ -96,6 +98,10 @@ CREATE TABLE people (
 
   created_at       TEXT NOT NULL,
   updated_at       TEXT NOT NULL,
+  roster_import_id INTEGER,           -- which paste created them, if one did
+  board_title      TEXT,              -- "Convention President"; a delegate may hold one
+  activity_sheet_waived INTEGER NOT NULL DEFAULT 0,  -- added at the desk on the Friday
+  school_seq       INTEGER,           -- 001..999; the person half of a printed number
 
   CHECK (person_type = 'adult'    OR adult_type IS NULL),
   CHECK (person_type = 'delegate' OR (grade IS NULL AND latin_level IS NULL)),
@@ -267,8 +273,8 @@ CREATE TABLE catalog_items (
   category_id            INTEGER NOT NULL REFERENCES catalog_categories(id),
   name                   TEXT NOT NULL,
   description            TEXT,
+  item_code              TEXT UNIQUE,  -- four digits, on the answer sheet; NULL until set
   eligible_latin_levels  TEXT,   -- CSV of latin_level values; NULL means all
-  eligible_school_levels TEXT,   -- CSV of 'MS','HS'; NULL means all
   registration_scope     TEXT NOT NULL DEFAULT 'individual'
                            CHECK (registration_scope IN ('individual','chapter')),
   max_sub_selections     INTEGER,
@@ -399,7 +405,17 @@ CREATE TABLE school_stats (
   discount_cents           INTEGER NOT NULL DEFAULT 0,
   amount_owed_cents        INTEGER NOT NULL DEFAULT 0,
   amount_paid_cents        INTEGER NOT NULL DEFAULT 0,
-  updated_at               TEXT NOT NULL
+  updated_at               TEXT NOT NULL,
+  -- Meals for the caterer, adult kinds for the chairs. Counted in the same
+  -- transaction as anything that changes them, like every column above.
+  meal_regular             INTEGER NOT NULL DEFAULT 0,
+  meal_vegetarian          INTEGER NOT NULL DEFAULT 0,
+  meal_gluten_free         INTEGER NOT NULL DEFAULT 0,
+  meal_unanswered          INTEGER NOT NULL DEFAULT 0,  -- still to be chased
+  meal_none                INTEGER NOT NULL DEFAULT 0,  -- bringing their own
+  adults_sponsors          INTEGER NOT NULL DEFAULT 0,
+  adults_chaperones        INTEGER NOT NULL DEFAULT 0,
+  arrived_at               TEXT      -- the Friday desk; per CHAPTER, not per person
 );
 
 CREATE TABLE public_stats_cache (
@@ -531,7 +547,7 @@ CREATE TABLE documents (
 
 ---
 
-## Contest submissions (schema only, no UI in the demo)
+## Contest submissions (schema only, no UI yet)
 
 Pre-convention contests, graphic arts entries, and lost-and-found photos all follow one upload path: the browser posts the file to Modal, Modal hands it to the Apps Script puppet, and the puppet files it under the **automated Drive root** — organized by contest, then by chapter — and returns a Drive file ID.
 
@@ -555,7 +571,7 @@ CREATE INDEX idx_contest_submissions_school ON contest_submissions (school_id);
 
 **No file bytes are ever stored in the database.** Chairs are granted access to the relevant Drive folder directly and judge there; this site stores pointers, not content. This root is entirely separate from the per-school packet folders holding medical forms and waivers, which no code touches — see `structure.md`.
 
-## Awards infrastructure (schema only, no UI in the demo)
+## Awards infrastructure (schema only, no UI yet)
 
 ```sql
 CREATE TABLE scores (
@@ -578,7 +594,7 @@ CREATE INDEX idx_scores_item   ON scores (item_id);
 
 # **The name parser**
 
-This is the most visible piece of the demo and the most likely to embarrass you live. Specify it precisely.
+This is the most visible piece of the site and the most likely to go wrong in front of a sponsor. Specify it precisely.
 
 **Input:** one blob of text from a textarea. **Output:** a preview array. **Never writes.**
 
@@ -672,15 +688,15 @@ All endpoints are under one Modal FastAPI app. Every endpoint declares a require
 
 ---
 
-# **Demo seed data**
+# **Seed data**
 
 All fabricated. Generated programmatically and reproducible from a fixed seed.
 
 - **12 schools** — 9 high school, 3 middle school — with plausible-sounding **invented** California school names, none of them real, at varying stages of registration so the chair dashboard shows a genuine spread.
-- **One `billing_exempt` chapter** named SCL, with a couple of adults, so the zero-invoice path is visible in the demo rather than untested.
-- A **persistent "Demonstration data — not real attendees" marker** in the site header whenever the database is seeded. The demo is projected in a room full of teachers; nobody should have to wonder.
+- **One `billing_exempt` organization** named SCL, with a couple of adults, so the zero-invoice path is exercised rather than untested.
+- A **persistent "Sample data — not real attendees" marker** in the site header whenever the database is seeded. The site is sometimes shown to a room full of teachers; nobody should have to wonder.
 - **University High School (HS)** fully populated with **30 delegates and 4 adults** (2 sponsors, 2 chaperones), realistic mixed completion: roughly 60% of activity sheets submitted, 40% of paper forms marked received, one cancelled delegate, one restored delegate, and one delegate whose name exercises the particle parser.
 - **4 admin accounts** with `*` for the two convention presidents and two technology commissioners.
 - **A populated audit log** covering the past several weeks, so the log page shows something real.
 - **One partial payment** recorded against Uni so the invoice shows a nonzero balance.
-- A **"Reset demo data"** button behind `*`, so the presentation can be rerun cleanly if something goes wrong mid-demo.
+- A **"Rebuild sample data"** button behind `*`, so a database of invented people can be put back exactly as it started after somebody tries something out.

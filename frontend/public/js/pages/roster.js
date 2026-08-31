@@ -380,6 +380,13 @@ export async function rosterPage(host, params = []) {
               }),
             })
           : null,
+        personId
+          ? button("Save as PDF (slow)", {
+              variant: "btn--quiet",
+              onclick: () => savePacketPdf(schoolId,
+                                           [{ person_id: personId, code }]),
+            })
+          : null,
         button("Back to the roster", {
           variant: "btn--primary",
           onclick: () => reload(),
@@ -573,6 +580,12 @@ export async function rosterPage(host, params = []) {
                                                  code: row.code })),
           }),
         }),
+        button("Save as PDF (slow)", {
+          variant: "btn--quiet",
+          onclick: () => savePacketPdf(schoolId,
+            result.issued.map((row) => ({ person_id: row.person_id,
+                                          code: row.code }))),
+        }),
         button("Done", {
           onclick: async () => {
             selecting = false;
@@ -602,6 +615,17 @@ export async function rosterPage(host, params = []) {
     };
   }
 
+  /* `data.school`, not `school`.
+   *
+   * `columns()` is a sibling of `render()`, not nested inside it, so the
+   * `const school` declared there is not in scope here -- and reading it threw
+   * "school is not defined" the first time a sponsor with people on their
+   * roster opened this page. A chapter with an empty roster renders the empty
+   * state instead of a table, never calls this, and looked fine.
+   *
+   * `data` is a closure variable of the page itself, so it IS in scope, and it
+   * is the same object `render` reads from.
+   */
   function columns() {
     /* A chair opening a chapter wants to know who is in it and to be able to
      * act. Grade and Latin level stay out: they are the sponsor's working
@@ -634,7 +658,8 @@ export async function rosterPage(host, params = []) {
                   "Chapter leader")
               : null) },
         { key: "id", label: "ID", sortable: true,
-          render: (row) => el("span", { class: "mono" }, personNumber(school, row)) },
+          render: (row) => el("span", { class: "mono" },
+            personNumber(data.school, row)) },
         { key: "position", label: "Position", sortable: true,
           render: (row) => position(row) },
         { key: "form_status", label: "Activities", render: formState },
@@ -658,7 +683,8 @@ export async function rosterPage(host, params = []) {
       // The same number printed on their sheet and shown on their account, so
       // a sponsor reading one out over the phone is reading the same thing.
       { key: "id", label: "ID", sortable: true,
-        render: (row) => el("span", { class: "mono" }, personNumber(school, row)) },
+        render: (row) => el("span", { class: "mono" },
+            personNumber(data.school, row)) },
       { key: "person_type", label: "Type", sortable: true,
         render: (row) => row.person_type === "delegate"
           ? "Delegate"
@@ -922,6 +948,11 @@ export async function rosterPage(host, params = []) {
             codes: [{ person_id: row.id, code: result.code }],
           }),
         }),
+        button("Save as PDF (slow)", {
+          variant: "btn--quiet",
+          onclick: () => savePacketPdf(schoolId,
+                                       [{ person_id: row.id, code: result.code }]),
+        }),
         button("Done", { onclick: async () => { dialog.remove(); await reload(); } })));
 
     clear(host);
@@ -947,6 +978,27 @@ export async function rosterPage(host, params = []) {
       return a.person_type < b.person_type ? -1 : 1;
     }
     return pick(a) < pick(b) ? -direction : pick(a) > pick(b) ? direction : 0;
+  }
+}
+
+/** Save the same sheets as a PDF file.
+ *
+ *  PRINT IS THE FAST PATH; THIS IS NOT, AND THE BUTTON SAYS SO. WeasyPrint
+ *  needs Pango and Cairo, which live on a second Modal image that only wakes
+ *  when somebody asks for a PDF — half a minute, the first time each day.
+ *  Print sits beside it and produces the identical document.
+ *
+ *  This is for the sponsor who wants a file to keep, or whose print dialog
+ *  mangles the page. Returning the promise is what makes the button disable
+ *  itself and spin for the whole wait.
+ */
+export async function savePacketPdf(schoolId, codes) {
+  try {
+    await api.postFile("/sponsor/packet.pdf",
+                       { school_id: schoolId || undefined, codes },
+                       "packet.pdf");
+  } catch (error) {
+    await tell({ title: "The PDF did not build", body: error.message });
   }
 }
 

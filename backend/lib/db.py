@@ -381,7 +381,7 @@ class Tx:
         need them.
 
         `ts` overrides the timestamp. Request paths never pass it -- it exists
-        so the demo seed can lay down a log that spans the weeks it claims to,
+        so the seed can lay down a log that spans the weeks it claims to,
         rather than months of registration all stamped one Tuesday.
         """
         if value_detail is not None and action != "payment.record":

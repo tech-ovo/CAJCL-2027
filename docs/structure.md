@@ -2,17 +2,15 @@
 
 *Carl Liu + Timothy Chen | 2027 CAJCL Convention Technology Commissioners*
 
-This document describes the structure of the 72nd CAJCL State Convention website — University High School, Irvine, March 12–13, 2027. A demo of the registration component will be presented at the August 29th state board meeting, and includes only the functionality related to registration.
+This document describes the structure of the 72nd CAJCL State Convention website — University High School, Irvine, March 12–13, 2027. Registration is built and running; the sections below describe the whole site, including the parts that are not. `docs/TODO.md` says which is which, with estimates.
 
-Throughout, *[Demo: …]* marks what is and is not in scope for that meeting.
+Throughout,  marks what is and is not in scope for that meeting.
 
 # **Public**
 
 Most of the site sits behind a login for security. The only public sections are a small set of welcome pages.
 
 The welcome page carries the masthead, the convention theme, the dates and venue, and live statistics: the number of registered schools split into middle school and high school, and the number of registered attendees split into delegates and adults. These statistics are served from a cached single row rather than computed on request, and the page renders a build-time snapshot of the convention facts immediately so that a visitor arriving while Modal is cold sees a complete page rather than a spinner.
-
-*[Demo: the welcome page with statistics. Later, general registration information for a public audience, relevant links, corporate sponsors, and the convention board.]*
 
 # **Account**
 
@@ -24,11 +22,7 @@ They enter it once, or scan the QR code on their printed sheet, and `localStorag
 
 If someone loses their code they talk to their sponsor, who regenerates it. Regeneration invalidates the old code, the old QR, and every session derived from it, and it **must immediately offer a single-attendee reprint** — otherwise the sponsor is left holding a packet page whose QR no longer works, with no obvious way to produce a new one.
 
-*[Demo: all of this.]*
-
 Delegates can later see their personalized schedule with mandatory events and their own signups, links to voting and other activities, and eventually scores and point totals. Adults can see their duties, contact information for their shifts, and emergency contacts. Everyone gets the campus map, which is available only after login for security.
-
-*[Demo: none of this.]*
 
 # **Registration**
 
@@ -37,8 +31,6 @@ Delegates can later see their personalized schedule with mandatory events and th
 The sponsor has already registered through [the official CAJCL site](https://n344.fmphost.com/fmi/webd#CAJCL-Database), which we do not control. When we are notified by email that a new school has registered, an admin creates the school in the dashboard — name, middle school or high school — and creates one or more sponsor accounts, which generates their codes. An admin then **manually** sends each sponsor an email from the official CAJCL account containing detailed instructions and their code. Nothing about this is automated; there is no bulk mailing anywhere in this system.
 
 A chapter that sends both middle and high school delegates registers twice, as two separate schools, since they usually have separate sponsors anyway.
-
-*[Demo: the admin flow for creating a school and its sponsor accounts, shown live at the start of the presentation. The email itself is composed by hand outside the site.]*
 
 ## The roster
 
@@ -58,8 +50,6 @@ An attendee who can no longer attend is **marked cancelled rather than deleted**
 
 A person is never **moved** between chapters. Chapters are completely separate, and a chapter sending both middle and high school delegates is already two schools with two sponsors. If a sponsor enters someone under the wrong chapter, they cancel that row and enter them again under the right one.
 
-*[Demo: all of this. The parsing logic should be genuinely good, since it is the most impressive thing to show a board. Later: richer duplicate detection, a manual per-student edit form with more validation, and SCL and delegate-at-large registration — which is easy, just a school named SCL and a school named At Large with some ad hoc handling. SCL does not pay but still needs accounts; members at large pay normally.]*
-
 ## The printed packet
 
 The site generates a printable packet for the sponsor. It contains one page per attendee with that person's name, ID, access code, QR code, and the instructions for finishing registration, plus a cover sheet for the chapter.
@@ -73,8 +63,6 @@ That Drive folder link is stored in the database and visible **only to the Conve
 The printed sheet also notes that an attendee with no access to any electronic device can ask their sponsor to print physical copies of the [delegate](https://docs.google.com/document/d/1G1BEMj3XtU-W4DLDzbMDaL9iJW1q0Q4-KvWGX6APQSs/edit?usp=sharing) and [adult](https://docs.google.com/document/d/1uiMRT6wFq2TGTYWkrJiq4cD6a5gEKrSRR-9K2LoCVnI/edit?usp=sharing) forms, which the sponsor then transcribes. This is strongly discouraged, and the printed sheet says so.
 
 Because the sheet carries a working credential, it says that too, and shows the attendee's name large enough that a sponsor cannot hand the wrong page to the wrong student.
-
-*[Demo: the packet, rendered server-side from a single HTML template. That template is served to the browser as a print view and is also what WeasyPrint consumes to produce the PDF, so there is one layout to maintain rather than two. If time runs short, ship the print view and add the PDF renderer after; both need Modal either way, so neither is a fallback for the other.]*
 
 ## What delegates fill out online
 
@@ -90,8 +78,6 @@ A middle school chapter's delegates see only grades 6–8 and levels MS-1 throug
 
 None of these choices are binding. They exist so the Academics, Activities, and Athletics chairs can plan, and the form says so plainly.
 
-*[Demo: all of this, including the eligibility gating, the hard block on test count, the graphic arts sub-categories, and chapter entries.]*
-
 ## What adults fill out online
 
 The **Adult Registration Sheet** becomes a web form collecting name, email, cell phone, type (Latin teacher/sponsor, parent/chaperone, SCL, other), meal preference, and Latin knowledge on the original four-level scale: none, novice, intermediate, advanced. Keep all four even though every current role requires either nothing or advanced — different jobs need different familiarity with the language, and a future chair should be able to mark a role as requiring intermediate Latin without a schema change.
@@ -101,8 +87,6 @@ Adults then choose volunteer roles from the same dashboard-editable catalog: Whe
 "Please sign up for at least two roles" is a **warning, not a block**. An adult who ignores it can still submit.
 
 **SCL adults do not complete this form.** Their type is prefilled and their roles are assigned separately, outside the website.
-
-*[Demo: all of this.]*
 
 ## Payment and invoices
 
@@ -120,8 +104,6 @@ There is **no refund**, for a school or an attendee, in any circumstance: an eve
 
 If a fee ever did change mid-cycle it is handled ad hoc rather than by machinery, using the discount field and — where money has to go back — a negative payment row. The payment history and the audit log carry the record.
 
-*[Demo: the invoice including the discount line and the exempt path, the sponsor's view of amount owed and amount paid, and the admin action to record a payment.]*
-
 ## Deadlines
 
 Delegate and adult forms lock on **February 13, 2027**, the same date as the payment deadline. The lock date is editable in the dashboard, and an admin can unlock an individual person when a legitimate exception comes up.
@@ -134,31 +116,23 @@ An admin with `*` can create new roles with any combination of scopes and grant 
 
 **Viewing another account.** An admin with `*` can open a read-only view of exactly what another person sees, which is the only practical way to debug a confused sponsor. It requires re-entering the admin's own code, expires after thirty minutes, shows a permanent banner naming both identities, and never reveals the target's code. Editing while impersonating requires an explicit second toggle. Every action inside the session is logged with both the acting identity and the impersonator.
 
-*[Demo: four admin accounts with `*` for the two convention presidents and two technology commissioners, plus the role-creation UI and impersonation.]*
-
 ## `Registration`
 
 Registration chairs track progress and numbers: how many chapters have registered, how large each is, how many attendees have completed their forms, and what has been paid. Chairs will track logistics on the website rather than in a separate Google Sheet — fellowship room, volunteer liaison from Uni or Woodbridge — referencing the [sheet](https://docs.google.com/spreadsheets/d/1a96kLUzhJIifKt0-ab-NkzhDb9JlXXJZZwW43Aug9J0/edit?usp=sharing) used previously. On Friday a per-chapter checklist streamlines check-in. Everything is exportable at any point if things break down, but keeping it on the site is far more streamlined.
 
 Nametag PDF generation is deferred.
 
-*[Demo: the chair dashboard with per-school progress, totals, and completion tracking. Nametags and the Friday checklist come later.]*
-
 ## `Academics, Activities, and Athletics`
 
 Chairs track how many students registered for each test and activity so they can prepare materials. During convention they enter scores directly; academic chairs upload a scan of the bubble sheets for optical mark recognition.
 
-**Pre-convention contests** — Modern Myth, Poetry, Slogan (English), and Slogan (Latin) — are submitted by delegates **through the website**. The delegate uploads their file to the portal, Modal passes it to the Apps Script puppet, and the puppet files it into Timothy's Drive under a folder structure organized by contest and then by chapter, returning the Drive file ID for Modal to store alongside the submission record. Chairs are then simply granted access to the relevant contest folder in Drive and judge from there; they do not download anything through this site.
+**Pre-convention contests** — Modern Myth, Poetry, Slogan (English), and Slogan (Latin) — are submitted by delegates **through the website**. The delegate uploads their file to the portal, Modal passes it to the Apps Script puppet, and the puppet files it into the Google Drive under a folder structure organized by contest and then by chapter, returning the Drive file ID for Modal to store alongside the submission record. Chairs are then simply granted access to the relevant contest folder in Drive and judge from there; they do not download anything through this site.
 
-This is a **different Drive mechanism** from the packet folders described under Registration. Contest submissions are written by Apps Script, live in Timothy's Drive, are organized automatically, and are non-sensitive student creative work. Medical forms and waivers are uploaded manually by sponsors to a separate folder that no code touches and only the Presidents can open. Keep them structurally separate, with separate folder roots, so no future change can accidentally widen access to the second while working on the first.
-
-*[Demo: none of this, though the activity registration counts the chairs will eventually consume are already being collected. When it is built, the same upload path serves graphic arts entries and lost-and-found photos.]*
+This is a **different Drive mechanism** from the packet folders described under Registration. Contest submissions are written by Apps Script, live in the Google Drive, are organized automatically, and are non-sensitive student creative work. Medical forms and waivers are uploaded manually by sponsors to a separate folder that no code touches and only the Presidents can open. Keep them structurally separate, with separate folder roots, so no future change can accidentally widen access to the second while working on the first.
 
 ## `Awards`
 
 Points are tabulated automatically from events. A Google Slides deck, sticker sheet, and awards script are generated from final scores. Delegates and sponsors receive a score report.
-
-*[Demo: none of this. Set up the database infrastructure — a points column and the shape of a score record — so the schema doesn't need reworking later.]*
 
 ## Site settings
 
@@ -166,21 +140,15 @@ Everything a future commissioner would otherwise need code to change lives in da
 
 The activity and role catalogs are likewise editable through a web UI — items, sub-options, eligibility by Latin level and school level, and whether an item is offered at all. Adding a new *ludus* for 2028 requires no code. **Categories and their rules** — the minimum and maximum selection counts, and whether a rule blocks or warns — stay in a migration: a wrong rule stops delegates submitting for a reason nobody can find, and that is not a thing to type into a box.
 
-*[Demo: all of this, since it is what makes the site inheritable.]*
-
 # **Utilities**
-
-*[Demo: nothing in this section.]*
 
 **Schedule.** Delegates view the events they signed up for and register for new ones like Pandora's Breakout Box. Opt-in notifications on mobile, including shift reminders for some adults.
 
 **Map.** Interactive map of Uni with every event location marked and directions available. Attendees see what is happening now and what is happening soon. Tapping a location or event opens details — live Certamen scores, colloquia abstracts and slides — plus signup links.
 
-**Lost and found.** Images stored in Timothy's Google Drive through the Apps Script puppet, with Drive file IDs cached in the database rather than crawled.
+**Lost and found.** Images stored in the Google Drive through the Apps Script puppet, with Drive file IDs cached in the database rather than crawled.
 
 # **Miscellaneous**
-
-*[Demo: nothing in this section.]*
 
 **Certamen.** A central hub for resources, CARCER placements, brackets and scores, possibly question-by-question statistics like [what Princeton does](https://www.princetoncertamen.org/past-questions), and Open Certamen registration with teams and matchups.
 
@@ -189,3 +157,154 @@ The activity and role catalogs are likewise editable through a web UI — items,
 **Scavenger hunt.** Something physical with volunteers staffed around campus may well be more fun than anything digital.
 
 **Feedback form.** Available throughout convention, possibly with prizes for the most helpful feedback.
+
+---
+
+# **Appendix A: a roster paste worth keeping**
+
+Kept because it is the hardest input the parser has to survive, and because
+every line in it is deliberate. Paste it into **Roster → Paste a roster** after
+any change to `backend/lib/names.py` and read the preview against the table
+below. `backend/tests/test_names.py` covers the same ground automatically; this
+is for looking at it with your own eyes.
+
+**Those are real tab characters.** Copy the block rather than retyping it, or
+paste three columns out of a spreadsheet, which produces exactly this.
+
+```
+Aurelia Vance	9	HS-1
+Marcus DeLuca	10	HS-2
+Priya Raghunathan	11	HS-3
+Chen, Wei-Lin	9	HS-1
+Okonkwo, Ngozi A.	12	HS-Adv
+Sofia van der Berg	10	HS-2
+Jamal Washington III	11	HS-3
+Elena Marie Castellanos	9	HS-1
+theodore huang	10	HS-2
+MIRANDA OYELARAN	12	HS-Adv
+Rafael Ortiz-Mendoza	11	HS-3
+Yuki Tanaka	9	HS-1
+1. Amara Nwosu	10	HS-2
+2. Dmitri Volkov, Jr.	12	HS-Adv
+3. Isabella Rossi	11	HS-3
+Aurelia Vance	9	HS-1
+```
+
+| Line | What it shows |
+| --- | --- |
+| `Chen, Wei-Lin` | `Last, First` read correctly — first name Wei-Lin |
+| `Okonkwo, Ngozi A.` | inverted **and** a middle initial |
+| `Sofia van der Berg` | `van der` stays with the surname, not the middle name |
+| `Jamal Washington III` | a generational suffix in its own field |
+| `theodore huang` | typed lower case, filed as Theodore Huang |
+| `MIRANDA OYELARAN` | typed shouting, filed as Miranda Oyelaran |
+| `1. Amara Nwosu` | numbered list, numbers discarded |
+| `Dmitri Volkov, Jr.` | a comma that is **not** `Last, First` |
+| `Aurelia Vance` twice | the only row flagged, as a duplicate |
+
+The last row is the only one flagged, and it is flagged as a duplicate rather
+than rejected: the sponsor decides.
+
+---
+
+# **Appendix B: questions sponsors ask**
+
+**These are aimed at sponsors**, and they were written for a room — short
+enough to answer out loud, and honest where the answer is "not yet". A board
+or a parent asks the same things in a different order.
+
+Some answers name specific behaviour. Check them against the site before
+relying on one: a few were written when parts of this were still unbuilt.
+
+### About the students
+
+**"What about student privacy?"**
+Delegate email addresses are never collected — several delegates are eleven.
+Medical forms and waivers are paper, scanned by the sponsor into their own
+Drive folder that no code here reads. The site records only that a form
+arrived, never what is in it.
+
+**"Is this real student data?"**
+No. Every chapter, delegate and parent on the site is invented, and the banner
+at the top of every page says so. The only real people are the board members in
+this room.
+
+**"What if a student does not have a phone or a computer?"**
+Their sponsor can print a paper copy of the form and type the answers in for
+them. It is slower and mistakes are harder to catch, so the packet says to
+avoid it where possible — but nobody is locked out.
+
+**"Can a student change their own name?"**
+No. Names come from the sponsor's roster, and a delegate cannot edit theirs.
+This is deliberate: the name on the roster is the name on the award.
+
+**"What stops a student signing in as someone else?"**
+Nothing except holding the other student's sheet, and the sheet says so in
+plain words. That is the trade for having no passwords. Every sheet carries one
+name in large type so a sponsor cannot hand the wrong page to the wrong
+student, and a lost sheet is replaced in about ten seconds.
+
+### About the sponsors
+
+**"How much work is this for me?"**
+Paste your roster once. Tick each paper form as it arrives. That is the whole
+job. Everything else — the invoice, the packet, the codes — is generated.
+
+**"What if my spreadsheet is a mess?"**
+That is the case it was built for. You just watched it read four different
+formats in one paste. Anything ambiguous is flagged rather than guessed at, and
+every row is editable before anything is saved.
+
+**"Can two of us from the same school use it?"**
+Yes. A chapter can have more than one sponsor and both can edit the roster. If
+you both paste a roster at the same time you will get both rosters — the site
+warns about duplicates but does not stop you.
+
+**"What if a student drops out after we have paid?"**
+They are marked cancelled and stay on the invoice, so your balance still reads
+zero. There are no refunds — the convention runs on pre-payment — and the site
+does not pretend otherwise by showing you a credit that is never coming.
+
+**"Does the deadline actually lock me out?"**
+It locks the students out of their own forms. A chair can reopen any individual
+form, and you can always ask.
+
+### About the money
+
+**"Who sees what we have paid?"**
+You, and the registration chairs. Not other chapters. The invoice shows the
+arithmetic rather than a total, so if the number is wrong you can see where.
+
+**"What if the fee changes after we are invoiced?"**
+It is not expected to once registration opens. If it has to, the site handles
+it with a discount or a negative payment, and both leave a visible trail on
+your invoice.
+
+**"We are not billed. Will the site cope?"**
+Yes — that is a flag on the chapter, not a name check, so it keeps working if
+SCL is ever typed differently. An exempt chapter's invoice says why it is zero
+instead of showing a blank page.
+
+### About the system
+
+**"Who pays for this?"**
+Nobody. All three services are on free tiers with a large margin, and it has
+been measured rather than estimated.
+
+**"What happens if it goes down during convention?"**
+There is a local copy that runs with no internet at all, and every backup is an
+ordinary SQLite file that opens in free tools. The runbook is written for
+somebody who did not build this and is panicking.
+
+**"Who maintains it next year?"**
+Next year's commissioners, and that is the point. Every fee, deadline, date and
+block of printed wording is editable from the Settings page without touching
+code. The handover documents are in the repository.
+
+**"What is not built yet?"**
+Scores, tabulation and Certamen brackets. Registration is finished; the awards
+side is not. There is a list with time estimates, and it is honest.
+
+**"Can we see the code?"**
+It is public. That is deliberate — the next commissioners inherit it, and a
+private repository would have to be handed over rather than simply found.

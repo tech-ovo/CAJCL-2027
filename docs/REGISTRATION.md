@@ -30,16 +30,21 @@ Sponsors will give attendees their code on a printed packet. That packet will al
 When you log in, you'll see this menu.
 
 ```
-Welcome   Registration  |  Registration   Chapters   Check-in
+Welcome   Registration  |  Overview   Chapters   Check-in     Resources   [name]   Sign out
 ```
 
-The first **Registration** is your own form (I might change the second to **Overview** later). Those after the divider are your job.
+The first **Registration** is your own form — you attend too, so you have a
+medical form and a meal preference like everybody else. Those after the divider
+are your job.
 
 |  |  |
 | --- | --- |
-| **Registration** (maybe **Overview**) | See stuff. |
+| **Overview** | See stuff. |
 | **Chapters** | Do stuff. |
 | **Check-in** | Check-in process on March 12th! |
+
+**Resources** is at the far right, past your name: the Certamen practice app,
+Celerius, and the scrimmages Discord. Nothing to do with registration.
 
 At the far right of that row is a small sun or moon. It switches the site between light and dark, remembers which you picked on that device, and does nothing else. Left alone it follows whatever your phone or laptop is already set to.
 
@@ -164,6 +169,8 @@ Payments are only ever added, never edited or deleted (good recordkeeping practi
 
 You can view an individual chapter from **Chapters → Roster**, or by clicking a chapter's name on Overview. You see who is in it, what each person is, and their number — the same number printed on their sheet, so a sponsor reading one out over the phone is reading the same thing you are looking at.
 
+Each chapter has a **Chapter note** at the top of its roster — Certamen machines, roughly when the bus arrives, when it has to leave. The sponsor writes it; it appears again at the desk on the Friday.
+
 **Position** is more useful than "Adult" repeated down a column. It shows Sponsor, Chaperone, SCL — or a board title. What you can do here:
 
 |  |  |
@@ -171,7 +178,9 @@ You can view an individual chapter from **Chapters → Roster**, or by clicking 
 | **Paste a roster** | For a sponsor who cannot get their own spreadsheet in. A second paste adds to the roster; it does not replace it. |
 | **Add one person** | One name, and whether they are a delegate, chaperone or sponsor. Shows their new code once. |
 | **Add the sponsor** | Only appears when a chapter has none. Same thing, and it is how a new chapter gets somebody who can sign in. |
-| **Edit** | Corrects a name. Their code does not change. |
+| **Edit** | Corrects a name, and the parent/guardian's name and phone. Their code does not change. |
+| **Their form** | Fills in a delegate's registration form for them. Recorded in the log as your doing. |
+| **Chapter teams** | Kickball, Fugepilam, Ultimate Frisbee — entered by the chapter, not by a delegate. |
 | **New code** | On one person's row. Their old code stops working at once. |
 | **Issue new codes** | The same for several people. Tick them, then confirm. |
 | **Reopen form** | Lets one person edit their own answers again after the deadline. **Close form** puts them back. |

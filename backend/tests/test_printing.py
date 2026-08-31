@@ -525,3 +525,133 @@ def test_the_paper_forms_page_lists_only_the_forms_that_apply(fx):
     assert "This form is" in adults_only
 
     assert "These three forms are" in both
+
+
+# ---------------------------------------------------------------------------
+# The PDF path, end to end
+# ---------------------------------------------------------------------------
+# WeasyPrint is not installed here and is not worth installing: it needs Pango
+# and Cairo from apt. What these cover is everything on either side of it --
+# the endpoint, the scope checks, the codes reaching the template, and the
+# bytes reaching the browser -- because the bug this path actually had was
+# never in WeasyPrint. It was that nothing called any of this.
+
+@pytest.fixture
+def pdf_client(fx, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from backend import api
+
+    monkeypatch.setattr(api, "_db", fx.db)
+    return TestClient(api.app, raise_server_exceptions=False)
+
+
+class FakeModal:
+    """Stands in for `modal.Function.from_name(...).remote(...)`.
+
+    Records what it was asked to render, so a test can assert the codes
+    survived the trip rather than only that a request succeeded.
+    """
+
+    def __init__(self, answer=b"%PDF-1.7 fake", boom=None):
+        self.answer, self.boom, self.calls = answer, boom, []
+
+    def install(self, monkeypatch):
+        import types
+
+        outer = self
+
+        class Function:
+            @staticmethod
+            def from_name(app, name):
+                outer.calls.append(("from_name", app, name))
+                return outer
+
+            pass
+
+        monkeypatch.setitem(__import__("sys").modules, "modal",
+                            types.SimpleNamespace(Function=Function))
+        return self
+
+    def remote(self, **kw):
+        self.calls.append(("remote", kw))
+        if self.boom:
+            raise RuntimeError(self.boom)
+        return self.answer
+
+
+def test_the_pdf_endpoint_hands_back_the_bytes_it_was_given(fx, pdf_client,
+                                                            monkeypatch):
+    """The whole point: a caller, a file, a name to save it under."""
+    fake = FakeModal().install(monkeypatch)
+
+    response = pdf_client.post(
+        "/sponsor/packet.pdf",
+        headers={"Authorization": f"Bearer {fx.sign_in('uni_sponsor')}"},
+        json={"codes": [{"person_id": fx.delegate_id, "code": "DEL-K7M2N-9PQ4T"}]})
+
+    assert response.status_code == 200, response.text
+    assert response.content == b"%PDF-1.7 fake"
+    assert response.headers["content-type"] == "application/pdf"
+    assert "university-high-school" in response.headers["content-disposition"]
+
+
+def test_the_codes_reach_the_renderer(fx, pdf_client, monkeypatch):
+    """The bug that made this path pointless before it had a caller: the
+    packet rendered blocks where every access code belongs, because nothing
+    passed them down. A PDF full of blocks is not a reprint."""
+    fake = FakeModal().install(monkeypatch)
+
+    pdf_client.post(
+        "/sponsor/packet.pdf",
+        headers={"Authorization": f"Bearer {fx.sign_in('uni_sponsor')}"},
+        json={"codes": [{"person_id": fx.delegate_id, "code": "DEL-K7M2N-9PQ4T"}]})
+
+    sent = [kw for kind, kw in
+            [(c[0], c[-1]) for c in fake.calls] if kind == "remote"][0]
+    assert sent["codes"] == {str(fx.delegate_id): "DEL-K7M2N-9PQ4T"}
+    assert sent["school_id"] == fx.uni_id
+
+
+def test_a_code_for_another_chapter_is_refused(fx, pdf_client, monkeypatch):
+    """A sponsor may not render a sheet for somebody who is not theirs, even
+    holding a plausible-looking code. Checked BEFORE the renderer is reached,
+    so a refusal costs nothing."""
+    fake = FakeModal().install(monkeypatch)
+
+    response = pdf_client.post(
+        "/sponsor/packet.pdf",
+        headers={"Authorization": f"Bearer {fx.sign_in('uni_sponsor')}"},
+        json={"codes": [{"person_id": fx.other_delegate_id,
+                         "code": "DEL-K7M2N-9PQ4T"}]})
+
+    assert response.status_code == 403
+    assert [c for c in fake.calls if c[0] == "remote"] == []
+
+
+def test_a_renderer_that_does_not_answer_becomes_a_sentence(fx, pdf_client,
+                                                            monkeypatch):
+    """The fat image is a second thing that can be down, and it must not take
+    the page with it. Print is right there and produces the same document, so
+    the message says so."""
+    FakeModal(boom="no such function").install(monkeypatch)
+
+    response = pdf_client.post(
+        "/sponsor/packet.pdf",
+        headers={"Authorization": f"Bearer {fx.sign_in('uni_sponsor')}"},
+        json={"codes": [{"person_id": fx.delegate_id, "code": "DEL-K7M2N-9PQ4T"}]})
+
+    assert response.status_code == 422
+    assert "Use Print instead" in response.json()["error"]
+
+
+def test_the_worker_builds_the_same_html_the_browser_prints(fx):
+    """`build_html` is everything the PDF is, short of WeasyPrint. If it and
+    the print view ever diverge, there are two layouts again."""
+    from backend.workers import pdf as worker
+
+    codes = {fx.delegate_id: "DEL-K7M2N-9PQ4T"}
+    built = worker.build_html(fx.db, "packet", fx.uni_id, codes=codes)
+
+    assert "DEL-K7M2N-9PQ4T" in built
+    assert built == packet_for(fx, codes=codes)

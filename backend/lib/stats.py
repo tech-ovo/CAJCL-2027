@@ -125,6 +125,7 @@ def recompute_school(tx: Tx, school_id: int, *, settings: dict) -> dict:
         "meal_vegetarian": counts.get("meal_vegetarian") or 0,
         "meal_gluten_free": counts.get("meal_gluten_free") or 0,
         "meal_unanswered": counts.get("meal_unanswered") or 0,
+        "meal_none": counts.get("meal_none") or 0,
         "adults_sponsors": counts.get("adults_sponsors") or 0,
         "adults_chaperones": counts.get("adults_chaperones") or 0,
     }
@@ -161,6 +162,7 @@ def recompute_school(tx: Tx, school_id: int, *, settings: dict) -> dict:
         numbers["delegates_complete"], numbers["adults_complete"],
         numbers["meal_regular"], numbers["meal_vegetarian"],
         numbers["meal_gluten_free"], numbers["meal_unanswered"],
+        numbers["meal_none"],
         numbers["adults_sponsors"], numbers["adults_chaperones"],
         discount, owed, paid, clock.now_iso(),
     ))

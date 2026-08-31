@@ -12,7 +12,7 @@
 
 import * as api from "../api.js";
 import { add, el, clear, table, button, loadingRows, fullName,
-         emptyState, localDate } from "../ui.js";
+         emptyState, localDate, tell } from "../ui.js";
 import { openPrintView } from "./roster.js";
 
 /* TWO CHAIRS, TWO JOBS, ONE PAGE OF FIFTY ROWS.
@@ -194,6 +194,38 @@ export async function academicsPage(host) {
             ? el("span", { class: "pill", style: "margin-left:.5rem" },
                 "Per chapter")
             : null) },
+      /* THE NUMBER ON THE ANSWER SHEET, editable in place.
+       *
+       * The Academics chairs hold `academics`, not `*`, so the catalog editor
+       * next door is closed to them — and rightly: renaming a test or changing
+       * who may enter it is not theirs. This one field is, and it has its own
+       * endpoint that can write nothing else.
+       *
+       * Blank until somebody sets it. A test with no number is not an error,
+       * it is a test whose sheets have not been laid out yet. */
+      { key: "item_code", label: "No.",
+        render: (row) => el("input", {
+          type: "text", value: row.item_code || "", size: 4, maxlength: 4,
+          inputmode: "numeric", class: "mono",
+          "aria-label": `Test number for ${row.name}`,
+          placeholder: "····",
+          onchange: async (event) => {
+            const box = event.target;
+            box.disabled = true;
+            try {
+              const result = await api.patch(
+                `/admin/academics/item/${row.id}/code`,
+                { item_code: box.value.trim() });
+              row.item_code = result.item_code;
+              box.value = result.item_code || "";
+            } catch (error) {
+              box.value = row.item_code || "";
+              await tell({ body: error.message });
+            } finally {
+              box.disabled = false;
+            }
+          },
+        }) },
       { key: "eligible_latin_levels", label: "Open to",
         render: (row) => row.eligible_latin_levels
           ? row.eligible_latin_levels.split(",").join(", ")

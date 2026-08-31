@@ -16,17 +16,19 @@ import { add, el, clear, tabula, field, select, button, errorSummary,
          renderMarkdown, localDate, personNumber, guardUnsaved,
          draft, check, tell } from "../ui.js";
 
-/* A "No meal — I am bringing my own" option belongs at the END of this list,
- * never as the default: it is the one answer with a consequence nobody can
- * undo on the day. It is NOT here yet, because `people.meal` carries
- * CHECK (meal IN ('regular','vegetarian','gluten_free')) and SQLite cannot
- * alter a CHECK — a table rebuild is the only way, and the pragmas that
- * needs are refused by Turso.
+/* "No meal" is LAST and is never the default.
  *
- * It lands with the post-demonstration reset, when 001_core.sql is edited
- * directly. See docs/TODO.md. */
+ * It is the one answer with a consequence nobody can undo on the day: a
+ * delegate who picked it by accident, or by leaving a default alone, arrives
+ * to nothing to eat. Last in the list and spelled out in full, so choosing it
+ * takes a decision.
+ *
+ * It is for somebody bringing their own, usually for an allergy the caterer
+ * cannot safely cover — not for somebody who has not decided, which is what
+ * the empty first option is for. */
 const MEALS = [["", "Choose one"], ["regular", "Regular"],
-               ["vegetarian", "Vegetarian"], ["gluten_free", "Gluten free"]];
+               ["vegetarian", "Vegetarian"], ["gluten_free", "Gluten free"],
+               ["none", "No meal — I am bringing my own"]];
 
 export async function activitySheetPage(host, params = []) {
   /* A delegate opens this at #/activity-sheet and it is their own.
