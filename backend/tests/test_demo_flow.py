@@ -57,7 +57,7 @@ def test_the_whole_demo(fx, client, capsys):
     steps = []
 
     def step(name, detail=""):
-        steps.append(f"  {len(steps) + 1:2d}. {name}{'  — ' + detail if detail else ''}")
+        steps.append(f"  {len(steps) + 1:2d}. {name}{' — ' + detail if detail else ''}")
 
     # -- 1. an admin creates a school ------------------------------------
     created = client.post("/admin/schools", headers=chair, json={

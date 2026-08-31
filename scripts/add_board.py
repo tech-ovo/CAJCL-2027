@@ -426,7 +426,7 @@ def report(result: dict) -> str:
     lines = []
     for row in sorted(result["people"], key=lambda r: r["name"]):
         code = row["code"] or "(unchanged)"
-        lines.append(f"{code:16}  —  {row['title']}: {row['name']}")
+        lines.append(f"{code:16} — {row['title']}: {row['name']}")
     return "\n".join(lines)
 
 

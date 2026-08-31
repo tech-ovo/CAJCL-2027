@@ -469,7 +469,7 @@ def setup(reset: bool = False, seed: bool = True):
     # scroll past; a label on the line above its code is a place to lose. Code
     # first because that is the column being read out. Sorted by PERSON,
     # not by code: somebody looking at this sheet is looking for a name.
-    lines = [f"{code:16}  —  {label}"
+    lines = [f"{code:16} — {label}"
              for label, code in sorted(codes.items())]
     pathlib.Path("demo-codes.txt").write_text(
         "\n".join(lines) + "\n", encoding="utf-8")
