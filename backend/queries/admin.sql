@@ -30,7 +30,7 @@ FROM catalog_categories ORDER BY applies_to, sort_order;
 -- The whole catalog is ~150 rows and is loaded ONCE per container into memory,
 -- refreshed on mutation. It is never queried per request.
 SELECT i.id, i.category_id, i.name, i.description, i.eligible_latin_levels,
-       i.eligible_school_levels, i.registration_scope, i.max_sub_selections,
+       i.registration_scope, i.max_sub_selections,
        i.min_latin_knowledge, i.sort_order, i.active,
        c.key AS category_key
 FROM catalog_items i
@@ -47,7 +47,7 @@ FROM catalog_item_options ORDER BY item_id, sort_order;
 -- contest is a decision the state board minutes, not something typed into a box.
 UPDATE catalog_items
 SET name = ?, description = ?, eligible_latin_levels = ?,
-    eligible_school_levels = ?, registration_scope = ?, max_sub_selections = ?,
+    registration_scope = ?, max_sub_selections = ?,
     min_latin_knowledge = ?, sort_order = ?, active = ?
 WHERE id = ?;
 
@@ -164,9 +164,9 @@ LIMIT 200;
 -- because it is happening, and an entry that had to be switched on afterwards
 -- was the sort of thing discovered in March.
 INSERT INTO catalog_items (
-  category_id, name, description, eligible_latin_levels, eligible_school_levels,
+  category_id, name, description, eligible_latin_levels,
   registration_scope, max_sub_selections, min_latin_knowledge, sort_order, active
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1);
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1);
 
 -- name: catalog.option_create
 -- A sub-choice under one item: a medium under Drawing/Painting, a distance

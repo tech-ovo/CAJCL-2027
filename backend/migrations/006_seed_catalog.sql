@@ -31,6 +31,11 @@ INSERT INTO catalog_categories (key, name, description, applies_to, min_selectio
 -- the requirement stated, never hidden -- a delegate who cannot find Grammar 2
 -- assumes the site is broken.
 INSERT INTO catalog_items (category_id, name, eligible_latin_levels, sort_order) VALUES
+  -- OPEN TO EVERY LATIN LEVEL, because it does not test Latin. A first-year
+  -- Latin student and a fourth-year one start Greek in the same place, so
+  -- gating it by Latin level would exclude people for a reason that has
+  -- nothing to do with the test. NULL is how "any level" is stored.
+  ((SELECT id FROM catalog_categories WHERE key='academic_testing'), 'Elementary Greek',             NULL,               5),
   ((SELECT id FROM catalog_categories WHERE key='academic_testing'), 'Classical Art',                NULL,              10),
   ((SELECT id FROM catalog_categories WHERE key='academic_testing'), 'Daily Life',                   NULL,              20),
   ((SELECT id FROM catalog_categories WHERE key='academic_testing'), 'Derivatives',                  NULL,              30),
@@ -136,6 +141,18 @@ INSERT INTO catalog_items (category_id, name, sort_order) VALUES
   ((SELECT id FROM catalog_categories WHERE key='ludi'), 'Spelling Bee',                   90),
   ((SELECT id FROM catalog_categories WHERE key='ludi'), 'STEM Challenge',                100),
   ((SELECT id FROM catalog_categories WHERE key='ludi'), 'That''s Entertainment',         110);
+
+-- Watching it and being in it are different answers, and the Activities chair
+-- needs both: auditions are a schedule with slots, the audience is a room with
+-- seats. One tick answered neither. Two sub-choices, and somebody auditioning
+-- is in the audience for everyone else, so both may be picked.
+UPDATE catalog_items SET max_sub_selections = 2
+WHERE name = 'That''s Entertainment';
+
+INSERT INTO catalog_item_options (item_id, name, sort_order)
+SELECT id, 'Auditioning', 10 FROM catalog_items WHERE name = 'That''s Entertainment';
+INSERT INTO catalog_item_options (item_id, name, sort_order)
+SELECT id, 'Watching',    20 FROM catalog_items WHERE name = 'That''s Entertainment';
 
 -- ---------------------------------------------------------------------------
 -- Pre-convention contests (seeded, inactive, no UI in the demo)

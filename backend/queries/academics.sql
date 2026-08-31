@@ -72,7 +72,7 @@ ORDER BY sc.name, p.last_name, p.first_name;
 -- name: academics.item
 -- One catalog item with the category it belongs to. A primary-key lookup.
 SELECT i.id, i.name, i.description, i.registration_scope,
-       i.eligible_latin_levels, i.eligible_school_levels, i.active,
+       i.eligible_latin_levels, i.active,
        c.name AS category, c.key AS category_key
 FROM catalog_items i
 JOIN catalog_categories c ON c.id = i.category_id

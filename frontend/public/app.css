@@ -519,6 +519,12 @@ footer.page > .hair { margin-top: 0; }
  * ======================================================================== */
 
 .field { margin-bottom: var(--space-5); max-width: 30rem; }
+
+/* A HEADING INSIDE A FORM needs air above it, and this is the third time that
+ * has come up: it separates one group of questions from the last one's final
+ * answer, and without the space it reads as a caption for the field above.
+ * Anything acting as a sub-heading in a form takes this class. */
+.form-section { margin-top: var(--space-6); }
 .field--wide { max-width: none; }
 
 /* Labels sit above inputs, left-aligned to the input edge. */

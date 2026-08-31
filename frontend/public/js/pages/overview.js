@@ -47,7 +47,11 @@ export async function overviewPage(host) {
     return el("div", { class: "stats" },
       pair("Chapters", t.chapters,
            progress(t.chapters_started, t.chapters, "have started")),
-      pair("Delegates", t.delegates.toLocaleString("en-US")),
+      // Split, because almost every question a chair is asked about numbers
+      // is really about one level: how many tests to print at each level, how
+      // many rooms, which Certamen bracket.
+      pair("Delegates", t.delegates.toLocaleString("en-US"),
+           `${t.delegates_ms} middle · ${t.delegates_hs} high`),
       pair("Adults", t.adults.toLocaleString("en-US"),
            `${t.sponsors} sponsors · ${t.chaperones} chaperones`),
       pair("Forms complete", `${t.complete}/${t.people}`,
@@ -65,6 +69,9 @@ export async function overviewPage(host) {
    * by somebody who is not a registration chair, on a deadline that is not the
    * registration deadline. The caterer wants a number; the unanswered count is
    * the part the chairs have to chase. */
+  /* The meal block ends one subject and the chapter table begins another.
+   * Without this they ran together, and "Total attending" read as a heading
+   * for the table under it. */
   function meals(t) {
     const known = t.meal_regular + t.meal_vegetarian + t.meal_gluten_free;
     const rows = [
@@ -73,13 +80,13 @@ export async function overviewPage(host) {
       ["Gluten free", t.meal_gluten_free],
     ];
 
-    return el("section", {},
+    return el("section", { style: "margin-bottom:var(--space-7)" },
       el("h2", {}, "Meals"),
       el("p", { class: "muted" },
         `${known.toLocaleString("en-US")} answered, `
         + `${t.meal_unanswered.toLocaleString("en-US")} still to come. `
         + "This is everybody attending, chapters and SCL alike, and counts "
-        + "active attendees only — somebody who withdrew is not eating."),
+        + "active attendees only."),
 
       el("div", { class: "totals" },
         ...rows.map(([label, count]) => el("div", { class: "totals__row" },
@@ -92,7 +99,7 @@ export async function overviewPage(host) {
           el("span", {}, "Not answered yet"),
           el("span", { class: "mono" }, t.meal_unanswered)),
         el("div", { class: "totals__row totals__row--final" },
-          el("span", {}, "Attending"),
+          el("span", {}, "Total attending"),
           el("span", { class: "mono" }, known + t.meal_unanswered))));
   }
 
@@ -135,11 +142,15 @@ export async function overviewPage(host) {
                   : null) },
             { key: "level", label: "Level" },
             { key: "delegates_active", label: "Delegates", num: true },
+            // The pill goes BEFORE the number. After it, every flagged row's
+            // figure sat a pill's width further right than every other row's,
+            // and a column of numbers you cannot read down is not a column.
             { key: "adults_active", label: "Adults", num: true,
-              render: (row) => el("span", { class: "mono" }, row.adults_active,
+              render: (row) => el("span", {},
                 row.has_sponsor ? null
-                  : el("span", { class: "pill", style: "margin-left:.4rem" },
-                       "No sponsor")) },
+                  : el("span", { class: "pill", style: "margin-right:.4rem" },
+                       "No sponsor"),
+                el("span", { class: "mono" }, row.adults_active)) },
             { key: "complete", label: "Complete", num: true,
               render: (row) => el("span", { class: "mono" },
                 `${row.complete}/${row.people}`) },

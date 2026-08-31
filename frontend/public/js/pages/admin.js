@@ -103,8 +103,13 @@ export async function adminPage(host) {
    * is how a delegate ends up unable to submit for a reason nobody can find.
    * Adding a category stays a migration; adding things TO one does not.
    */
+  /* NO SCHOOL-LEVEL FIELD. A chapter is wholly middle or high school -- one
+   * sending both registers as two chapters -- and the Latin levels already
+   * say which: MS-1 through MS-3 are a middle school's, HS-1 through HS-Adv a
+   * high school's. Two controls for one fact meant they could disagree, and
+   * the one that lost was invisible. The column is gone from the database too.
+   */
   const LATIN_LEVELS = ["MS-1", "MS-2", "MS-3", "HS-1", "HS-2", "HS-3", "HS-Adv"];
-  const SCHOOL_LEVELS = ["MS", "HS"];
 
   async function renderCatalog() {
     const data = await api.get("/admin/catalog");
@@ -167,8 +172,6 @@ export async function adminPage(host) {
     const facts = [
       item.eligible_latin_levels && item.eligible_latin_levels.length
         ? item.eligible_latin_levels.join(", ") : "Any Latin level",
-      item.eligible_school_levels && item.eligible_school_levels.length
-        ? item.eligible_school_levels.join(", ") : null,
       item.registration_scope === "chapter" ? "Entered by the chapter" : null,
       item.min_latin_knowledge ? `Needs ${item.min_latin_knowledge} Latin` : null,
       item.max_sub_selections
@@ -213,15 +216,23 @@ export async function adminPage(host) {
     const description = input({ id: "cat-desc",
                                 value: item ? item.description || "" : "" });
     const latin = el("div", { class: "choices choices--two" });
-    const school = el("div", { class: "choices choices--two" });
     const subs = input({ id: "cat-subs", type: "number", min: "0", max: "12",
                          value: item && item.max_sub_selections
                            ? String(item.max_sub_selections) : "" });
     const chapter = el("input", { type: "checkbox" });
     if (item && item.registration_scope === "chapter") chapter.checked = true;
 
-    const chosenLatin = new Set(item && item.eligible_latin_levels
-      ? item.eligible_latin_levels : []);
+    /* EVERYTHING TICKED BY DEFAULT, because that is what an empty list means.
+     *
+     * The database stores "no restriction" as no levels at all, and the form
+     * showed that as nothing ticked -- which reads as "open to nobody", the
+     * exact opposite. Somebody adding a test then ticked all seven boxes to
+     * say what was already true. Ticked-by-default and unticking to narrow is
+     * the same data and the honest picture of it. */
+    const restricted = item && item.eligible_latin_levels
+                            && item.eligible_latin_levels.length;
+    const chosenLatin = new Set(restricted ? item.eligible_latin_levels
+                                           : LATIN_LEVELS);
     for (const level of LATIN_LEVELS) {
       const box = el("input", { type: "checkbox", checked: chosenLatin.has(level),
         onchange: (event) => {
@@ -232,37 +243,24 @@ export async function adminPage(host) {
                     el("span", {}, el("span", { class: "choice__name" }, level))));
     }
 
-    const chosenSchool = new Set(item && item.eligible_school_levels
-      ? item.eligible_school_levels : []);
-    for (const level of SCHOOL_LEVELS) {
-      const box = el("input", { type: "checkbox", checked: chosenSchool.has(level),
-        onchange: (event) => {
-          if (event.target.checked) chosenSchool.add(level);
-          else chosenSchool.delete(level);
-        } });
-      add(school, el("label", { class: "choice" }, box,
-                     el("span", {}, el("span", { class: "choice__name" },
-                        level === "MS" ? "Middle school" : "High school"))));
-    }
-
     return {
-      name, description, subs, chapter, chosenLatin, chosenSchool,
+      name, description, subs, chapter, chosenLatin,
       body: [
         field({ id: "cat-name", label: "Name", control: name, wide: true }),
         field({ id: "cat-desc", label: "Description", control: description,
                 wide: true, help: "Shown under the name on the form. Optional." }),
-        el("p", { class: "label label--ink" }, "Open to which Latin levels"),
+        el("p", { class: "label label--ink form-section" },
+          "Open to which Latin levels"),
         el("p", { class: "small muted" },
-          "Leave all unticked for any level. Ticking some hides it from "
+          "All of them means anybody may enter. Unticking some hides it from "
           + "everybody else, which is how Grammar 1 and Grammar 3 stay apart."),
         latin,
-        el("p", { class: "label label--ink" }, "Open to which school levels"),
-        el("p", { class: "small muted" }, "Leave both unticked for either."),
-        school,
-        field({ id: "cat-subs", label: "Sub-choices allowed", control: subs,
-                wide: true,
-                help: "How many sub-choices somebody may pick — a medium under "
-                    + "Drawing/Painting. Leave empty for none." }),
+        el("div", { class: "form-section" },
+          field({ id: "cat-subs", label: "Sub-choices allowed", control: subs,
+                  wide: true,
+                  help: "How many sub-choices somebody may pick — a medium "
+                      + "under Drawing/Painting. Leave empty for none; you "
+                      + "will be asked for the choices themselves next." })),
         el("label", { class: "choice" }, chapter,
           el("span", {},
             el("span", { class: "choice__name" }, "Entered by the chapter"),
@@ -274,11 +272,15 @@ export async function adminPage(host) {
   }
 
   function itemPayload(fields) {
+    // All seven ticked is "no restriction", which the database stores as an
+    // empty list. Sending all seven would work and would be a lie about what
+    // was meant: a level added later would then be excluded from an item
+    // nobody ever intended to restrict.
+    const levels = [...fields.chosenLatin];
     return {
       name: fields.name.value.trim(),
       description: fields.description.value.trim() || null,
-      eligible_latin_levels: [...fields.chosenLatin],
-      eligible_school_levels: [...fields.chosenSchool],
+      eligible_latin_levels: levels.length === LATIN_LEVELS.length ? [] : levels,
       registration_scope: fields.chapter.checked ? "chapter" : "individual",
       max_sub_selections: fields.subs.value ? Number(fields.subs.value) : null,
     };
@@ -297,14 +299,26 @@ export async function adminPage(host) {
                    body: "Give it a name, then try again." });
       return;
     }
+    const payload = itemPayload(fields);
+    let created;
     try {
-      await api.post("/admin/catalog/items",
-                     { ...itemPayload(fields), category_id: category.id });
-      message = `${fields.name.value.trim()} added to ${category.name}.`;
-      render();
+      created = await api.post("/admin/catalog/items",
+                               { ...payload, category_id: category.id });
     } catch (error) {
       await tell({ body: error.message });
+      return;
     }
+
+    message = `${fields.name.value.trim()} added to ${category.name}.`;
+    // ASKING FOR THE NUMBER AND NEVER THE CHOICES was a dead end: somebody
+    // typed 3 into "Sub-choices allowed", saved, and nothing anywhere invited
+    // them to say what the three were. Go straight there.
+    if (payload.max_sub_selections) {
+      await editOptions({ id: created.id, name: payload.name,
+                          max_sub_selections: payload.max_sub_selections }, []);
+      return;
+    }
+    render();
   }
 
   async function editItem(item) {
@@ -315,13 +329,23 @@ export async function adminPage(host) {
       confirmLabel: "Save",
     });
     if (!ok) return;
+    const payload = itemPayload(fields);
+    const wasNone = !item.max_sub_selections;
     try {
-      await api.put(`/admin/catalog/items/${item.id}`, itemPayload(fields));
-      message = `${fields.name.value.trim()} saved.`;
-      render();
+      await api.put(`/admin/catalog/items/${item.id}`, payload);
     } catch (error) {
       await tell({ body: error.message });
+      return;
     }
+
+    message = `${fields.name.value.trim()} saved.`;
+    // Turning sub-choices on for the first time. Same dead end as above.
+    if (wasNone && payload.max_sub_selections) {
+      await editOptions({ ...item, name: payload.name,
+                          max_sub_selections: payload.max_sub_selections }, []);
+      return;
+    }
+    render();
   }
 
   /* NOT OFFERED, NEVER DELETED. Somebody may already have chosen it, and a
@@ -382,16 +406,23 @@ export async function adminPage(host) {
       confirmLabel: "Add it",
       cancelLabel: "Done",
     });
-    if (!ok || !fresh.value.trim()) return;
+    if (!ok || !fresh.value.trim()) { render(); return; }
 
     try {
       await api.post(`/admin/catalog/items/${item.id}/options`,
                      { name: fresh.value.trim() });
-      message = `${fresh.value.trim()} added to ${item.name}.`;
-      render();
     } catch (error) {
       await tell({ body: error.message });
+      render();
+      return;
     }
+
+    // Straight back in. A list of media or distances is entered several at a
+    // time, and closing after each one made adding four of them four trips
+    // through the same three clicks.
+    const now = [...existing, { id: null, name: fresh.value.trim(), active: 1 }];
+    message = `${fresh.value.trim()} added to ${item.name}.`;
+    await editOptions(item, now);
   }
 
   /* -------------------------------------------------------------------- */

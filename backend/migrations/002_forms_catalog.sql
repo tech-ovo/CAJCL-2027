@@ -79,7 +79,12 @@ CREATE TABLE catalog_items (
   -- CSV of latin_level values; NULL means all levels. CSV rather than a join
   -- table because this is read into memory whole and never queried against.
   eligible_latin_levels  TEXT,
-  eligible_school_levels TEXT,   -- CSV of 'MS','HS'; NULL means all
+  -- NO eligible_school_levels. A chapter is wholly middle or high school --
+  -- one sending both registers as two chapters -- and the Latin levels
+  -- above already say which: MS-1..MS-3 belong to a middle school and
+  -- HS-1..HS-Adv to a high school. Two columns for one fact could
+  -- disagree, and the one that lost would have been invisible. Nothing
+  -- ever set it.
   -- 'chapter' items are registered once per school by a sponsor or a delegate
   -- the sponsor has promoted to chapter leader -- never by an individual
   -- delegate on their own activity sheet. Kickball, Fugepilam, Ultimate.

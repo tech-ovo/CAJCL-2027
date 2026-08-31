@@ -53,7 +53,25 @@ CREATE TABLE school_stats (
   discount_cents           INTEGER NOT NULL DEFAULT 0,
   amount_owed_cents        INTEGER NOT NULL DEFAULT 0,
   amount_paid_cents        INTEGER NOT NULL DEFAULT 0,
-  updated_at               TEXT NOT NULL
+  updated_at               TEXT NOT NULL,
+  -- MEALS AND ADULT KINDS, counted here rather than by a live GROUP BY.
+  --
+  -- The caterer wants a number and the chairs want to know who is a sponsor
+  -- and who is a chaperone. Both are aggregates over `people`, and an
+  -- aggregate computed per page view is the one thing this schema refuses:
+  -- see the note at the top of backend/queries/stats.sql for the arithmetic.
+  -- Counted inside the transaction that changes them, like every other column
+  -- in this table.
+  meal_regular             INTEGER NOT NULL DEFAULT 0,
+  meal_vegetarian          INTEGER NOT NULL DEFAULT 0,
+  meal_gluten_free         INTEGER NOT NULL DEFAULT 0,
+  meal_unanswered          INTEGER NOT NULL DEFAULT 0,
+  adults_sponsors          INTEGER NOT NULL DEFAULT 0,
+  adults_chaperones        INTEGER NOT NULL DEFAULT 0,
+  -- When this chapter arrived at the Friday desk, or NULL. Arrival is per
+  -- CHAPTER, not per person: they arrive together in a bus, and ticking sixty
+  -- boxes with a queue behind you is not a thing anybody would do.
+  arrived_at               TEXT
 );
 
 -- Exactly one row, forever. The CHECK is what guarantees that.

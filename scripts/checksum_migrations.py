@@ -108,7 +108,32 @@ def first_committed() -> dict[str, str]:
 
 
 def main() -> int:
+    accept = "--accept" in sys.argv[1:]
     have, want = recorded(), current()
+
+    if accept:
+        # DELIBERATELY REWRITING THE MIGRATIONS. The only time this is
+        # legitimate, and it is not a small claim: every database that has run
+        # the old files is now on a history that no longer exists, and the only
+        # way back into step is to drop it and migrate from empty.
+        #
+        # Offered because the alternative was worse. Corrections were piling up
+        # as new files -- a comment fix here, a wording change there -- until
+        # seventeen migrations described a schema that six could have. Between
+        # conventions, when the database is going to be rebuilt anyway, folding
+        # them back in is the right move and this is how it is recorded.
+        MANIFEST.write_text(
+            HEADER + chr(10)
+            + chr(10).join(f"{want[n]}  {n}" for n in sorted(want))
+            + chr(10),
+            encoding="utf-8")
+        print(f"recorded {len(want)} migration(s), accepting every edit")
+        print()
+        print("EVERY DEPLOYED DATABASE MUST NOW BE REBUILT. It has run files "
+              "that no longer exist and its schema_migrations table will not "
+              "match. See docs/RUNBOOK.md 5b, and run:")
+        print("    modal run backend/app.py::setup --reset")
+        return 0
 
     # Refuse to record a file that has drifted since git first saw it, even if
     # the manifest has never mentioned it. That is the case this exists for.
@@ -122,6 +147,11 @@ def main() -> int:
               "one database has already run them. Restore them with `git "
               "checkout` and put the change in a NEW migration; recording them "
               "as they are would make this check agree with the mistake.",
+              file=sys.stderr)
+        print()
+        print("If you MEANT to rewrite them -- between conventions, when the "
+              "database is going to be rebuilt anyway -- run this again with "
+              "--accept. Every deployed database then has to be reset.",
               file=sys.stderr)
         return 1
 

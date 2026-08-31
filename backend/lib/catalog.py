@@ -55,7 +55,6 @@ def load(tx: Tx, *, force: bool = False) -> dict:
     for item in items:
         item["options"] = by_item.get(item["id"], [])
         item["eligible_latin_levels"] = _csv(item["eligible_latin_levels"])
-        item["eligible_school_levels"] = _csv(item["eligible_school_levels"])
 
     by_category: dict[int, list[dict]] = {}
     for item in items:
@@ -103,11 +102,10 @@ def item_eligibility(item: dict, *, school_level: str,
     The reason is written for the person reading it, not for a log: "Open to
     MS-3 and HS-2" tells a delegate what to do; "ineligible" does not.
     """
-    levels = item["eligible_school_levels"]
-    if levels and school_level not in levels:
-        which = "middle school" if levels == ["MS"] else "high school"
-        return False, f"Open to {which} chapters."
-
+    # NO SCHOOL-LEVEL GATE. A chapter is wholly middle or high school, and the
+    # Latin levels below already say which: MS-1..MS-3 belong to a middle
+    # school and HS-1..HS-Adv to a high school. A second column saying the same
+    # thing could disagree with the first, and nothing ever set it.
     latin_levels = item["eligible_latin_levels"]
     if latin_levels:
         if not latin_level:
@@ -190,9 +188,6 @@ def chapter_items(tx: Tx, *, school_level: str) -> list[dict]:
             continue
         for item in category["items"]:
             if not item["active"] or item["registration_scope"] != "chapter":
-                continue
-            levels = item["eligible_school_levels"]
-            if levels and school_level not in levels:
                 continue
             out.append({"id": item["id"], "name": item["name"],
                         "category": category["name"]})

@@ -1315,7 +1315,8 @@ def registration_overview(principal: auth.Principal = guard("admin.overview",
 
     totals = {
         "chapters": 0, "chapters_started": 0, "chapters_paid": 0,
-        "delegates": 0, "adults": 0, "sponsors": 0, "chaperones": 0,
+        "delegates": 0, "delegates_ms": 0, "delegates_hs": 0,
+        "adults": 0, "sponsors": 0, "chaperones": 0,
         "other_adults": 0, "complete": 0, "people": 0,
         "meal_regular": 0, "meal_vegetarian": 0, "meal_gluten_free": 0,
         "meal_unanswered": 0,
@@ -1356,6 +1357,15 @@ def registration_overview(principal: auth.Principal = guard("admin.overview",
                       "adults_sponsors": "sponsors",
                       "adults_chaperones": "chaperones"}.get(key, key)
             totals[target] += row[key]
+
+        # Delegates by school level. Almost every question a chair is asked
+        # about numbers is really about one level: how many papers at each
+        # level, how many rooms, which Certamen bracket. A school is wholly
+        # one or the other -- a school sending both registers as two chapters.
+        if row["level"] == "MS":
+            totals["delegates_ms"] += row["delegates_active"]
+        else:
+            totals["delegates_hs"] += row["delegates_active"]
 
         totals["owed_cents"] += row["amount_owed_cents"]
         totals["paid_cents"] += row["amount_paid_cents"]
@@ -1648,7 +1658,6 @@ def create_catalog_item(request: Request, payload: dict = Body(...),
             category_id, name,
             (payload.get("description") or "").strip() or None,
             _csv(payload.get("eligible_latin_levels")),
-            _csv(payload.get("eligible_school_levels")),
             payload.get("registration_scope") or "individual",
             payload.get("max_sub_selections"),
             payload.get("min_latin_knowledge"),
@@ -1748,7 +1757,6 @@ def put_catalog_item(item_id: int, request: Request, payload: dict = Body(...),
             payload.get("name", item["name"]),
             payload.get("description", item["description"]),
             _csv(payload.get("eligible_latin_levels", item["eligible_latin_levels"])),
-            _csv(payload.get("eligible_school_levels", item["eligible_school_levels"])),
             payload.get("registration_scope", item["registration_scope"]),
             payload.get("max_sub_selections", item["max_sub_selections"]),
             payload.get("min_latin_knowledge", item.get("min_latin_knowledge")),

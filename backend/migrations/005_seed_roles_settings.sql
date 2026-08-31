@@ -74,6 +74,13 @@ INSERT INTO settings (key, value, value_type, label, group_name, sort_order, upd
   ('deadline.forms_lock',      '2027-02-14T07:59:59Z',        'datetime', 'Forms lock',                 'Deadlines',   10, strftime('%Y-%m-%dT%H:%M:%SZ','now')),
   ('deadline.payment',         '2027-02-14T07:59:59Z',        'datetime', 'Payment due',                'Deadlines',   20, strftime('%Y-%m-%dT%H:%M:%SZ','now')),
 
+  -- Who is running the convention, which is not the same fact as where it
+  -- happens: `convention.venue_name` gives directions, this gives credit.
+  -- Conflating them would either drop Woodbridge or send delegates to the
+  -- wrong campus. Reads as a continuation of the heading above it on the
+  -- welcome page, which is why it starts mid-sentence.
+  ('convention.hosts',         'is hosted by University and Woodbridge High School',
+                                                                'string',   'Hosts',                      'Convention',  55, strftime('%Y-%m-%dT%H:%M:%SZ','now')),
   ('invoice.remit_to',         'University High School JCL c/o Mark Michalak', 'string', 'Remit to',     'Invoice',     10, strftime('%Y-%m-%dT%H:%M:%SZ','now')),
   ('invoice.remit_address',    'University High School, 4771 Campus Drive, Irvine, CA 92612', 'string', 'Remit address', 'Invoice', 20, strftime('%Y-%m-%dT%H:%M:%SZ','now')),
 
@@ -147,8 +154,34 @@ If your delegate or adult count changes before the deadline, the amount due chan
    'This chapter is not billed for the state convention, so there is nothing to pay and no check to send. Your registration is complete once your attendees have finished their forms and returned their paper waivers and medical forms.',
    strftime('%Y-%m-%dT%H:%M:%SZ','now')),
 
+('packet_instructions_adult', 'Packet instructions for adults',
+   'Your access code is printed above. Scan the square code with your phone camera, or type the code into **state.uhsjcl.org**.
+
+**Keep this sheet.** Anyone holding it can sign in as you. If you lose it, ask your chapter''s sponsor for a new code — the old one stops working immediately.
+
+Once you are signed in, complete your **Adult Registration Form**. It asks for your contact details, your meal preference, how much Latin you know, and which jobs you are willing to help with over the weekend. Nothing there commits you to a role; it tells the chairs who they can ask.
+
+One form is **not** online and must be signed on paper: the **Adult Medical Form**. Sign it by hand and give it to your chapter''s sponsor.',
+   strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+
+  ('packet_instructions_sponsor', 'Packet instructions for sponsors',
+   'Your access code is printed above. Scan the square code with your phone camera, or type the code into **state.uhsjcl.org**.
+
+**Keep this sheet.** Anyone holding it can sign in as you, and your account can see and change your whole chapter. If you lose it, ask a convention chair for a new code — the old one stops working immediately.
+
+Signing in gives you your chapter''s roster, your invoice, and this packet. To finish your chapter''s registration:
+
+1. Give every attendee the sheet with their name on it.
+2. Complete your own **Adult Registration Form**, the same as any other adult.
+3. Collect the signed waivers and medical forms, and tick each one off in your roster as it arrives.
+4. Scan the paper into your chapter''s Drive folder.
+5. Mail the paper and your chapter''s check to the address on the invoice.
+
+The **Adult Medical Form** applies to you as well as to your chaperones.',
+   strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+
   ('welcome_body', 'Welcome page body',
-   'The California Junior Classical League gathers each spring for two days of certamen, competition, and ceremony. The 72nd State Convention is hosted by University High School in Irvine.
+   'The California Junior Classical League gathers each spring for two days of Certamen, competition, and ceremony. The 72nd State Convention will be held at University High School in Irvine.
 
 Registration runs through your chapter''s sponsor. If you are a delegate, your sponsor will give you a sheet with your access code on it.',
    strftime('%Y-%m-%dT%H:%M:%SZ','now')),

@@ -43,9 +43,18 @@ CREATE TABLE schools (
   discount_cents  INTEGER NOT NULL DEFAULT 0 CHECK (discount_cents >= 0),
   discount_reason TEXT,                  -- shown on the invoice; say why in words
   status          TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','withdrawn')),
-  notes           TEXT,                  -- fellowship room, volunteer liaison, chair notes
+  -- What the CHAPTER said in advance: Certamen machines, roughly when the bus
+  -- arrives, when it has to leave. Written by the sponsor, read at the desk.
+  notes           TEXT,
   created_at      TEXT NOT NULL,
   updated_at      TEXT NOT NULL,
+  -- What the DESK writes on the Friday about what actually turned up.
+  checkin_note    TEXT,
+  -- 01..99, the chapter half of every printed person number: 07014 is chapter
+  -- 07, their 14th person. Assigned by schools.create as MAX + 1 and never
+  -- reused. NOT A SECRET -- it is printed beside the access code and is
+  -- deliberately guessable, like a seat number.
+  number          INTEGER,
   -- A chapter sending both middle and high school delegates registers twice, as
   -- two schools, so name alone is not unique but (name, level) is.
   UNIQUE (name, level)
@@ -53,6 +62,8 @@ CREATE TABLE schools (
 
 -- Serves the chair dashboard and the public MS/HS split. `kind` leads because
 -- every one of those queries filters organizations out first.
+-- One chapter, one number.
+CREATE UNIQUE INDEX idx_schools_number ON schools (number);
 CREATE INDEX idx_schools_kind_status_level ON schools (kind, status, level);
 
 -- ---------------------------------------------------------------------------
@@ -131,6 +142,20 @@ CREATE TABLE people (
   -- years later. Declared without a REFERENCES clause because roster_imports is
   -- created in a later migration; the link is by convention and by the index.
   roster_import_id INTEGER,
+  -- A convention position -- "Convention President", "Academics Chair" --
+  -- shown on their sheet and in the board list. NOT an adult_type: almost
+  -- every board member is a DELEGATE at their own chapter who also holds a
+  -- convention role, and filing them as adults gave them the adult form
+  -- instead of the student activity sheet.
+  board_title      TEXT,
+  -- A delegate added at the desk on the Friday, replacing somebody who could
+  -- not come. Their waiver and medical are still required -- those are safety
+  -- documents and nobody is exempt -- but the tests were printed and the food
+  -- ordered weeks ago, so nothing is left for their answers to change.
+  -- Without this they sit in their chapter's completion figure forever.
+  activity_sheet_waived INTEGER NOT NULL DEFAULT 0,
+  -- 001..999 within their chapter; see schools.number.
+  school_seq       INTEGER,
 
   -- The person-type split is enforced here rather than trusted to application
   -- code, because some future endpoint written in a hurry will forget. Assert
@@ -151,6 +176,13 @@ CREATE INDEX idx_people_sort   ON people (school_id, last_name, first_name);
 -- looked up this way.
 CREATE INDEX idx_people_import ON people (roster_import_id)
   WHERE roster_import_id IS NOT NULL;
+-- The board list: everyone holding a convention position. Partial, so it costs
+-- nothing for the fifteen hundred people who hold none.
+CREATE INDEX idx_people_board_title ON people (board_title)
+  WHERE board_title IS NOT NULL;
+-- The printed person number, and the guarantee that two people in one chapter
+-- can never share one.
+CREATE UNIQUE INDEX idx_people_school_seq ON people (school_id, school_seq);
 
 -- ---------------------------------------------------------------------------
 -- settings
@@ -232,6 +264,9 @@ CREATE TABLE person_roles (
   PRIMARY KEY (person_id, role_id)
 );
 CREATE INDEX idx_person_roles_person ON person_roles (person_id);
+-- The other direction: "who holds this role", for the board list. Without it
+-- that page scans person_roles once per role.
+CREATE INDEX idx_person_roles_role ON person_roles (role_id);
 
 -- ---------------------------------------------------------------------------
 -- login_attempts
