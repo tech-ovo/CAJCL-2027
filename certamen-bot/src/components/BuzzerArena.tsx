@@ -122,7 +122,7 @@ export const BuzzerArena: React.FC = () => {
               {/* Community links from brand image */}
               <div className="flex items-center gap-2">
                 <a
-                  href="https://discord.gg"
+                  href="https://discord.gg/cgkYcWYGYj"
                   target="_blank"
                   rel="noreferrer"
                   className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/90 hover:bg-white text-sky-950 text-xs font-semibold backdrop-blur-md shadow-sm transition-all hover:scale-105"
@@ -147,7 +147,7 @@ export const BuzzerArena: React.FC = () => {
                 Certamen Arena
               </h1>
               <p className="text-sky-100 font-editorial text-sm sm:text-base italic max-w-xl drop-shadow">
-                Practice Roman history, Latin grammar, mythology, culture, and literature.
+                Practice all subjects for this fast-paced buzzer game.
               </p>
             </div>
           </div>

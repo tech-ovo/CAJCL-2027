@@ -762,6 +762,76 @@ th[aria-sort] { color: var(--text); }
   }
 }
 
+/* The catalog editor: one row per test or event, with its rules under the
+ * name so a chair can see what a row DOES without opening it. */
+.catalog-items { display: grid; margin: var(--space-3) 0; }
+.catalog-item {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: var(--space-4); flex-wrap: wrap;
+  padding: var(--space-3) 0; border-bottom: var(--border);
+}
+.catalog-item:last-child { border-bottom: 0; }
+.catalog-item__name {
+  font-family: var(--font-sans); font-weight: var(--weight-semi);
+}
+.catalog-item .choice__why { display: block; }
+
+/* What changed a chapter, newest first. A list rather than a table: every
+ * entry is one sentence written when it happened, and columns would only add
+ * headings for a timestamp and a full stop. */
+.history { list-style: none; margin: 0 0 var(--space-5); padding: 0;
+           font-size: var(--size-sm); }
+.history li {
+  display: grid; gap: var(--space-1);
+  padding: var(--space-2) 0; border-bottom: var(--border);
+}
+.history li:last-child { border-bottom: 0; }
+.history__when { font-family: var(--font-sans); }
+
+/* A row of tabs inside a page. Not the site navigation -- these switch what
+ * one page is showing, and they look different for that reason. */
+.tabs {
+  display: flex; flex-wrap: wrap; gap: var(--space-5);
+  border-bottom: var(--border); margin-bottom: var(--space-4);
+}
+.tabs__tab {
+  font-family: var(--font-sans); font-size: var(--size-sm);
+  color: var(--text); text-decoration: none;
+  padding: var(--space-2) 0;
+  border-bottom: 2px solid transparent;
+  transition: border-color var(--transition), color var(--transition);
+}
+.tabs__tab:hover { color: var(--link); }
+.tabs__tab.is-current {
+  border-bottom-color: var(--link); color: var(--link);
+  font-weight: var(--weight-semi);
+}
+
+/* Resources: a card per link, each one a whole click target.
+ *
+ * Not a bulleted list of anchors. These go to other people's sites and one of
+ * them is a Discord invite, so each needs room to say what it is before
+ * somebody decides to leave. */
+.resources { display: grid; gap: var(--space-4); margin: var(--space-5) 0; }
+.resource {
+  display: grid; gap: var(--space-1);
+  padding: var(--space-4);
+  border: var(--border); border-radius: var(--radius);
+  background: var(--panel-bg);
+  color: var(--text); text-decoration: none;
+  transition: border-color var(--transition), background var(--transition);
+}
+.resource:hover { border-color: var(--link); background: var(--tint); }
+.resource:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.resource__head {
+  display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap;
+}
+.resource__name {
+  font-family: var(--font-sans); font-weight: var(--weight-semi);
+  font-size: var(--size-md); color: var(--link);
+}
+.resource__what { color: var(--text-muted); max-width: var(--measure); }
+
 /* Designed empty states that invite the next action — never a blank region. */
 .empty {
   border: 1px dashed var(--rule);

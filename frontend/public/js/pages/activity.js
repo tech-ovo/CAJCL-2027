@@ -28,8 +28,23 @@ import { add, el, clear, tabula, field, select, button, errorSummary,
 const MEALS = [["", "Choose one"], ["regular", "Regular"],
                ["vegetarian", "Vegetarian"], ["gluten_free", "Gluten free"]];
 
-export async function activitySheetPage(host) {
-  let sheet = await api.get("/me/activity-sheet", { statusHost: host });
+export async function activitySheetPage(host, params = []) {
+  /* A delegate opens this at #/activity-sheet and it is their own.
+   *
+   * A sponsor or a chair opens it at #/activity-sheet/412 for a delegate who
+   * has lost their sheet, or is eleven and has given up, and whose roster row
+   * would otherwise say "Not yet" with nobody able to move it.
+   *
+   * ONE PAGE, NOT A COPY. Every rule on it -- the test-count minimum, the
+   * eligibility gating, the save dialogs -- is the same code, so it cannot
+   * drift from what the delegate sees. Only the endpoint changes. */
+  const personId = params[0] ? Number(params[0]) : null;
+  const onBehalf = personId !== null;
+  const base = onBehalf
+    ? `/sponsor/people/${personId}/activity-sheet`
+    : "/me/activity-sheet";
+
+  let sheet = await api.get(base, { statusHost: host });
   let selected = new Set(sheet.selected);
   let options = { ...(sheet.selected_options || {}) };
   let level = sheet.person.latin_level || "";
@@ -127,6 +142,14 @@ export async function activitySheetPage(host) {
         "**Save whenever you like.** This is not a one-time submission: save " +
         "what you have decided so far and come back as often as you want " +
         "before the deadline."),
+      onBehalf
+        ? el("div", { class: "banner banner--info", style: "margin-bottom:1.5rem" },
+            el("span", { class: "banner__label" }, "On their behalf"),
+            el("span", {}, `This is ${sheet.person.first_name} `
+                         + `${sheet.person.last_name}'s form, not yours. `
+                         + "Anything you save here is recorded in the log as "
+                         + "your doing, which is what it is."))
+        : null,
       deadlineNote(),
       paperNote(),
       restored
@@ -526,7 +549,7 @@ export async function activitySheetPage(host) {
     errors = [];
     warnings = [];
     try {
-      const result = await api.put("/me/activity-sheet", {
+      const result = await api.put(base, {
         grade: grade ? Number(grade) : null,
         latin_level: level || null,
         meal: meal || null,
@@ -536,7 +559,7 @@ export async function activitySheetPage(host) {
 
       warnings = result.warnings || [];
       saved = true;
-      sheet = await api.get("/me/activity-sheet");
+      sheet = await api.get(base);
       selected = new Set(sheet.selected);
       options = { ...(sheet.selected_options || {}) };
       grade = sheet.person.grade || "";

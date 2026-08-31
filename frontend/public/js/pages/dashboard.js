@@ -279,6 +279,18 @@ export async function dashboardPage(host) {
                "Nothing recorded yet. A payment entered here would appear in "
                + "this list, and the balance above would move with it."),
 
+        /* WHY THE BALANCE MOVED, not just what arrived.
+         *
+         * The payments above say what came in. This says what changed the
+         * amount OWED — a delegate added, somebody cancelled, a discount
+         * applied — which is the half of the argument that was missing when a
+         * sponsor rings up in March disagreeing with a figure. Both halves in
+         * one place, because the dispute is about the difference between them.
+         */
+        el("h3", { class: "label label--ink", style: "margin-top:var(--space-6)" },
+           "What changed this chapter"),
+        historyBlock(school),
+
         el("div", { class: "btn-row" },
           button("Record a payment", {
             variant: "btn--primary",
@@ -296,6 +308,34 @@ export async function dashboardPage(host) {
     });
 
     return wrap;
+  }
+
+  /* Fetched separately and drawn where it lands, so a slow second request
+   * cannot hold up the payments the panel is mostly opened for. */
+  function historyBlock(school) {
+    const host_ = el("div", {}, el("p", { class: "muted" }, "Loading…"));
+
+    api.get(`/admin/schools/${school.id}/history`).then((data) => {
+      const history = data.history || [];
+      clear(host_);
+      if (!history.length) {
+        add(host_, el("p", { class: "muted" },
+          "Nothing recorded yet. Adding people, cancelling them, and changing "
+          + "a discount all appear here."));
+        return;
+      }
+      add(host_, el("ul", { class: "history" },
+        ...history.map((entry) => el("li", {},
+          el("span", { class: "history__when small muted" },
+             localDate(entry.ts_utc, { withTime: true })),
+          el("span", {}, entry.summary)))));
+    }).catch((error) => {
+      clear(host_);
+      add(host_, el("p", { class: "small muted" },
+                    `Could not load the history: ${error.message}`));
+    });
+
+    return host_;
   }
 
   /* Adding a chapter and correcting one are the same six fields.

@@ -164,7 +164,7 @@ Points are tabulated automatically from events. A Google Slides deck, sticker sh
 
 Everything a future commissioner would otherwise need code to change lives in dashboard-editable settings: convention year, ordinal, dates, venue name and address, theme text with translation and citation, contact email, fee amounts, deadlines, the warm-until timestamp, auto-export on/off with its shut-off time, and the announcement banner.
 
-The activity and role catalogs are likewise fully editable through a web UI — categories, items, sub-options, eligibility by Latin level and school level, minimum and maximum selection counts, and whether a rule blocks or warns. Adding a new *ludus* for 2028 should require no code.
+The activity and role catalogs are likewise editable through a web UI — items, sub-options, eligibility by Latin level and school level, and whether an item is offered at all. Adding a new *ludus* for 2028 requires no code. **Categories and their rules** — the minimum and maximum selection counts, and whether a rule blocks or warns — stay in a migration: a wrong rule stops delegates submitting for a reason nobody can find, and that is not a thing to type into a box.
 
 *[Demo: all of this, since it is what makes the site inheritable.]*
 

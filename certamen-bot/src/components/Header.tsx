@@ -32,7 +32,7 @@ export const Header: React.FC<HeaderProps> = ({
         >
           <div className="relative w-8 h-8 rounded-full overflow-hidden ring-2 ring-sky-400/40 group-hover:ring-sky-500 transition-all shadow-sm">
             <img
-              src="./assets/uhsjcl_crest.jpg"
+              src="./assets/logo.webp"
               alt="UHSJCL Logo"
               className="w-full h-full object-cover"
             />

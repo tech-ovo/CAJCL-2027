@@ -15,10 +15,42 @@ import { add, el, clear, table, button, loadingRows, fullName,
          emptyState, localDate } from "../ui.js";
 import { openPrintView } from "./roster.js";
 
+/* TWO CHAIRS, TWO JOBS, ONE PAGE OF FIFTY ROWS.
+ *
+ * The Academics chair prints and proctors tests. The Activities and Athletics
+ * chairs run arts entries, ludi and olympika. They work at different times, on
+ * different things, and neither one wants to scroll past the other's
+ * categories to find their own.
+ *
+ * The split is a filter over data already in hand -- one request still, and
+ * `category_key` was always on every row. Which key belongs to which tab is
+ * the only thing this adds, and it is here rather than in the database
+ * because it is a question about who does what job, not about the catalog.
+ */
+/* ACADEMICS IS THE NAMED LIST; ACTIVITIES IS EVERYTHING ELSE.
+ *
+ * Written as two lists, a category added later -- and the catalog editor is
+ * meant to make that a five-minute job -- would have belonged to neither and
+ * disappeared from this page entirely, with no error and nothing missing that
+ * anybody could see. A catch-all cannot lose a row. If a new category belongs
+ * on the Academics side, add its key here. */
+const ACADEMIC_CATEGORIES = ["academic_testing", "creative_arts",
+                             "preconvention"];
+
+const TABS = [
+  ["academics", "Academics",
+   (row) => ACADEMIC_CATEGORIES.includes(row.category_key)],
+  ["activities", "Activities",
+   (row) => !ACADEMIC_CATEGORIES.includes(row.category_key)],
+];
+
 export async function academicsPage(host) {
   let data = null;
   let open = null;          // the item being looked at, or null
   let filter = "";
+  // Whichever tab this chair is most likely to want. Somebody holding only
+  // `academics` opens on Academics; everybody else opens on the first tab.
+  let tab = TABS[0][0];
 
   add(host, loadingRows(8, "Counting entries"));
   data = await api.get("/admin/academics/counts", { statusHost: host });
@@ -48,6 +80,7 @@ export async function academicsPage(host) {
 
       el("p", { class: "small muted" }, deadlineNote()),
 
+      tabs(),
       searchBox());
 
     if (open) {
@@ -55,7 +88,7 @@ export async function academicsPage(host) {
       return;
     }
 
-    const rows = data.items.filter(matches);
+    const rows = data.items.filter(inTab).filter(matches);
     if (!rows.length) {
       add(host, emptyState("Nothing matches",
         "No test or activity has a name like that."));
@@ -80,6 +113,35 @@ export async function academicsPage(host) {
       group.push(row);
     }
     flush();
+  }
+
+  /* The two chairs' halves. A search still looks across BOTH, because
+   * somebody who types "Certamen" wants it found rather than told it is on the
+   * other tab. */
+  function tabs() {
+    return el("div", { class: "tabs" },
+      ...TABS.map(([key, label, belongs]) => {
+        const count = data.items.filter(belongs).length;
+        const anchor = el("a", {
+          href: "#/entries",
+          class: key === tab ? "tabs__tab is-current" : "tabs__tab",
+          onclick: (event) => {
+            event.preventDefault();
+            tab = key;
+            open = null;
+            render();
+          },
+        }, label, el("span", { class: "small muted" }, `  ${count}`));
+        if (key === tab) anchor.setAttribute("aria-current", "page");
+        return anchor;
+      }));
+  }
+
+  function inTab(row) {
+    // A search reaches across both halves. Somebody typing a name wants it
+    // found, not told that it lives on the tab they are not looking at.
+    if (filter.trim()) return true;
+    return TABS.find(([key]) => key === tab)[2](row);
   }
 
   function deadlineNote() {

@@ -67,6 +67,11 @@ def load(tx: Tx, *, force: bool = False) -> dict:
         "categories": categories,
         "items_by_id": {i["id"]: i for i in items},
         "categories_by_key": {c["key"]: c for c in categories},
+        # EVERY option, including the inactive ones. `item["options"]` above is
+        # deliberately the active list -- that is what a delegate may pick from
+        # -- but the editing screen has to be able to see a retired medium in
+        # order to bring it back, and nothing else can reach it.
+        "options": options,
     }
     _loaded_at = time.monotonic()
     return _cache

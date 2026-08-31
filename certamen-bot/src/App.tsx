@@ -49,8 +49,8 @@ function MainApp() {
         <div className="max-w-5xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <img
-              src="./assets/uhsjcl_crest.jpg"
-              alt="UHSJCL Crest"
+              src="./assets/logo.webp"
+              alt="UHSJCL"
               className="w-5 h-5 rounded-full object-cover border border-sky-400/50 shadow-sm"
             />
             <span className="font-display font-semibold tracking-wider text-slate-800">
@@ -58,13 +58,11 @@ function MainApp() {
             </span>
             <span className="text-slate-300">•</span>
             <span className="text-slate-600 font-editorial italic text-sm">
-              Unity, Learning, Scholarship
+              aequam mementō rēbus in arduīs servāre mentem
             </span>
           </div>
 
           <div className="flex items-center gap-4 text-xs text-slate-600 font-medium">
-            <span className="text-sky-800 font-serif font-bold">SPQR</span>
-            <span className="text-slate-300">•</span>
             <span>University High School</span>
             <span className="text-slate-300">•</span>
             <span>Junior Classical League</span>

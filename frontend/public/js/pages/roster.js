@@ -109,6 +109,9 @@ export async function rosterPage(host, params = []) {
           "Paste a roster"),
         button("Add one person", { onclick: () => addPerson(school) }),
         asChair ? null : el("a", { class: "btn", href: "#/invoice" }, "View invoice"),
+        el("a", { class: "btn",
+                  href: asChair ? `#/teams/${schoolId}` : "#/teams" },
+          "Chapter teams"),
         asChair && hasScope("*") && sponsorOf(data.people)
           ? button("Sign in as the sponsor", {
               variant: "btn--primary",
@@ -180,7 +183,7 @@ export async function rosterPage(host, params = []) {
     );
   }
 
-  /* Correct somebody's name.
+  /* Correct somebody's name, and their guardian's contact details.
    *
    * A pasted roster reads what it is given, and it is given whatever the
    * sponsor's spreadsheet had: a nickname, a maiden name, a typo, or a name a
@@ -188,15 +191,25 @@ export async function rosterPage(host, params = []) {
    * awards, so it is the field most worth being able to fix -- and until this
    * existed, nothing on the site could fix it for a delegate at all.
    *
-   * Names only. Grade, Latin level and meal are the delegate's own answers on
-   * their own form, and a sponsor overwriting them silently is how two people
-   * end up disagreeing about which test somebody is sitting.
+   * THE GUARDIAN FIELDS ARE HERE BECAUSE THEY ARE NOWHERE ELSE. The roster
+   * paste used to offer a "their phone" column, which was an empty box the
+   * parser never filled and nobody usefully typed into while checking thirty
+   * names. Dropping it left `guardian_phone` with no screen at all, on the one
+   * contact detail somebody might need at eleven at night during convention.
+   *
+   * Still no grade, Latin level or meal. Those are the delegate's own answers
+   * on their own form; a sponsor who needs to change one opens that form with
+   * "Their form" and it is recorded as the sponsor's doing.
    */
   async function editPerson(row) {
     const first = input({ id: "edit-first", value: row.first_name || "" });
     const middle = input({ id: "edit-middle", value: row.middle_name || "" });
     const last = input({ id: "edit-last", value: row.last_name || "" });
     const suffix = input({ id: "edit-suffix", value: row.suffix || "" });
+    const guardian = input({ id: "edit-guardian", value: row.guardian_name || "" });
+    const phone = input({ id: "edit-phone", type: "tel",
+                          value: row.guardian_phone || "" });
+    const delegate = row.person_type === "delegate";
 
     const ok = await check({
       title: `Edit ${fullName(row)}`,
@@ -207,6 +220,16 @@ export async function rosterPage(host, params = []) {
         field({ id: "edit-middle", label: "Middle name", control: middle, wide: true }),
         field({ id: "edit-last", label: "Last name", control: last, wide: true }),
         field({ id: "edit-suffix", label: "Suffix", control: suffix, wide: true }),
+        delegate ? el("hr", { class: "hair" }) : null,
+        delegate
+          ? field({ id: "edit-guardian", label: "Parent/guardian",
+                    control: guardian, wide: true })
+          : null,
+        delegate
+          ? field({ id: "edit-phone", label: "Their phone", control: phone,
+                    wide: true,
+                    help: "Reached at the convention if something happens." })
+          : null,
       ],
       confirmLabel: "Save",
     });
@@ -223,6 +246,10 @@ export async function rosterPage(host, params = []) {
         middle_name: middle.value.trim() || null,
         last_name: last.value.trim(),
         suffix: suffix.value.trim() || null,
+        ...(delegate ? {
+          guardian_name: guardian.value.trim() || null,
+          guardian_phone: phone.value.trim() || null,
+        } : {}),
       });
       await reload();
     } catch (error) {
@@ -783,6 +810,15 @@ export async function rosterPage(host, params = []) {
         variant: "btn--small btn--quiet",
         onclick: () => editPerson(row),
       }));
+      // Their registration form, filled in on their behalf. For the delegate
+      // who lost their sheet, or is eleven and has given up, and whose row
+      // would otherwise read "Not yet" with nobody able to move it.
+      if (row.person_type === "delegate") {
+        add(wrap, el("a", {
+          class: "btn btn--small btn--quiet",
+          href: `#/activity-sheet/${row.id}`,
+        }, "Their form"));
+      }
       add(wrap, button("Cancel", {
         variant: "btn--small btn--danger",
         onclick: async () => {

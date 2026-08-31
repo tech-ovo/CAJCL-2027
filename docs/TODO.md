@@ -33,7 +33,6 @@ board. `docs/DEPLOY.md`, "After the demonstration", has the reset commands.
 
 | | What | Hours | Notes |
 | --- | --- | --- | --- |
-| SOON | Catalog editing screen | 6 | The catalog is seeded correctly and read-only. Cut for the demo. |
 | LATER | Draft restore on the settings form | 1 | The activity and adult sheets keep a `localStorage` draft. Settings warns before leaving but keeps nothing. |
 
 ## The board and the chapter it lives in
@@ -74,12 +73,7 @@ repeating before handing the site to next year's chairs.
 
 | | What | Hours | Notes |
 | --- | --- | --- | --- |
-| SOON | Catalog editing screen | 6 | **docs/structure.md puts this in demo scope** — "the activity and role catalogs are likewise fully editable through a web UI… Adding a new *ludus* for 2028 should require no code" — and it is the one demo-scope claim that is not true. Today a new test or event is a migration. `GET /admin/catalog` and `PUT /admin/catalog/items/{id}` already exist; creating categories, items and options does not, and the four write queries for it were deleted rather than left untested. Categories, items, sub-options, eligibility by Latin and school level, min/max counts, warn-or-block. |
-| SOON | Chapter team entries, for a sponsor | 4 | The activity sheet SHOWS a chapter's team entries and nothing creates them. `POST`/`GET`/`DELETE /sponsor/chapter-entries` all exist, are tested, and have no caller. structure.md lists chapter entries in demo scope. |
-| SOON | A money ledger, not just a payment list | 3 | Records shows payments. It does not show WHY the amount owed moved — a delegate added, somebody cancelled, or the eleventh delegate making a second adult free. Every one of those is already in the audit log with its school and its actor; what is missing is a chair-visible view of it. Note `admin.audit` is `*`-scoped today, so this needs a school-scoped read for `registration` rather than widening the existing one. |
-| SOON | Guardian contact details, editable | 1 | The roster paste dropped its "their phone" column, which was an empty box nobody could fill usefully at that moment — but `guardian_phone` now has no screen at all. `PATCH /sponsor/people/{id}` already accepts it; the roster's **Edit** dialog is names only. Add the two guardian fields to that dialog. |
-| SOON | Quota screen | 1 | `GET /admin/usage` already returns rows read, rows written and storage, and no page shows them. During convention the quota is the number worth watching from a phone, and the alternative is a terminal. One stat block on Operations. |
-| SOON | Split Entries into Academics and Activities | 2 | One page listing fifty items serves two different chairs. The category is already on every row; this is a tab, not a query. |
+| SOON | One database connection per container, not per transaction | 3 | `Database.tx()` and `.read()` each call `_open()`, so **every request pays a fresh TLS handshake to Turso** — warm container or not. That is most of the latency on a warm site, and `min_containers=1` does not touch it. NOT a quick edit: the handlers are sync, so FastAPI runs them in a threadpool and a shared connection needs a pool or a lock. This is the code that caused the SQLITE_BUSY outage; measure first, and keep writes on their own connection. |
 | SOON | Four-digit test IDs, editable by Academic Chairs | 3 | A number per test, entered on a **subset** of Settings → Values — which means a scoped settings view, since `academics` scope must not reach the fee or the deadlines. That gating is the real work; the column is trivial. |
 
 ## Awards and academics

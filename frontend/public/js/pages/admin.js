@@ -46,7 +46,8 @@ export async function adminPage(host) {
 
       el("nav", { class: "nav", "aria-label": "Settings sections" },
         ...[["settings", "Values"], ["documents", "Printed wording"],
-            ["announcements", "Announcements"], ["roles", "Roles"],
+            ["announcements", "Announcements"], ["catalog", "Catalog"],
+            ["roles", "Roles"],
             ["ops", "Operations"]].map(([key, label]) => {
           const a = el("a", { href: "#/admin", onclick: async (e) => {
             e.preventDefault();
@@ -79,8 +80,318 @@ export async function adminPage(host) {
     if (tab === "settings") renderSettings();
     else if (tab === "documents") renderDocuments();
     else if (tab === "announcements") renderAnnouncements();
+    else if (tab === "catalog") renderCatalog();
     else if (tab === "roles") renderRoles();
     else renderOps();
+  }
+
+
+  /* ---------------------------------------------------------------------
+   * Catalog
+   * ------------------------------------------------------------------ */
+
+  /* WHAT THIS PAGE IS FOR, in one line from docs/structure.md: "adding a new
+   * ludus for 2028 should require no code."
+   *
+   * Until this existed, a new test or event meant a migration, a deploy, and
+   * somebody who knew what a migration was — which, in a system handed to
+   * different students every year, is the same as not being possible.
+   *
+   * CATEGORIES ARE NOT CREATED HERE, and that is deliberate. A category
+   * carries the rules a form is validated against: how many you must pick,
+   * whether that is a hard block or a warning. Inventing one from a text box
+   * is how a delegate ends up unable to submit for a reason nobody can find.
+   * Adding a category stays a migration; adding things TO one does not.
+   */
+  const LATIN_LEVELS = ["MS-1", "MS-2", "MS-3", "HS-1", "HS-2", "HS-3", "HS-Adv"];
+  const SCHOOL_LEVELS = ["MS", "HS"];
+
+  async function renderCatalog() {
+    const data = await api.get("/admin/catalog");
+    const optionsByItem = new Map();
+    for (const option of data.options || []) {
+      if (!optionsByItem.has(option.item_id)) optionsByItem.set(option.item_id, []);
+      optionsByItem.get(option.item_id).push(option);
+    }
+
+    add(host,
+      el("h2", {}, "Tests, events and activities"),
+      el("p", { class: "muted" },
+        "Everything a delegate can enter. Changes take effect at once — a "
+        + "delegate with the form already open sees them the next time they "
+        + "load it."),
+      el("p", { class: "small muted" },
+        "Categories and their rules — how many you must pick, and whether "
+        + "that is a block or a warning — are set in a migration, because a "
+        + "wrong rule stops delegates submitting for a reason nobody can "
+        + "find. Everything inside a category is editable here."),
+
+      ...data.categories.map((category) => categoryBlock(category, optionsByItem)));
+  }
+
+  function categoryBlock(category, optionsByItem) {
+    const rule = category.min_selections || category.max_selections
+      ? `${describeRule(category)} · ${category.enforcement === "block"
+          ? "enforced" : "a suggestion"}`
+      : "No limit on how many.";
+
+    return el("section", { class: "panel", style: "margin-bottom:1.5rem" },
+      el("div", { class: "tabula__row" },
+        el("h3", {}, category.name),
+        el("span", { class: "label" }, category.applies_to === "adult"
+          ? "Adults" : "Delegates")),
+      el("p", { class: "small muted" }, rule),
+
+      category.items.length
+        ? el("div", { class: "catalog-items" },
+            ...category.items.map((item) =>
+              itemRow(item, optionsByItem.get(item.id) || [])))
+        : el("p", { class: "muted" }, "Nothing in this category yet."),
+
+      el("div", { class: "btn-row" },
+        button("Add to this category", {
+          variant: "btn--small",
+          onclick: () => addItem(category),
+        })));
+  }
+
+  function describeRule(category) {
+    const low = category.min_selections;
+    const high = category.max_selections;
+    if (low && high) return `Choose between ${low} and ${high}.`;
+    if (low) return `Choose at least ${low}.`;
+    return `Choose no more than ${high}.`;
+  }
+
+  function itemRow(item, allOptions) {
+    const facts = [
+      item.eligible_latin_levels && item.eligible_latin_levels.length
+        ? item.eligible_latin_levels.join(", ") : "Any Latin level",
+      item.eligible_school_levels && item.eligible_school_levels.length
+        ? item.eligible_school_levels.join(", ") : null,
+      item.registration_scope === "chapter" ? "Entered by the chapter" : null,
+      item.min_latin_knowledge ? `Needs ${item.min_latin_knowledge} Latin` : null,
+      item.max_sub_selections
+        ? `Up to ${item.max_sub_selections} sub-choices` : null,
+    ].filter(Boolean);
+
+    return el("div", { class: "catalog-item" },
+      el("div", {},
+        el("span", { class: "catalog-item__name" }, item.name),
+        item.active ? null : el("span", { class: "pill", style: "margin-left:.5rem" },
+                                "Not offered"),
+        el("span", { class: "choice__why" }, facts.join(" · ")),
+        allOptions.length
+          ? el("span", { class: "choice__why" },
+              "Sub-choices: "
+              + allOptions.map((o) => o.active ? o.name : `${o.name} (off)`)
+                          .join(", "))
+          : null),
+      el("span", { style: "display:flex;gap:.5rem;flex-wrap:wrap" },
+        button("Edit", {
+          variant: "btn--small btn--quiet",
+          onclick: () => editItem(item),
+        }),
+        item.max_sub_selections
+          ? button("Sub-choices", {
+              variant: "btn--small btn--quiet",
+              onclick: () => editOptions(item, allOptions),
+            })
+          : null,
+        button(item.active ? "Stop offering" : "Offer again", {
+          variant: item.active ? "btn--small btn--quiet btn--danger"
+                               : "btn--small btn--quiet",
+          onclick: () => setItemActive(item, !item.active),
+        })));
+  }
+
+  /* The same fields whether adding or editing, for the same reason the chapter
+   * panel is one form: written twice they drift, and the difference only shows
+   * up when somebody cannot correct the thing they just typed. */
+  function itemFields(item) {
+    const name = input({ id: "cat-name", value: item ? item.name : "" });
+    const description = input({ id: "cat-desc",
+                                value: item ? item.description || "" : "" });
+    const latin = el("div", { class: "choices choices--two" });
+    const school = el("div", { class: "choices choices--two" });
+    const subs = input({ id: "cat-subs", type: "number", min: "0", max: "12",
+                         value: item && item.max_sub_selections
+                           ? String(item.max_sub_selections) : "" });
+    const chapter = el("input", { type: "checkbox" });
+    if (item && item.registration_scope === "chapter") chapter.checked = true;
+
+    const chosenLatin = new Set(item && item.eligible_latin_levels
+      ? item.eligible_latin_levels : []);
+    for (const level of LATIN_LEVELS) {
+      const box = el("input", { type: "checkbox", checked: chosenLatin.has(level),
+        onchange: (event) => {
+          if (event.target.checked) chosenLatin.add(level);
+          else chosenLatin.delete(level);
+        } });
+      add(latin, el("label", { class: "choice" }, box,
+                    el("span", {}, el("span", { class: "choice__name" }, level))));
+    }
+
+    const chosenSchool = new Set(item && item.eligible_school_levels
+      ? item.eligible_school_levels : []);
+    for (const level of SCHOOL_LEVELS) {
+      const box = el("input", { type: "checkbox", checked: chosenSchool.has(level),
+        onchange: (event) => {
+          if (event.target.checked) chosenSchool.add(level);
+          else chosenSchool.delete(level);
+        } });
+      add(school, el("label", { class: "choice" }, box,
+                     el("span", {}, el("span", { class: "choice__name" },
+                        level === "MS" ? "Middle school" : "High school"))));
+    }
+
+    return {
+      name, description, subs, chapter, chosenLatin, chosenSchool,
+      body: [
+        field({ id: "cat-name", label: "Name", control: name, wide: true }),
+        field({ id: "cat-desc", label: "Description", control: description,
+                wide: true, help: "Shown under the name on the form. Optional." }),
+        el("p", { class: "label label--ink" }, "Open to which Latin levels"),
+        el("p", { class: "small muted" },
+          "Leave all unticked for any level. Ticking some hides it from "
+          + "everybody else, which is how Grammar 1 and Grammar 3 stay apart."),
+        latin,
+        el("p", { class: "label label--ink" }, "Open to which school levels"),
+        el("p", { class: "small muted" }, "Leave both unticked for either."),
+        school,
+        field({ id: "cat-subs", label: "Sub-choices allowed", control: subs,
+                wide: true,
+                help: "How many sub-choices somebody may pick — a medium under "
+                    + "Drawing/Painting. Leave empty for none." }),
+        el("label", { class: "choice" }, chapter,
+          el("span", {},
+            el("span", { class: "choice__name" }, "Entered by the chapter"),
+            el("span", { class: "choice__why" },
+              "For team events. A chapter enters these from its Teams page; a "
+              + "delegate does not see them on their own form."))),
+      ],
+    };
+  }
+
+  function itemPayload(fields) {
+    return {
+      name: fields.name.value.trim(),
+      description: fields.description.value.trim() || null,
+      eligible_latin_levels: [...fields.chosenLatin],
+      eligible_school_levels: [...fields.chosenSchool],
+      registration_scope: fields.chapter.checked ? "chapter" : "individual",
+      max_sub_selections: fields.subs.value ? Number(fields.subs.value) : null,
+    };
+  }
+
+  async function addItem(category) {
+    const fields = itemFields(null);
+    const ok = await check({
+      title: `Add to ${category.name}`,
+      body: fields.body,
+      confirmLabel: "Add it",
+    });
+    if (!ok) return;
+    if (!fields.name.value.trim()) {
+      await tell({ title: "That needs a name",
+                   body: "Give it a name, then try again." });
+      return;
+    }
+    try {
+      await api.post("/admin/catalog/items",
+                     { ...itemPayload(fields), category_id: category.id });
+      message = `${fields.name.value.trim()} added to ${category.name}.`;
+      render();
+    } catch (error) {
+      await tell({ body: error.message });
+    }
+  }
+
+  async function editItem(item) {
+    const fields = itemFields(item);
+    const ok = await check({
+      title: `Edit ${item.name}`,
+      body: fields.body,
+      confirmLabel: "Save",
+    });
+    if (!ok) return;
+    try {
+      await api.put(`/admin/catalog/items/${item.id}`, itemPayload(fields));
+      message = `${fields.name.value.trim()} saved.`;
+      render();
+    } catch (error) {
+      await tell({ body: error.message });
+    }
+  }
+
+  /* NOT OFFERED, NEVER DELETED. Somebody may already have chosen it, and a
+   * delete would either fail on the foreign key or quietly take their entry
+   * with it. "Stop offering" is what retiring an event actually means. */
+  async function setItemActive(item, active) {
+    if (!active) {
+      const ok = await check({
+        title: `Stop offering ${item.name}?`,
+        body: ["Nobody will be able to choose it from now on. Anybody who has "
+               + "already chosen it keeps their entry, and the chairs still "
+               + "see them in the counts.",
+               "You can offer it again at any time."],
+        confirmLabel: "Stop offering it", danger: true,
+      });
+      if (!ok) return;
+    }
+    try {
+      await api.put(`/admin/catalog/items/${item.id}`, { active });
+      message = active ? `${item.name} is offered again.`
+                       : `${item.name} is no longer offered.`;
+      render();
+    } catch (error) {
+      await tell({ body: error.message });
+    }
+  }
+
+  async function editOptions(item, existing) {
+    const fresh = input({ id: "opt-new" });
+    const rows = el("div", {});
+
+    for (const option of existing) {
+      add(rows, el("div", { class: "catalog-item" },
+        el("span", {}, option.name,
+          option.active ? null
+            : el("span", { class: "pill", style: "margin-left:.5rem" }, "Off")),
+        button(option.active ? "Stop offering" : "Offer again", {
+          variant: "btn--small btn--quiet",
+          onclick: async () => {
+            try {
+              await api.put(`/admin/catalog/options/${option.id}`,
+                            { active: !option.active });
+              message = `${option.name} updated.`;
+              render();
+            } catch (error) { await tell({ body: error.message }); }
+          },
+        })));
+    }
+
+    const ok = await check({
+      title: `Sub-choices for ${item.name}`,
+      body: [
+        el("p", {}, `Somebody entering ${item.name} may pick up to `
+                  + `${item.max_sub_selections} of these.`),
+        existing.length ? rows : el("p", { class: "muted" }, "None yet."),
+        field({ id: "opt-new", label: "Add one", control: fresh, wide: true }),
+      ],
+      confirmLabel: "Add it",
+      cancelLabel: "Done",
+    });
+    if (!ok || !fresh.value.trim()) return;
+
+    try {
+      await api.post(`/admin/catalog/items/${item.id}/options`,
+                     { name: fresh.value.trim() });
+      message = `${fresh.value.trim()} added to ${item.name}.`;
+      render();
+    } catch (error) {
+      await tell({ body: error.message });
+    }
   }
 
   /* -------------------------------------------------------------------- */
@@ -785,6 +1096,18 @@ export async function adminPage(host) {
               : null)),
 
         el("div", { class: "span-6" },
+          el("h2", {}, "Database quota"),
+          el("p", { class: "muted" },
+            "Exceeding the read quota does not slow the site down — it stops "
+            + "answering, and no amount of money fixes that during a "
+            + "convention. This is the early warning."),
+          quotaBlock(),
+          el("p", { class: "small muted" },
+            "Reads are the one to watch. A row read is a row SCANNED, not a "
+            + "row returned, which is why every list on this site is one "
+            + "indexed query and no total is ever counted live.")),
+
+        el("div", { class: "span-6" },
           el("h2", {}, "Impersonate someone"),
           el("p", { class: "muted" },
             "Open a read-only view of exactly what another person sees. You will " +
@@ -873,6 +1196,60 @@ export async function adminPage(host) {
       errors = [error.message];
     }
     render();
+  }
+
+  /* What Turso has counted this month, against the free tier.
+   *
+   * Fetched on its own and drawn where it lands: it is one call to somebody
+   * else's API, over the network, from a page that is already useful without
+   * it. A failure leaves a sentence rather than taking Operations down.
+   */
+  function quotaBlock() {
+    const host_ = el("div", {}, el("p", { class: "muted" }, "Checking…"));
+
+    api.get("/admin/usage").then((usage) => {
+      clear(host_);
+      if (usage.configured === false) {
+        add(host_, el("p", { class: "small" }, usage.message),
+                   el("p", {}, el("a", { href: usage.dashboard, target: "_blank",
+                                         rel: "noopener noreferrer" },
+                                  "Open the database dashboard")));
+        return;
+      }
+      if (usage.error) {
+        add(host_, el("p", { class: "form-note form-note--unsaved" }, usage.error),
+                   el("p", {}, el("a", { href: usage.dashboard, target: "_blank",
+                                         rel: "noopener noreferrer" },
+                                  "Open the database dashboard")));
+        return;
+      }
+
+      const rows = [
+        ["Rows read", usage.rows_read, usage.percent.rows_read, "500,000,000"],
+        ["Rows written", usage.rows_written, usage.percent.rows_written,
+         "10,000,000"],
+        ["Storage", `${(usage.storage_bytes / 1024 ** 3).toFixed(2)} GB`,
+         usage.percent.storage, "5 GB"],
+      ];
+
+      add(host_, el("div", { class: "totals" },
+        ...rows.map(([label, value, percent, ceiling]) =>
+          el("div", { class: "totals__row" },
+            el("span", {}, label,
+              el("span", { class: "small muted" }, ` of ${ceiling}`)),
+            el("span", { class: "mono" },
+              typeof value === "number" ? value.toLocaleString("en-US") : value,
+              // Colour would be the obvious thing and would be the only
+              // signal; the number and the word carry it instead.
+              el("span", { class: percent >= 80 ? "pill" : "small muted" },
+                 `  ${percent}%`))))));
+    }).catch((error) => {
+      clear(host_);
+      add(host_, el("p", { class: "form-note form-note--unsaved" },
+                    `Could not read the quota: ${error.message}`));
+    });
+
+    return host_;
   }
 
   function impersonateForm() {

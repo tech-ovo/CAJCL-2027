@@ -72,6 +72,12 @@ ROUTES = [
      "/sponsor/people/{person}/regenerate-code", {}),
     ("sponsor.chapter_leader", "POST",
      "/sponsor/people/{person}/chapter-leader", {"granted": True}),
+    ("sponsor.activity_sheet", "GET",
+     "/sponsor/people/{person}/activity-sheet", None),
+    ("sponsor.activity_sheet.save", "PUT",
+     "/sponsor/people/{person}/activity-sheet",
+     {"grade": 10, "latin_level": "HS-2", "meal": "regular",
+      "selected": []}),
     ("sponsor.paper_forms", "POST", "/sponsor/paper-forms",
      {"person_id": "{person}", "form_type": "student_waiver", "received": True}),
     ("sponsor.chapter_entries.list", "GET",
@@ -103,6 +109,7 @@ ROUTES = [
     ("admin.people.unlock", "POST", "/admin/people/{person}/unlock-forms", {}),
     ("admin.audit", "GET", "/admin/audit", None),
     ("admin.logins", "GET", "/admin/logins", None),
+    ("admin.school.history", "GET", "/admin/schools/{school}/history", None),
 
     ("admin.settings.get", "GET", "/admin/settings", None),
     ("admin.settings.put", "PUT", "/admin/settings",
@@ -110,6 +117,12 @@ ROUTES = [
     ("admin.documents.put", "PUT", "/admin/documents/welcome_body", {"title": "x"}),
     ("admin.catalog.get", "GET", "/admin/catalog", None),
     ("admin.catalog.put", "PUT", "/admin/catalog/items/1", {"name": "x"}),
+    ("admin.catalog.create", "POST", "/admin/catalog/items",
+     {"name": "New Test", "category_id": 1}),
+    ("admin.catalog.option", "POST", "/admin/catalog/items/1/options",
+     {"name": "An option"}),
+    ("admin.catalog.option.put", "PUT", "/admin/catalog/options/1",
+     {"name": "Renamed"}),
     ("admin.announcements.list", "GET", "/admin/announcements", None),
     ("admin.announcements.create", "POST", "/admin/announcements", {"body_md": "hi"}),
     ("admin.roles.list", "GET", "/admin/roles", None),
@@ -221,6 +234,7 @@ def test_no_route_is_accidentally_public():
                        .replace("{school_id}", "{school}") \
                        .replace("{entry_id}", "{entry}") \
                        .replace("{item_id}", "1") \
+                       .replace("{option_id}", "1") \
                        .replace("{announcement_id}", "1") \
                        .replace("{key}", "welcome_body")
         assert template in guarded_paths, f"{path} has no declared guard"
@@ -844,3 +858,217 @@ def test_a_person_is_told_whether_their_own_registration_is_finished(fx, client)
 
     me = client.get("/auth/me", headers=as_(fx, "delegate")).json()
     assert me["registration_complete"] is True
+
+
+def test_a_sponsor_can_fill_in_a_delegates_form_for_them(fx, client):
+    """For the delegate who lost their sheet, or is eleven and has given up.
+
+    Their roster row otherwise reads "Not yet" and nobody can move it, while
+    the sponsor is the person their chapter holds responsible for that row.
+
+    The same form and the same rules, not a copy: this goes through
+    `save_activity_sheet`, so the test-count minimum and the eligibility gating
+    apply exactly as they do on the delegate's own screen.
+    """
+    headers = as_(fx, "uni_sponsor")
+    sheet = client.get(f"/sponsor/people/{fx.delegate_id}/activity-sheet",
+                       headers=headers)
+    assert sheet.status_code == 200, sheet.text
+    body = sheet.json()
+    assert body["person"]["first_name"] == "Dana"
+
+    testing = next(c for c in body["catalog"] if c["min_selections"])
+    saved = client.put(f"/sponsor/people/{fx.delegate_id}/activity-sheet",
+                       json={"grade": 10, "latin_level": "HS-2",
+                             "meal": "vegetarian",
+                             "selected": [testing["items"][0]["id"]]},
+                       headers=headers)
+    assert saved.status_code == 200, saved.text
+
+    # The delegate sees what their sponsor saved.
+    theirs = client.get("/me/activity-sheet", headers=as_(fx, "delegate")).json()
+    assert theirs["person"]["meal"] == "vegetarian"
+    assert theirs["status"] == "submitted"
+
+    # And the log credits the SPONSOR, not the delegate. Anything else is a
+    # record that says something untrue about who did it.
+    entries = client.get("/admin/audit", headers=as_(fx, "admin")).json()["entries"]
+    mine = [e for e in entries if e["entity_id"] == fx.delegate_id
+            and e["action"].startswith("form.")]
+    assert mine, "saving a sheet must be logged"
+    assert mine[0]["actor_person_id"] == fx.uni_sponsor_id
+
+
+def test_a_sponsor_cannot_open_another_chapters_delegate(fx, client):
+    """The scope check is the same one the rest of the roster uses."""
+    refused = client.get(
+        f"/sponsor/people/{fx.other_delegate_id}/activity-sheet",
+        headers=as_(fx, "uni_sponsor"))
+    assert refused.status_code == 403
+
+
+def test_an_adult_has_no_activity_sheet_to_open(fx, client):
+    """Adults fill in a different form. Asking for this one is a mistake worth
+    a clear refusal rather than an empty delegate sheet."""
+    refused = client.get(f"/sponsor/people/{fx.chaperone_id}/activity-sheet",
+                         headers=as_(fx, "uni_sponsor"))
+    assert refused.status_code == 403
+
+
+def test_guardian_contact_details_can_be_corrected(fx, client):
+    """The one contact detail somebody might need at eleven at night.
+
+    The roster paste used to offer a "their phone" column that the parser never
+    filled and nobody usefully typed into while checking thirty names. Dropping
+    it left `guardian_phone` with no screen at all.
+    """
+    fixed = client.patch(f"/sponsor/people/{fx.delegate_id}",
+                         json={"first_name": "Dana", "last_name": "Delegate",
+                               "guardian_name": "Alex Delegate",
+                               "guardian_phone": "555-0143"},
+                         headers=as_(fx, "uni_sponsor"))
+    assert fixed.status_code == 200, fixed.text
+
+    roster = client.get("/sponsor/roster", headers=as_(fx, "uni_sponsor")).json()
+    row = [p for p in roster["people"] if p["id"] == fx.delegate_id][0]
+    assert row["guardian_name"] == "Alex Delegate"
+    assert row["guardian_phone"] == "555-0143"
+
+
+def test_a_chapter_can_enter_more_than_one_team_in_the_same_event(fx, client):
+    """Kickball A and Kickball B are two entries, not one with a count.
+
+    A bracket is built from entries, so a chapter bringing two teams has to
+    appear twice with something to tell them apart. All three endpoints existed
+    and were tested; until the Teams page there was no caller for any of them,
+    so a chapter could not say it was bringing a team at all.
+    """
+    headers = as_(fx, "uni_sponsor")
+    available = client.get("/sponsor/chapter-entries",
+                           headers=headers).json()["available"]
+    assert available, "the catalog must offer some chapter team events"
+    item = available[0]
+
+    for label in ("A", "B"):
+        made = client.post("/sponsor/chapter-entries",
+                           json={"item_id": item["id"], "team_label": label},
+                           headers=headers)
+        assert made.status_code == 200, made.text
+
+    entries = client.get("/sponsor/chapter-entries", headers=headers).json()["entries"]
+    mine = [e for e in entries if e["item_id"] == item["id"]]
+    assert sorted(e["team_label"] for e in mine) == ["A", "B"]
+
+    gone = client.delete(f"/sponsor/chapter-entries/{mine[0]['id']}", headers=headers)
+    assert gone.status_code == 200
+    left = client.get("/sponsor/chapter-entries", headers=headers).json()["entries"]
+    assert len(left) == len(entries) - 1
+
+
+def test_an_individual_event_cannot_be_entered_as_a_chapter_team(fx, client):
+    """Chess and Track are entered by the delegate who is running or playing.
+
+    Entering one as a chapter would tell the Athletics chair that a school is
+    bringing "a chess team", which is not a thing that can be scheduled.
+    """
+    headers = as_(fx, "uni_sponsor")
+    catalog = client.get("/me/activity-sheet", headers=as_(fx, "delegate")).json()
+    individual = next(item for category in catalog["catalog"]
+                      for item in category["items"]
+                      if item.get("registration_scope") != "chapter")
+
+    refused = client.post("/sponsor/chapter-entries",
+                          json={"item_id": individual["id"], "team_label": "A"},
+                          headers=headers)
+    assert refused.status_code == 422, refused.text
+    assert "chapter team" in refused.json()["error"]
+
+
+def test_a_chair_can_see_why_a_chapters_balance_moved(fx, client):
+    """The payments list says what arrived; this says what changed the amount
+    owed.
+
+    When a sponsor disputes a figure in March, the difference between those two
+    is the whole argument, and the only record of it used to be the full audit
+    log behind scope `*`.
+    """
+    headers = as_(fx, "chair")
+    client.post("/sponsor/people",
+                json={"school_id": fx.uni_id, "first_name": "New",
+                      "last_name": "Delegate", "person_type": "delegate"},
+                headers=headers)
+    client.post(f"/sponsor/people/{fx.delegate_id}/cancel", json={},
+                headers=headers)
+    client.post("/admin/payments",
+                json={"school_id": fx.uni_id, "amount_cents": 14000,
+                      "method": "check", "reference": "1041"}, headers=headers)
+
+    history = client.get(f"/admin/schools/{fx.uni_id}/history",
+                         headers=headers).json()["history"]
+    actions = {entry["action"] for entry in history}
+    assert {"person.create", "person.cancel", "payment.record"} <= actions
+
+    # NARROWER than /admin/audit, not a widening of it: one school only, and a
+    # registration chair still cannot read the whole log.
+    assert client.get("/admin/audit", headers=headers).status_code == 403
+    other = client.get(f"/admin/schools/{fx.other_id}/history", headers=headers)
+    assert other.status_code == 200
+    assert all(e["action"] in {"person.create", "person.cancel", "person.restore",
+                               "roster.commit", "payment.record", "school.update"}
+               for e in other.json()["history"])
+
+
+def test_a_new_ludus_can_be_added_without_a_migration(fx, client):
+    """docs/structure.md, in as many words: "adding a new *ludus* for 2028
+    should require no code".
+
+    It used to mean a migration, a deploy, and somebody who knew what a
+    migration was -- which, in a system handed to different students every
+    year, is the same as not being possible.
+
+    The whole round trip: create it, give it a sub-choice, see it on a
+    delegate's form, retire it, see it gone.
+    """
+    headers = as_(fx, "admin")
+    catalog = client.get("/admin/catalog", headers=headers).json()
+    ludi = next(c for c in catalog["categories"] if c["key"] == "ludi")
+
+    made = client.post("/admin/catalog/items",
+                       json={"name": "Roman Bake Off", "category_id": ludi["id"],
+                             "description": "A new ludus for 2028.",
+                             "max_sub_selections": 2},
+                       headers=headers)
+    assert made.status_code == 200, made.text
+    item_id = made.json()["id"]
+
+    option = client.post(f"/admin/catalog/items/{item_id}/options",
+                         json={"name": "Sweet"}, headers=headers)
+    assert option.status_code == 200, option.text
+
+    def on_the_form():
+        sheet = client.get("/me/activity-sheet", headers=as_(fx, "delegate")).json()
+        return [item["name"] for category in sheet["catalog"]
+                for item in category["items"]]
+
+    assert "Roman Bake Off" in on_the_form()
+
+    # NOT OFFERED, never deleted: anybody who already chose it keeps their
+    # entry, and the chairs still see them in the counts.
+    client.put(f"/admin/catalog/items/{item_id}", json={"active": False},
+               headers=headers)
+    assert "Roman Bake Off" not in on_the_form()
+
+
+def test_a_sub_choice_cannot_be_added_where_none_may_be_picked(fx, client):
+    """An item whose `max_sub_selections` is unset would show a list nobody may
+    choose from -- the sort of thing a delegate finds at midnight."""
+    headers = as_(fx, "admin")
+    catalog = client.get("/admin/catalog", headers=headers).json()
+    plain = next(item for category in catalog["categories"]
+                 for item in category["items"]
+                 if not item.get("max_sub_selections"))
+
+    refused = client.post(f"/admin/catalog/items/{plain['id']}/options",
+                          json={"name": "Nope"}, headers=headers)
+    assert refused.status_code == 422
+    assert "does not take sub-choices" in refused.json()["error"]

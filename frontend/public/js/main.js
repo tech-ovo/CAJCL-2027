@@ -21,6 +21,8 @@ import { welcomePage } from "./pages/welcome.js";
 import { signInPage } from "./pages/signin.js";
 import { rosterPage } from "./pages/roster.js";
 import { importPage } from "./pages/import.js";
+import { resourcesPage } from "./pages/resources.js";
+import { teamsPage } from "./pages/teams.js";
 import { activitySheetPage } from "./pages/activity.js";
 import { adultSheetPage } from "./pages/adult.js";
 import { invoicePage } from "./pages/invoice.js";
@@ -42,6 +44,9 @@ const ROUTES = [
   [/^\/?$/,                      welcomePage,       { public: true }],
   [/^\/enter\/(.+)$/,            magicLink,         { public: true }],
   [/^\/sign-in$/,                signInPage,        { public: true }],
+  [/^\/resources$/,              resourcesPage,     { public: true }],
+  // Kept so an old link, a bookmark or a printed sheet still lands
+  // somewhere. The arena is now reached from Resources.
   [/^\/certamen$/,               () => { window.location.href = "/certamen/"; }, { public: true }],
   [/^\/account$/,                accountPage,       {}],
   [/^\/roster$/,                 rosterPage,        { scope: "sponsor" }],
@@ -55,7 +60,15 @@ const ROUTES = [
   // school_id from an administrative scope and refuse it from everyone else.
   [/^\/roster\/(\d+)\/import$/,   importPage,        { scope: "registration" }],
   [/^\/invoice$/,                invoicePage,       { scope: "sponsor" }],
+  // Chapter team entries. `chapter` is carried by a sponsor and by any
+  // delegate the sponsor has made chapter leader, which is exactly who may
+  // speak for a chapter about how many teams it is bringing.
+  [/^\/teams$/,                  teamsPage,         { scope: ["chapter", "registration"] }],
+  [/^\/teams\/(\d+)$/,            teamsPage,         { scope: "registration" }],
   [/^\/activity-sheet$/,         activitySheetPage, { scope: "delegate" }],
+  // A sponsor or a chair filling in a delegate's form for them. Same page,
+  // same rules; only the endpoint it reads and writes changes.
+  [/^\/activity-sheet\/(\d+)$/,   activitySheetPage, { scope: ["sponsor", "registration"] }],
   [/^\/adult-sheet$/,            adultSheetPage,    {}],
   [/^\/overview$/,               overviewPage,      { scope: "registration" }],
   [/^\/check-in$/,               checkinPage,       { scope: "registration" }],
@@ -433,7 +446,7 @@ function renderNav() {
     return a;
   };
 
-  add(nav, link("#/", "Welcome"), el("a", { href: "/certamen/" }, "Certamen"));
+  add(nav, link("#/", "Welcome"));
 
   if (state.me) {
     /* TWO GROUPS, AND THE ORDER IS THE POINT.
@@ -474,6 +487,11 @@ function renderNav() {
     if (holdsRole("sponsor")) {
       add(nav, link("#/roster", "Roster"), link("#/invoice", "Invoice"));
     }
+    // A chapter leader is a delegate whose one extra job is this page, so for
+    // them it is the whole reason they were given the role.
+    if (hasScope("chapter")) {
+      add(nav, link("#/teams", "Teams"));
+    }
 
     const administrative = [];
     if (hasScope("registration")) {
@@ -504,6 +522,13 @@ function renderNav() {
     }
 
     add(nav, el("span", { class: "nav__spacer" }));
+    // RESOURCES SITS OUT HERE, past the spacer, next to their name.
+    //
+    // Everything it links to is somewhere else — a practice app, a Discord
+    // server — so it does not belong among the tabs that are this person's
+    // work. It used to be a "Certamen" link in the first group, where it read
+    // as another thing to complete.
+    add(nav, link("#/resources", "Resources"));
     add(nav, link("#/account", state.me.first_name || "Account"));
     // Visible on every page. Not in a menu. Assume shared devices.
     add(nav, el("button", {
@@ -511,6 +536,7 @@ function renderNav() {
     }, "Sign out"));
   } else {
     add(nav, el("span", { class: "nav__spacer" }));
+    add(nav, link("#/resources", "Resources"));
     add(nav, link("#/sign-in", "Sign in"));
   }
 

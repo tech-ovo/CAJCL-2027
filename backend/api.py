@@ -828,6 +828,55 @@ def put_activity_sheet(request: Request, payload: dict = Body(...),
         return forms.save_activity_sheet(tx, principal, person, payload)
 
 
+@app.get("/sponsor/people/{person_id}/activity-sheet")
+def get_activity_sheet_for(person_id: int,
+                           principal: auth.Principal = guard(
+                               "sponsor.activity_sheet", "sponsor",
+                               "registration")):
+    """A delegate's activity sheet, opened by their sponsor or a chair.
+
+    THE SAME FORM, NOT A COPY OF IT. The delegate's own screen and this one
+    read and write the same shape, so a rule enforced on one is enforced on the
+    other -- the test-count minimum, the eligibility gating, all of it.
+
+    Why this exists: a delegate who has lost their sheet, or who is eleven and
+    has given up, leaves their sponsor with a roster row that says "Not yet"
+    and no way to move it. The sponsor is the person the chapter holds
+    responsible for that row.
+    """
+    with database().read() as tx:
+        person = _person_of(tx, principal, person_id)
+        if person["person_type"] != "delegate":
+            raise auth.ForbiddenError("that form is for delegates")
+        school = tx.one("schools.get", (person["school_id"],))
+        person = {**person, "school_level": school["level"],
+                  "school_name": school["name"],
+                  "school_number": school["number"]}
+        return forms.activity_sheet(tx, person)
+
+
+@app.put("/sponsor/people/{person_id}/activity-sheet")
+def put_activity_sheet_for(person_id: int, request: Request,
+                           payload: dict = Body(...),
+                           principal: auth.Principal = guard(
+                               "sponsor.activity_sheet.save", "sponsor",
+                               "registration", writes=True)):
+    """Save a delegate's sheet on their behalf.
+
+    Audited as the SPONSOR's action, because it is one. `save_activity_sheet`
+    writes the audit entry from the principal it is handed, so the log says who
+    actually did this rather than crediting it to the delegate -- which is the
+    difference between a record and a fiction.
+    """
+    with database().tx(request_id=request_id(request)) as tx:
+        person = _person_of(tx, principal, person_id)
+        if person["person_type"] != "delegate":
+            raise auth.ForbiddenError("that form is for delegates")
+        school = tx.one("schools.get", (person["school_id"],))
+        person = {**person, "school_level": school["level"]}
+        return forms.save_activity_sheet(tx, principal, person, payload)
+
+
 @app.get("/me/adult-sheet")
 def get_adult_sheet(principal: auth.Principal = Depends(any_session)):
     with database().read() as tx:
@@ -1341,6 +1390,47 @@ def academics_item(item_id: int,
     }
 
 
+@app.get("/admin/schools/{school_id}/history")
+def school_history(school_id: int, limit: int = Query(default=60, le=200),
+                   principal: auth.Principal = guard("admin.school.history",
+                                                     "registration",
+                                                     school_rule="any")):
+    """Why this chapter's balance is what it is.
+
+    The payments list says what arrived. It does not say why the amount OWED
+    moved -- a delegate added, somebody cancelled, a discount applied, or the
+    eleventh delegate quietly making a second adult free. When a sponsor
+    disputes a figure in March, that is the argument, and until now the only
+    record of it was the full audit log behind scope `*`.
+
+    A NARROWER READ THAN /admin/audit, not a widening of it. This is one
+    school, capped, and only the actions that can move a number: it is not a
+    way for a registration chair to read the whole log.
+    """
+    with database().read() as tx:
+        school = tx.one("schools.get", (school_id,))
+        if school is None:
+            raise auth.ForbiddenError("no such school")
+        rows = [dict(r) for r in
+                tx.all("audit.recent_by_school", (school_id, 2 ** 62, limit))]
+
+    kinds = ("person.create", "person.cancel", "person.restore",
+             "roster.commit", "payment.record", "school.update")
+    entries = [
+        {
+            "ts_utc": row["ts_utc"],
+            "action": row["action"],
+            "summary": row["summary"],
+            "entity_id": row["entity_id"],
+            "entity_type": row["entity_type"],
+            "by": " ".join(filter(None, [row["actor_first_name"],
+                                         row["actor_last_name"]])) or None,
+        }
+        for row in rows if row["action"] in kinds
+    ]
+    return {"school_id": school_id, "history": entries}
+
+
 @app.get("/admin/logins")
 def recent_logins(limit: int = Query(default=100, le=500),
                   principal: auth.Principal = guard("admin.logins", "*",
@@ -1467,9 +1557,148 @@ def put_document(key: str, request: Request, payload: dict = Body(...),
 @app.get("/admin/catalog")
 def get_catalog(principal: auth.Principal = guard("admin.catalog.get", "*",
                                                   school_rule="any")):
+    """The whole catalog, for the screen that edits it.
+
+    Items and options as well as categories: the editor needs all three, the
+    whole thing is about 150 rows, and it is already loaded into memory once
+    per container. Sending it in three requests would be three round trips to
+    assemble one page.
+    """
     with database().read() as tx:
         data = catalog.load(tx)
-        return {"categories": data["categories"]}
+        # `categories` already carries its items, and each item its active
+        # options. `options` is the full list including retired ones, which is
+        # the only way the editor can bring one back.
+        return {"categories": data["categories"], "options": data["options"]}
+
+
+@app.post("/admin/catalog/items")
+def create_catalog_item(request: Request, payload: dict = Body(...),
+                        principal: auth.Principal = guard("admin.catalog.create",
+                                                          "*", school_rule="any",
+                                                          writes=True)):
+    """A new test or event, without a migration.
+
+    docs/structure.md puts this in scope in as many words: "adding a new *ludus*
+    for 2028 should require no code". Until now it required a migration, a
+    deploy, and somebody who knew what a migration was -- which in a system
+    handed to different students every year is the same as not being possible.
+
+    The CATEGORY is not created here. Categories carry the rules a form is
+    validated against -- how many you must pick, whether that is a block or a
+    warning -- and inventing one from a text box is how a delegate ends up
+    unable to submit for a reason nobody can find. Those stay in a migration.
+    """
+    name = (payload.get("name") or "").strip()
+    category_id = int(payload.get("category_id") or 0)
+
+    problems = []
+    if not name:
+        problems.append("Give it a name.")
+    if not category_id:
+        problems.append("Say which category it belongs to.")
+    if problems:
+        raise catalog.ValidationError(problems)
+
+    with database().tx(request_id=request_id(request)) as tx:
+        categories = {c["id"]: c for c in catalog.load(tx)["categories"]}
+        if category_id not in categories:
+            raise catalog.ValidationError(["There is no such category."])
+
+        sort_order = payload.get("sort_order")
+        if sort_order in (None, ""):
+            sort_order = tx.value("catalog.next_sort_order", (category_id,),
+                                  default=10)
+
+        item_id = tx.insert("catalog.item_create", (
+            category_id, name,
+            (payload.get("description") or "").strip() or None,
+            _csv(payload.get("eligible_latin_levels")),
+            _csv(payload.get("eligible_school_levels")),
+            payload.get("registration_scope") or "individual",
+            payload.get("max_sub_selections"),
+            payload.get("min_latin_knowledge"),
+            int(sort_order)))
+        tx.audit("catalog.create",
+                 f"{principal.display_name} added {name} to "
+                 f"{categories[category_id]['name']}.",
+                 actor_person_id=principal.person_id,
+                 impersonator_person_id=principal.impersonator_person_id,
+                 entity_type="catalog_item", entity_id=item_id)
+        catalog.invalidate()
+    return {"ok": True, "id": item_id}
+
+
+@app.post("/admin/catalog/items/{item_id}/options")
+def create_catalog_option(item_id: int, request: Request, payload: dict = Body(...),
+                          principal: auth.Principal = guard("admin.catalog.option",
+                                                            "*", school_rule="any",
+                                                            writes=True)):
+    """A sub-choice under one item: a medium under Drawing/Painting.
+
+    Adding one to an item whose `max_sub_selections` is unset would produce a
+    list nobody may choose from, so that is refused rather than silently
+    accepted -- it is the sort of thing found by a delegate at midnight.
+    """
+    name = (payload.get("name") or "").strip()
+    if not name:
+        raise catalog.ValidationError(["Give the option a name."])
+
+    with database().tx(request_id=request_id(request)) as tx:
+        loaded = catalog.load(tx)
+        item = loaded["items_by_id"].get(item_id)
+        if item is None:
+            raise catalog.ValidationError(["There is no such catalog entry."])
+        if not item.get("max_sub_selections"):
+            raise catalog.ValidationError([
+                f"{item['name']} does not take sub-choices. Set how many may be "
+                "picked first, then add them."])
+
+        existing = [o for o in loaded["options"] if o["item_id"] == item_id]
+        order = max([o["sort_order"] for o in existing] or [0]) + 10
+        option_id = tx.insert("catalog.option_create", (item_id, name, order))
+        tx.audit("catalog.update",
+                 f"{principal.display_name} added the option {name} to "
+                 f"{item['name']}.",
+                 actor_person_id=principal.person_id,
+                 impersonator_person_id=principal.impersonator_person_id,
+                 entity_type="catalog_item", entity_id=item_id)
+        catalog.invalidate()
+    return {"ok": True, "id": option_id}
+
+
+@app.put("/admin/catalog/options/{option_id}")
+def put_catalog_option(option_id: int, request: Request, payload: dict = Body(...),
+                       principal: auth.Principal = guard("admin.catalog.option.put",
+                                                         "*", school_rule="any",
+                                                         writes=True)):
+    """Rename an option, reorder it, or switch it off.
+
+    SWITCHED OFF, NEVER DELETED. A delegate may already have chosen it, and
+    deleting the row would either fail on the foreign key or take their choice
+    with it. Inactive means "not offered from now on", which is what retiring a
+    medium actually means.
+    """
+    with database().tx(request_id=request_id(request)) as tx:
+        loaded = catalog.load(tx)
+        option = next((o for o in loaded["options"] if o["id"] == option_id), None)
+        if option is None:
+            raise catalog.ValidationError(["There is no such option."])
+
+        tx.run("catalog.option_update", (
+            (payload.get("name") or option["name"]).strip(),
+            payload.get("sort_order", option["sort_order"]),
+            1 if payload.get("active", option["active"]) else 0,
+            option_id))
+        tx.audit("catalog.update",
+                 f"{principal.display_name} updated the option "
+                 f"{payload.get('name', option['name'])}.",
+                 actor_person_id=principal.person_id,
+                 impersonator_person_id=principal.impersonator_person_id,
+                 entity_type="catalog_item", entity_id=option["item_id"],
+                 changed_fields=sorted(payload.keys()))
+        catalog.invalidate()
+    return {"ok": True}
 
 
 @app.put("/admin/catalog/items/{item_id}")

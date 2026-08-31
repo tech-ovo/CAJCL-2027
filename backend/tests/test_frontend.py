@@ -581,3 +581,17 @@ def test_a_delegate_added_at_the_desk_needs_all_four_answers():
         assert f'missing.push("{wanted}")' in add_view, f"{wanted} is not required"
     assert "waive-activity-sheet" in add_view, (
         "a delegate added at the desk must have their sheet waived")
+
+
+def test_every_catalog_category_reaches_one_of_the_entries_tabs():
+    """Splitting Entries in two must not be able to lose a category.
+
+    Written as two named lists, a category added later -- and the catalog
+    editor is meant to make that a five-minute job -- would have belonged to
+    neither tab and vanished from the page, with no error and nothing visibly
+    missing. One tab is therefore a catch-all.
+    """
+    page = (PUBLIC / "js/pages/academics.js").read_text(encoding="utf-8")
+    assert "!ACADEMIC_CATEGORIES.includes" in page, (
+        "one tab must take everything the other does not, or a new category "
+        "falls off the page")

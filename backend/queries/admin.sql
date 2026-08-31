@@ -158,3 +158,28 @@ JOIN schools s ON s.id = p.school_id
 WHERE p.board_title IS NOT NULL
 ORDER BY p.last_name, p.first_name
 LIMIT 200;
+
+-- name: catalog.item_create
+-- A new test or event. `active` defaults on: somebody adding one is adding it
+-- because it is happening, and an entry that had to be switched on afterwards
+-- was the sort of thing discovered in March.
+INSERT INTO catalog_items (
+  category_id, name, description, eligible_latin_levels, eligible_school_levels,
+  registration_scope, max_sub_selections, min_latin_knowledge, sort_order, active
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1);
+
+-- name: catalog.option_create
+-- A sub-choice under one item: a medium under Drawing/Painting, a distance
+-- under Track.
+INSERT INTO catalog_item_options (item_id, name, sort_order, active)
+VALUES (?, ?, ?, 1);
+
+-- name: catalog.option_update
+UPDATE catalog_item_options SET name = ?, sort_order = ?, active = ? WHERE id = ?;
+
+-- name: catalog.next_sort_order
+-- Where a new item goes: after everything already in its category. Ordering is
+-- a number rather than an alphabet because a chair wants Grammar 1, 2 and 3 in
+-- that order, and the alphabet does not agree.
+SELECT COALESCE(MAX(sort_order), 0) + 10 AS next
+FROM catalog_items WHERE category_id = ?;
