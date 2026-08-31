@@ -73,6 +73,26 @@ def recorded() -> dict[str, str]:
     return out
 
 
+REWRITTEN_MARKER = "# rewritten-after: "
+
+
+def rewritten_after() -> str | None:
+    """The date of the last accepted rewrite, from the manifest.
+
+    Written by `--accept`. Without it the drift check below compares every
+    migration against the FIRST commit it ever had -- which is right until the
+    files are deliberately rewritten, and wrong forever afterwards: it would
+    report drift against a version that was intentionally replaced, on every
+    run, for the rest of the project.
+    """
+    if not MANIFEST.exists():
+        return None
+    for line in MANIFEST.read_text(encoding="utf-8").splitlines():
+        if line.startswith(REWRITTEN_MARKER):
+            return line[len(REWRITTEN_MARKER):].strip()
+    return None
+
+
 def first_committed() -> dict[str, str]:
     """Each migration's sha256 AS FIRST COMMITTED, from git.
 
@@ -88,12 +108,17 @@ def first_committed() -> dict[str, str]:
     """
     import subprocess
 
+    # After an accepted rewrite, "first committed" means first committed SINCE
+    # then. Anything older is a version that was deliberately replaced.
+    since = rewritten_after()
+    window = ["--since", since] if since else []
+
     out: dict[str, str] = {}
     for path in sorted(MIGRATIONS.glob("*.sql")):
         rel = path.relative_to(ROOT).as_posix()
         try:
             commits = subprocess.run(
-                ["git", "log", "--format=%h", "--reverse", "--", rel],
+                ["git", "log", "--format=%h", "--reverse", *window, "--", rel],
                 capture_output=True, text=True, cwd=ROOT, timeout=30).stdout.split()
             if not commits:
                 continue                      # never committed: nothing to compare
@@ -122,8 +147,11 @@ def main() -> int:
         # seventeen migrations described a schema that six could have. Between
         # conventions, when the database is going to be rebuilt anyway, folding
         # them back in is the right move and this is how it is recorded.
+        import datetime as _dt
+        stamp = _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds")
         MANIFEST.write_text(
             HEADER + chr(10)
+            + REWRITTEN_MARKER + stamp + chr(10)
             + chr(10).join(f"{want[n]}  {n}" for n in sorted(want))
             + chr(10),
             encoding="utf-8")
@@ -159,8 +187,15 @@ def main() -> int:
     added = sorted(n for n in want if n not in have)
     removed = sorted(n for n in have if n not in want)
 
+    # KEEP THE BASELINE. An ordinary run must not quietly drop the marker an
+    # earlier `--accept` wrote: doing so re-points the drift check at commits
+    # that were deliberately replaced, and every run afterwards reports drift
+    # against a version nobody wants back.
+    baseline = rewritten_after()
+    marker = (REWRITTEN_MARKER + baseline + chr(10)) if baseline else ''
     MANIFEST.write_text(
-        HEADER + "\n" + "\n".join(f"{want[n]}  {n}" for n in sorted(want)) + "\n",
+        HEADER + chr(10) + marker
+        + chr(10).join(f"{want[n]}  {n}" for n in sorted(want)) + chr(10),
         encoding="utf-8")
 
     for name in added:

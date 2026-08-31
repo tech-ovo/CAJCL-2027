@@ -9,6 +9,7 @@ endpoint still looks correct.
 
 from __future__ import annotations
 
+import pathlib
 import sqlite3
 
 import pytest
@@ -221,3 +222,59 @@ def test_the_theme_needs_latin_extended_a(db):
     ).fetchone()[0]
     assert theme == "aequam mementō rēbus in arduīs servāre mentem"
     assert any(ord(ch) > 0x7F for ch in theme)
+
+
+def test_a_reset_wipes_before_it_migrates(tmp_path):
+    """`setup --reset` has to work on the one database that cannot migrate.
+
+    Migrating compares each file against the hash recorded when it first ran,
+    so a database holding migrations that no longer exist -- after a deliberate
+    consolidation -- refuses to migrate at all. That is exactly the database
+    somebody reaches for `--reset` to fix.
+
+    The wipe used to live inside `seed_database`, which `setup` called AFTER
+    `migrate_database`. So the reset failed on the migrate step and never
+    reached the wipe that was the whole point of asking for it, and the only
+    way out was a console.
+    """
+    import sqlite3
+
+    from backend.lib import migrate
+    from backend.lib.db import connect
+    import scripts.seed as seed_script
+
+    path = str(tmp_path / "reset.db")
+    database = connect(path)
+    migrate.run(database)
+    database.close()
+
+    # A recorded hash that no longer matches the file on disk.
+    raw = sqlite3.connect(path)
+    raw.execute("UPDATE schema_migrations SET sha256 = 'stale' WHERE filename = ?",
+                ("001_core.sql",))
+    raw.commit()
+    raw.close()
+
+    database = connect(path)
+    try:
+        with pytest.raises(SystemExit):
+            migrate.run(database)          # the state the user was stuck in
+
+        seed_script.wipe(database)
+        assert migrate.run(database) > 0, "a wiped database must migrate cleanly"
+    finally:
+        database.close()
+
+
+def test_setup_passes_the_reset_through_to_the_migrate_step():
+    """The ordering above only holds if `setup` actually asks for it."""
+    source = (pathlib.Path(__file__).resolve().parents[2]
+              / "backend" / "app.py").read_text(encoding="utf-8")
+    body = source[source.index("def setup("):source.index("# ---", source.index("def setup("))]
+
+    assert "migrate_database.remote(reset=reset)" in body, (
+        "setup must hand the reset to the migrate step, which is the only "
+        "place that can wipe before the hash check runs")
+    assert "seed_database.remote(reset=False)" in body, (
+        "the wipe has already happened by then; doing it twice would drop the "
+        "schema that was just built")

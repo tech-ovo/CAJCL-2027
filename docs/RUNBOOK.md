@@ -410,9 +410,34 @@ both times over wording.
 4. `python scripts/checksum_migrations.py` and commit the manifest with it.
 5. `python -m pytest backend/tests` — this is caught locally now, not in CI.
 
-`backend/migrations/010_welcome_wording.sql` is a worked example of exactly
-this: two words of wording that had been changed the wrong way, moved into a
-migration that leaves a reworded copy alone.
+### The exception, and it is one exception
+
+**Between conventions, when the database is going to be rebuilt anyway, the
+migrations can be rewritten.** Corrections were accumulating as new files — a
+comment here, a wording change there — until seventeen migrations described a
+schema that six could have. Folding them back in is the right move at that
+moment and nowhere else.
+
+```
+python scripts/checksum_migrations.py --accept
+modal run backend/app.py::setup --reset
+```
+
+The first refuses without `--accept` and tells you the flag exists. The second
+**wipes before it migrates**, which is what makes this recoverable: a database
+holding migrations that no longer exist cannot be migrated at all, so the reset
+has to drop the tables before the hash check ever runs.
+
+**Both commands, in that order, or the site is down.** After `--accept` the
+deployed database has run files that are gone; until it is reset, every deploy
+refuses to start with:
+
+```
+001_core.sql has already been applied but its contents have changed.
+```
+
+If you see that after a consolidation, you have not run the reset yet. That is
+the whole diagnosis.
 
 ### Why the checksum exists at all
 

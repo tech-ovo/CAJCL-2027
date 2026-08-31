@@ -160,7 +160,17 @@ def run_export(fmt: str = "xlsx", anonymized: bool = False) -> dict:
 #         modal run backend/app.py::setup --no-seed  # migrate only
 
 @app.function(image=slim_image, secrets=secrets, timeout=900)
-def migrate_database() -> str:
+def migrate_database(reset: bool = False) -> str:
+    """Bring the database up to date, optionally from empty.
+
+    `reset` DROPS EVERY TABLE FIRST, and it has to happen here rather than
+    later in the run. Migrating an existing database compares each file against
+    the hash recorded when it first ran, so a database that has applied
+    migrations which no longer exist -- after a deliberate consolidation, say
+    -- refuses to migrate at all. The wipe used to live in `seed_database`,
+    which meant `setup --reset` failed on the migrate step before ever reaching
+    the thing that would have fixed it. The only way out was a console.
+    """
     import sys
     sys.path.insert(0, "/root/cajcl")
     from backend.lib import migrate
@@ -168,6 +178,10 @@ def migrate_database() -> str:
 
     db = connect()
     try:
+        if reset:
+            import scripts.seed as seed_script
+            print("dropping all tables")
+            seed_script.wipe(db)
         applied = migrate.run(db, verbose=True)
     finally:
         db.close()
@@ -438,11 +452,16 @@ def setup(reset: bool = False, seed: bool = True):
     """
     import pathlib
 
-    print(migrate_database.remote())
+    # The wipe belongs HERE, before the migrate, not inside the seed. A
+    # database holding migrations that no longer exist cannot be migrated, so
+    # doing it the other way round meant `--reset` failed at the first step and
+    # never reached the wipe that was the point of asking for it.
+    print(migrate_database.remote(reset=reset))
     if not seed:
         return
 
-    codes = seed_database.remote(reset=reset)
+    # Already empty and freshly migrated if `reset` was asked for.
+    codes = seed_database.remote(reset=False)
 
     # One line each, code first, and nothing else on the page.
     #

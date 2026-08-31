@@ -14,6 +14,7 @@
 # the result with it. Changing an applied one is what this exists to stop --
 # write a new migration instead.
 
+# rewritten-after: 2026-08-31T15:31:30+00:00
 a24f682f05f1ec870a0269b97aa5f97a71e2b55ee73d9cd89f5e4c389c635d62  001_core.sql
 dc31a82e24f1bf5af656a53a0e70e7e4b042135a4541a1d294cddeb197feb831  002_forms_catalog.sql
 9facc34b335bec282692a01297b0f1ba838ee0a54ed0183c28acf05587054647  003_money_audit.sql
