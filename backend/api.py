@@ -725,6 +725,40 @@ def set_chapter_leader(person_id: int, request: Request, payload: dict = Body(..
     return {"ok": True, "granted": grant}
 
 
+@app.put("/sponsor/chapter-note")
+def put_chapter_note(request: Request, payload: dict = Body(...),
+                     principal: auth.Principal = guard("sponsor.chapter_note",
+                                                       "sponsor", "registration",
+                                                       writes=True)):
+    """A note about the chapter, tied to no particular person.
+
+    How many Certamen machines they are bringing, roughly when they expect to
+    arrive, that their bus has to leave by four. None of it belongs on a
+    delegate's row, and all of it was going in emails that the person on the
+    desk in March never saw.
+
+    TEXT, NOT A TIME. "Some time after three, depending on traffic" is the true
+    answer and a time field cannot hold it. A field that forces a precision
+    nobody has gets filled in with a lie.
+
+    Distinct from `checkin_note`, which the desk writes on the Friday about
+    what actually turned up.
+    """
+    note = (payload.get("note") or "").strip() or None
+    with database().tx(request_id=request_id(request)) as tx:
+        school = _school_of(tx, principal, payload.get("school_id"))
+        tx.run("schools.set_note", (note, clock.now_iso(), school["id"]))
+        tx.audit("school.update",
+                 f"{principal.display_name} "
+                 + ("updated" if note else "cleared")
+                 + f" the chapter note for {school['name']}.",
+                 actor_person_id=principal.person_id,
+                 impersonator_person_id=principal.impersonator_person_id,
+                 school_id=school["id"], entity_type="school",
+                 entity_id=school["id"], changed_fields=["notes"])
+    return {"ok": True, "note": note}
+
+
 @app.post("/sponsor/paper-forms")
 def mark_paper(request: Request, payload: dict = Body(...),
                principal: auth.Principal = guard("sponsor.paper_forms", "sponsor",

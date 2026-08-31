@@ -21,7 +21,8 @@
 
 import * as api from "../api.js";
 import { add, el, clear, button, loadingRows, localDate,
-         field, input, select, errorSummary, check } from "../ui.js";
+         field, input, select, errorSummary, check,
+         closeOnBackdropClick } from "../ui.js";
 
 /* What a delegate added at the desk can be. Both are required, and both are
  * questions only the person standing there can answer. */
@@ -180,6 +181,9 @@ export async function checkinPage(host) {
       if (ok) { settled = true; dialog.close(); }
     }
     dialog.addEventListener("close", () => { dialog.remove(); render(); });
+    // Clicking the dark area is the same as Cancel: it goes through the
+    // `cancel` handler above, so an unsaved note is still asked about.
+    closeOnBackdropClick(dialog);
 
     function show(node) { clear(body); add(body, node); }
 
@@ -229,6 +233,15 @@ export async function checkinPage(host) {
         el("h2", {}, chapter.school_name),
         el("p", { class: "muted" },
           `${chapter.delegates_active} delegates · ${chapter.adults_active} adults`),
+        // WHAT THE SPONSOR SAID IN ADVANCE, above the box for what the desk
+        // finds. How many machines, roughly when they arrive — the answers to
+        // the questions the desk is about to ask out loud.
+        chapter.chapter_note
+          ? el("div", { class: "banner banner--info",
+                        style: "margin-bottom:1rem" },
+              el("span", { class: "banner__label" }, "From the chapter"),
+              el("span", {}, chapter.chapter_note))
+          : null,
         status,
         el("label", { class: "label", for: "checkin-note" }, "Notes"),
         note,

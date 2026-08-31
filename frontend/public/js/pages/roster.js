@@ -156,6 +156,7 @@ export async function rosterPage(host, params = []) {
             })
           : null),
 
+      chapterNote(school),
       selecting ? reissueBar(people) : null,
 
       people.length
@@ -437,6 +438,53 @@ export async function rosterPage(host, params = []) {
     showCode(`${created.first_name} ${created.last_name}`.trim(), created.code,
              "Send it to them now, in a message addressed to them alone.",
              created.id);
+  }
+
+  /* A note about the chapter, belonging to nobody in particular.
+   *
+   * Certamen machines, roughly when the bus gets in, that it has to leave by
+   * four. None of it belongs on a delegate's row, and all of it was going into
+   * emails that the person on the desk in March never saw.
+   *
+   * Deliberately a text box and not a time field: "some time after three,
+   * depending on traffic" is the true answer, and a field that forces a
+   * precision nobody has gets filled in with a lie.
+   */
+  function chapterNote(school) {
+    const box = el("textarea", {
+      id: "chapter-note", rows: "3",
+      placeholder: "How many Certamen machines? Roughly when do you arrive? "
+                 + "Anything the desk should know.",
+    }, school.notes || "");
+    const status = el("span", { class: "form-note", "aria-live": "polite" });
+
+    return el("details", { class: "panel", style: "margin-bottom:1.5rem" },
+      el("summary", {},
+        el("span", { class: "label label--ink" }, "Chapter note"),
+        school.notes
+          ? el("span", { class: "small muted" }, `  ${school.notes.slice(0, 60)}`)
+          : el("span", { class: "small muted" }, "  Nothing yet")),
+      el("p", { class: "small muted" },
+        "Read by the registration chairs and at the desk on the Friday. Not "
+        + "about any one person — for that, use their row."),
+      box,
+      el("div", { class: "btn-row" },
+        button("Save the note", {
+          onclick: async () => {
+            try {
+              const result = await api.put("/sponsor/chapter-note", {
+                school_id: schoolId || undefined, note: box.value });
+              school.notes = result.note;
+              clear(status);
+              add(status, "Saved.");
+            } catch (error) {
+              clear(status);
+              status.className = "form-note form-note--unsaved";
+              add(status, `Not saved: ${error.message}`);
+            }
+          },
+        }),
+        status));
   }
 
   function reissueBar(people) {

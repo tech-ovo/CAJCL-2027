@@ -617,10 +617,23 @@ def issue_code(tx: Tx, person_id: int, prefix: str) -> str:
 
 
 # How stale a session's last_seen_at may get before a request bothers to update
-# it. Anything above zero turns "a write on every request" into "a write every
-# few minutes per device", which is the difference between contending for the
-# single write lock constantly and almost never.
-SESSION_TOUCH_MINUTES = 5
+# it.
+#
+# ONCE A DAY, NOT EVERY FIVE MINUTES, and the reason is measured. Opening a
+# connection costs a TLS handshake to Turso, and the touch opens a THIRD one on
+# top of the two an authenticated request already pays for -- a write
+# connection, which also queues for the single writer. From a warm container a
+# request that skipped the touch answered in about 350ms and one that took it
+# ran to about three seconds. It was the single most expensive thing on the
+# page, and it exists to keep one cosmetic column fresh.
+#
+# What that column is for: somebody looking at their own account page and
+# deciding whether a session they do not recognise is theirs. "Yesterday" and
+# "three months ago" answers that; "eleven minutes ago" was never the question.
+#
+# It is a ceiling, not a schedule: the write happens on the first request after
+# a day has passed, and not again until the next one.
+SESSION_TOUCH_MINUTES = 60 * 24
 
 
 def code_prefix_for(person_type: str, adult_type: str | None) -> str:

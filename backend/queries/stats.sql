@@ -198,6 +198,10 @@ ORDER BY s.name;
 -- they are not a chapter would be absurd.
 SELECT s.id AS school_id, s.name AS school_name, s.level, s.kind,
        s.checkin_note,
+       -- What the sponsor said in advance: machines, arrival, when the bus
+       -- has to leave. Different from checkin_note, which the desk writes
+       -- about what actually turned up.
+       s.notes AS chapter_note,
        ss.arrived_at,
        ss.delegates_active, ss.adults_active,
        ss.delegates_complete, ss.adults_complete

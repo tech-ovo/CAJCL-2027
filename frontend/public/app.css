@@ -369,7 +369,23 @@ footer.page > .hair { margin-top: 0; }
 }
 .nav a:hover { color: var(--link); }
 .nav a[aria-current="page"] { border-bottom-color: var(--link); color: var(--link); font-weight: var(--weight-semi); }
-.nav__spacer { margin-left: auto; }
+
+/* Name, Sign out and the theme icon travel together.
+ *
+ * They used to be three loose children after the spacer, so a narrow screen
+ * broke the group wherever it happened to run out of room — usually leaving
+ * the theme icon alone on a line of its own, which looked like a mistake.
+ * Wrapped in one element they either all fit or all move. */
+.nav__you {
+  display: flex; align-items: center; gap: var(--space-4);
+  margin-left: auto;
+}
+@media (max-width: 40rem) {
+  /* On a phone the row is already two lines; make the break deliberate rather
+   * than wherever the last item happened to overflow. */
+  .nav__you { margin-left: 0; width: 100%; justify-content: flex-end;
+              padding-top: var(--space-1); }
+}
 
 /* Sign-out is visible on EVERY page, never buried in a menu. Assume shared
  * devices: a school Chromebook will hold sessions for a dozen delegates. */
@@ -472,7 +488,19 @@ footer.page > .hair { margin-top: 0; }
   background: var(--panel-bg);
 }
 
-.btn-row { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; margin: var(--space-5) 0; }
+/* THE SPACE AROUND A ROW OF BUTTONS, settled in one place.
+ *
+ * A button row is the end of one thing and the start of the next, so it needs
+ * more air BELOW it than above: without that, the next heading sits against
+ * the buttons and reads as though it belongs to them. On Operations,
+ * "Impersonate someone" was landing directly under "Keep warm".
+ *
+ * The `:last-child` rule below still removes the bottom margin where the row
+ * is the last thing in a panel, because the panel's own padding is already
+ * there. Both rules together are the whole story. */
+.btn-row { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center;
+           margin: var(--space-5) 0 var(--space-6); }
+.btn-row + h2, .btn-row + h3 { margin-top: var(--space-2); }
 /* A button row at the bottom of a panel or a dialog already has that
  * container's padding under it. Its own bottom margin on top of that is
  * a visible gap with nothing in it. */

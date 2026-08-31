@@ -521,28 +521,31 @@ function renderNav() {
       }));
     }
 
-    add(nav, el("span", { class: "nav__spacer" }));
-    // RESOURCES SITS OUT HERE, past the spacer, next to their name.
-    //
-    // Everything it links to is somewhere else — a practice app, a Discord
-    // server — so it does not belong among the tabs that are this person's
-    // work. It used to be a "Certamen" link in the first group, where it read
-    // as another thing to complete.
-    add(nav, link("#/resources", "Resources"));
-    add(nav, link("#/account", state.me.first_name || "Account"));
-    // Visible on every page. Not in a menu. Assume shared devices.
-    add(nav, el("button", {
-      class: "btn btn--small nav__signout", type: "button", onclick: signOut,
-    }, "Sign out"));
+    /* RESOURCES, THE NAME, SIGN OUT AND THE THEME ICON TRAVEL TOGETHER.
+     *
+     * One element rather than four loose children, because a narrow screen
+     * broke the group wherever it happened to run out of room — usually
+     * leaving the theme icon alone on a line by itself, which read as a
+     * mistake. Wrapped, they either all fit or all move.
+     *
+     * Resources is out here because everything it links to is somewhere else:
+     * a practice app, a Discord server. It does not belong among the tabs
+     * that are this person's work, where it read as another thing to
+     * complete. */
+    add(nav, el("span", { class: "nav__you" },
+      link("#/resources", "Resources"),
+      link("#/account", state.me.first_name || "Account"),
+      // Visible on every page. Not in a menu. Assume shared devices.
+      el("button", {
+        class: "btn btn--small nav__signout", type: "button", onclick: signOut,
+      }, "Sign out"),
+      themeToggle()));
   } else {
-    add(nav, el("span", { class: "nav__spacer" }));
-    add(nav, link("#/resources", "Resources"));
-    add(nav, link("#/sign-in", "Sign in"));
+    add(nav, el("span", { class: "nav__you" },
+      link("#/resources", "Resources"),
+      link("#/sign-in", "Sign in"),
+      themeToggle()));
   }
-
-  // Last, on every page, signed in or not. It is the only control here that
-  // has nothing to do with the convention.
-  add(nav, themeToggle());
 }
 
 function signOut() {

@@ -595,3 +595,50 @@ def test_every_catalog_category_reaches_one_of_the_entries_tabs():
     assert "!ACADEMIC_CATEGORIES.includes" in page, (
         "one tab must take everything the other does not, or a new category "
         "falls off the page")
+
+
+def test_a_slow_request_never_wipes_the_page():
+    """Nothing on this site takes away what somebody is already looking at.
+
+    The cold-start ladder used to `clear(host)` before showing its notice, so a
+    slow request replaced whatever was on screen with a loading bar and then
+    rebuilt the whole page when it came back. On a page already read that is a
+    flash of nothing; on one with a half-finished form it looked as though the
+    form had been thrown away.
+
+    The notice goes ABOVE the page now. A button that started something shows
+    its own spinner instead — see `button` in ui.js.
+    """
+    api_js = (PUBLIC / "js/api.js").read_text(encoding="utf-8")
+    ladder = api_js[api_js.index("function startColdStartLadder"):]
+
+    # The CALL, not the words: the comment above it explains why it is gone.
+    code = chr(10).join(line for line in ladder.splitlines()
+                     if not line.lstrip().startswith(("*", "//", "/*")))
+    assert "clear(host)" not in code, (
+        "the loading notice must not clear the page it is shown on")
+    assert "insertBefore(node, host.firstChild)" in ladder, (
+        "the notice belongs above the existing content, not instead of it")
+
+
+def test_every_dialog_closes_when_the_page_behind_it_is_clicked():
+    """Clicking the dark area is how people dismiss a modal, and a modal that
+    ignores it feels stuck.
+
+    `close()`, not a confirm: it is the same as Escape and the same as Cancel,
+    so a dialog that guards unsaved work in its `cancel` handler guards it here
+    too. The check-in panel relies on exactly that.
+    """
+    ui = (PUBLIC / "js/ui.js").read_text(encoding="utf-8")
+    assert "export function closeOnBackdropClick" in ui
+
+    hand_built = []
+    for path in sorted(PUBLIC.glob("js/pages/*.js")):
+        text = path.read_text(encoding="utf-8")
+        if 'el("dialog"' not in text:
+            continue
+        if "closeOnBackdropClick" not in text:
+            hand_built.append(path.name)
+    assert hand_built == [], (
+        "these build a <dialog> by hand and never let a backdrop click close "
+        "it: " + ", ".join(hand_built))

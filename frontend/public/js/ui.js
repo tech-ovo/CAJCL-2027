@@ -457,11 +457,36 @@ export function guardUnsaved(isDirty, what = "unsaved changes") {
  * to, read at close time rather than returned directly, because the dialog may
  * also be dismissed with Escape or the backdrop.
  */
+/* Clicking the dark area around a dialog closes it.
+ *
+ * A <dialog> fills nothing but its own box, yet the backdrop is painted by the
+ * dialog ELEMENT itself — so a click on the dark area lands on the dialog and
+ * looks, to a listener, exactly like a click on its contents. Comparing
+ * against the element's own rectangle is what tells them apart.
+ *
+ * `close()` and not "confirm": this is the same as pressing Escape and the
+ * same as Cancel, which means any dialog that guards unsaved work in its
+ * `cancel` handler guards it here too, for free. The check-in panel does
+ * exactly that.
+ */
+export function closeOnBackdropClick(dialog) {
+  dialog.addEventListener("click", (event) => {
+    if (event.target !== dialog) return;          // a click on the contents
+    const box = dialog.getBoundingClientRect();
+    const inside = box.top <= event.clientY && event.clientY <= box.bottom
+                && box.left <= event.clientX && event.clientX <= box.right;
+    // A click with no coordinates is a keyboard "click" on a focused button,
+    // which must not be read as a click on the backdrop.
+    if (!inside && (event.clientX || event.clientY)) dialog.close();
+  });
+}
+
 function dialogue(build) {
   return new Promise((resolve) => {
     const form = el("form", { method: "dialog" });
     const dialog = el("dialog", { class: "dialog" }, form);
     const read = build(form, () => dialog.close());
+    closeOnBackdropClick(dialog);
 
     dialog.addEventListener("close", () => {
       dialog.remove();

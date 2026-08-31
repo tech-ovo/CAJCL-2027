@@ -169,13 +169,26 @@ function startColdStartLadder(host, controller) {
   const node = el("div", { class: "waking", role: "status", "aria-live": "polite" });
   let failed = false;
 
+  /* THE PAGE STAYS. The notice goes at the top of it.
+   *
+   * This used to `clear(host)` first, so a slow request wiped whatever the
+   * person was reading and replaced it with a loading bar — and when the
+   * request came back, the whole screen was rebuilt underneath them. On a page
+   * they had already read, that is a flash of nothing for no reason; on one
+   * with a half-finished form, it looked like the form had been thrown away.
+   *
+   * Nothing on this site should replace the screen to say it is busy. A button
+   * that started something disables itself and shows a spinner (see `button`
+   * in ui.js); a page that is still loading its FIRST content has nothing to
+   * lose and shows this notice above an empty region. Either way the rule is
+   * the same: never take away what somebody is already looking at.
+   */
   const waking = setTimeout(() => {
-    clear(host);
-    add(node, 
+    add(node,
       el("span", { class: "waking__dot", "aria-hidden": "true" }),
       el("span", {}, serverIsAwake ? "Loading…" : "Waking up the server…")
     );
-    add(host, node);
+    host.insertBefore(node, host.firstChild);
   }, WAKING_MS);
 
   const late = setTimeout(() => {
@@ -200,6 +213,8 @@ function startColdStartLadder(host, controller) {
       el("p", {}, el("a", { href: "mailto:state@uhsjcl.org" }, "state@uhsjcl.org")),
       el("button", { class: "btn", onclick: () => location.reload() }, "Try again")
     );
+    // Put it where it can be seen even if the page under it has content.
+    if (!node.parentNode) host.insertBefore(node, host.firstChild);
     controller.abort();
   }, FAILED_MS);
 

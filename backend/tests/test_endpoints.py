@@ -78,6 +78,8 @@ ROUTES = [
      "/sponsor/people/{person}/activity-sheet",
      {"grade": 10, "latin_level": "HS-2", "meal": "regular",
       "selected": []}),
+    ("sponsor.chapter_note", "PUT", "/sponsor/chapter-note",
+     {"school_id": "{school}", "note": "Two Certamen machines."}),
     ("sponsor.paper_forms", "POST", "/sponsor/paper-forms",
      {"person_id": "{person}", "form_type": "student_waiver", "received": True}),
     ("sponsor.chapter_entries.list", "GET",

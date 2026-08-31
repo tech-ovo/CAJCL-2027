@@ -13,7 +13,7 @@
 import * as api from "../api.js";
 import { add, el, clear, field, input, select, button, errorSummary, table,
          localDate, loadingRows, guardUnsaved, ask, check,
-         tell } from "../ui.js";
+         tell, closeOnBackdropClick } from "../ui.js";
 import { state, route, adopt, hasScope } from "../main.js";
 
 export async function adminPage(host) {
@@ -933,6 +933,7 @@ export async function adminPage(host) {
                          onclick: () => dialog.close() })));
 
     const dialog = el("dialog", { class: "dialog" }, panel);
+    closeOnBackdropClick(dialog);
     dialog.addEventListener("close", () => dialog.remove());
     add(document.body, dialog);
     dialog.showModal();
@@ -994,6 +995,7 @@ export async function adminPage(host) {
                            onclick: () => { save = false; dialog.close(); } })));
 
     const dialog = el("dialog", { class: "dialog" }, form);
+    closeOnBackdropClick(dialog);
     dialog.addEventListener("close", async () => {
       dialog.remove();
       if (!save) return;

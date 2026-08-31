@@ -69,3 +69,8 @@ ORDER BY name;
 -- name: schools.set_checkin_note
 -- What a chapter brought, written at the desk. One note per chapter.
 UPDATE schools SET checkin_note = ?, updated_at = ? WHERE id = ?;
+
+-- name: schools.set_note
+-- The chapter's own note, written by its sponsor. Separate from `checkin_note`,
+-- which the desk writes on the Friday about what actually turned up.
+UPDATE schools SET notes = ?, updated_at = ? WHERE id = ?;
