@@ -500,6 +500,7 @@ the repository, never in the website's files.
 | `TURSO_AUTH_TOKEN` | Permission to use it | The site errors until you update it |
 | `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET` | Lets the robot deploy | Deploys fail |
 | `APPS_SCRIPT_URL` / `APPS_SCRIPT_KEY` | The Drive helper | Not used yet |
+| `DB_POOL` | Optional. `0` stops connections being reused | Every page gets slower. See section 8. |
 
 ### Viewing and updating a secret
 
@@ -541,6 +542,25 @@ event plus a couple of hours. It costs a few cents.
 
 The setting lives in the database, and a background job checks it every five
 minutes, so it survives deploys and restarts.
+
+### If pages are slow even when the server is awake
+
+**Settings → Operations → Connections.** Opening a connection to the database
+costs a handshake, which the browser sees as roughly a third of a second, and a
+page that opens two waits twice. They are kept open and reused instead, and
+that panel says how often. **Reused should be most of them.**
+
+If it says *Reuse is off*, somebody has set `DB_POOL=0` in the Modal secret.
+That switch exists so reuse can be turned off in a minute if it is ever
+suspected of causing something, which also means it can be left off by
+accident. Remove it and redeploy:
+
+```bash
+modal secret create cajcl-2027 KEY="value" ... --force
+```
+
+Remember that `--force` replaces the whole secret, so pass every other key
+again — see section 7.
 
 ---
 

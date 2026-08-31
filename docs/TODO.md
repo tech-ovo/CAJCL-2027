@@ -54,7 +54,6 @@ Registration is running by now. These make the months in between bearable.
 
 | | What | Hrs | Who | Notes |
 | --- | --- | --- | --- | --- |
-| NOW | Reuse database connections | 4 | auto | **Measured.** An authenticated request opens two connections and each costs a TLS handshake to Turso: one ≈ 350 ms, three ≈ 3 s. The session touch was the third and is now daily, which took most of it. What is left is the remaining doubling. Attempted twice and reverted twice — see §6. |
 | NOW | Four-digit test IDs | 3 | auto | A number per test, entered on a **subset** of Settings → Values. The scoped settings view is the real work: `academics` must not reach the fee or the deadlines. |
 | NEEDS YOU | Apps Script for Drive exports | 5 | you | Needs the Workspace account and its Drive root. Exports download to the browser today, which works; this is for contest submissions. |
 | NOW | Pre-convention contest uploads | 8 | auto | Modern Myth, Poetry, Slogan. Depends on Apps Script above. Schema exists (`docs/schema.md`, "Contest submissions"). |
@@ -116,13 +115,25 @@ Everything above marked **you** or **ask**, gathered:
 
 Kept because the next person will otherwise try them again.
 
-**Per-request connection reuse.** Middleware runs on the event loop while
-handlers run on a threadpool thread, so a connection opened in middleware is
-used cross-thread and `sqlite3` refuses outright. A per-thread pool works and
-then leaks: connections on threadpool threads that nothing can close, because
-`sqlite3` also refuses `close()` from another thread. A correct version needs a
-real pool with an owning thread per connection and a shutdown hook. **Do not
-attempt without a way to soak-test it against Turso.**
+**Per-request connection reuse, the first two ways.** Both are recorded because
+both look like the obvious approach.
+
+*Opening the connection in middleware.* Middleware runs on the event loop and
+handlers run on a threadpool thread, so the connection is used cross-thread and
+`sqlite3` refuses outright.
+
+*A per-thread pool with no way out.* It works, and then it leaks. anyio retires
+a threadpool worker after ten seconds idle, and the connection it was holding
+becomes unreachable — while `sqlite3` refuses `close()` from another thread, so
+nothing can release it either.
+
+**What worked**, on the third attempt, is in `backend/lib/db.py`: the pool is
+thread-local and a connection is only ever handed back to the thread that
+opened it; `check_same_thread` comes off the driver and the same check goes on
+`_Handle`, where it covers the remote driver too; and each thread's idle list
+carries a finalizer, so a retired worker closes what it was holding as it goes.
+`backend/tests/test_pool.py` holds all three to account. **`DB_POOL=0` in the
+Modal secret turns the whole thing off without a deploy.**
 
 ---
 
@@ -139,6 +150,10 @@ Short list of things that took a while to get right and look ordinary now.
   computed live. `backend/queries/stats.sql` explains the arithmetic.
 - **Scopes only through roles.** There is no table attaching a scope to a
   person and there must never be one.
+- **One connection per authenticated request.** It was two: the guard reads
+  the session, then the handler reads the data. Each was a TLS handshake to
+  Turso — about 350 ms as the browser saw it — so the second was most of the
+  wait on every page. Settings → Operations shows the reuse rate.
 - **Every endpoint declares its scope**, and the test suite walks all of them.
 
 ---

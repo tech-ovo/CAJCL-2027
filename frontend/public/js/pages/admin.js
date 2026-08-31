@@ -1138,7 +1138,15 @@ export async function adminPage(host) {
           el("p", { class: "small muted" },
             "Reads are the one to watch. A row read is a row SCANNED, not a "
             + "row returned, which is why every list on this site is one "
-            + "indexed query and no total is ever counted live.")),
+            + "indexed query and no total is ever counted live."),
+
+          el("hr", { class: "rule" }),
+          el("h2", {}, "Connections"),
+          el("p", { class: "muted" },
+            "Opening a connection to the database costs a handshake, and a "
+            + "page that opens two waits twice. They are kept open and reused "
+            + "instead."),
+          connectionBlock(warm.connections)),
 
         el("div", { class: "span-6" },
           el("h2", {}, "Impersonate someone"),
@@ -1190,6 +1198,33 @@ export async function adminPage(host) {
             : el("p", { class: "muted" },
                 "This database is not flagged as demonstration data, so the " +
                 "reset is disabled."))));
+  }
+
+  /* HOW TO READ THIS PANEL, in one line, because a number with no expectation
+   * attached to it is decoration: reused should be most of them.
+   *
+   * "Opened" climbing in step with page loads means the pool is off or not
+   * working, and the first thing to check is whether DB_POOL=0 is set in the
+   * Modal secret. That switch exists so this can be turned off in a minute
+   * without a deploy, which also means it can be left off by accident. */
+  function connectionBlock(stats) {
+    if (!stats) return el("p", { class: "muted" }, "Not reported.");
+    if (!stats.pool) {
+      return el("div", {},
+        el("p", {}, el("span", { class: "pill" }, "Reuse is off"),
+          el("span", { class: "small muted" },
+            " — every page opens its own connections. DB_POOL=0 is set in the "
+            + "Modal secret.")),
+        el("p", { class: "small muted" },
+          `${stats.opens} opened since this container started.`));
+    }
+
+    const rate = stats.reuse_rate === null
+      ? "—" : `${Math.round(stats.reuse_rate * 100)}%`;
+    return el("dl", { class: "detail" },
+      el("dt", {}, "Reused"), el("dd", {}, `${rate} of ${stats.opens + stats.reuses}`),
+      el("dt", {}, "Opened"), el("dd", {}, String(stats.opens)),
+      el("dt", {}, "Held open"), el("dd", {}, String(stats.idle_on_this_thread)));
   }
 
   /* The export arrives as a real file rather than a link, because the request

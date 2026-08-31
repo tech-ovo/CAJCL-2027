@@ -2040,8 +2040,14 @@ def get_warm(principal: auth.Principal = guard("admin.warm.get", "*",
                                                school_rule="any")):
     with database().read() as tx:
         warm_until = settings.get_datetime(tx, "ops.warm_until")
+
+    # THE CONNECTION COUNTERS RIDE ALONG HERE because this is the page an
+    # operator already opens to ask "why is the site slow". They are this
+    # container's, since the request was answered by one container: a number
+    # that looks wrong is a reason to look at more than one, not a fault.
     return {"warm_until": warm_until, "warm_now": not clock.is_past(warm_until)
-            if warm_until else False}
+            if warm_until else False,
+            "connections": database().stats()}
 
 
 @app.put("/admin/warm")

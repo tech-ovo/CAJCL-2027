@@ -31,7 +31,9 @@ import os
 import random
 import re
 import sqlite3
+import threading
 import time
+import weakref
 from contextlib import contextmanager
 from typing import Any, Iterator, Sequence
 
@@ -74,6 +76,39 @@ SILENT_ACTIONS = frozenset({
 # rather than after they have given up.
 BUSY_ATTEMPTS = 5
 BUSY_BASE_DELAY = 0.05      # seconds; doubles each time, plus jitter
+
+
+# ---------------------------------------------------------------------------
+# The connection pool
+# ---------------------------------------------------------------------------
+#
+# TWO PER THREAD, because two is what a request uses: the guard reads the
+# session, then the handler reads the data, and nothing nests deeper than that.
+# A third is opened on demand and closed again rather than kept.
+#
+# FIVE MINUTES, because a connection nobody has used for longer than that may
+# well have been dropped at the far end, and finding that out at BEGIN costs a
+# round trip that opening a fresh one would have spent anyway.
+POOL_PER_THREAD = 2
+POOL_MAX_AGE = 300.0        # seconds
+
+# The escape hatch. `DB_POOL=0` in the Modal secret restores connection-per
+# transaction without a deploy. Read once, at import, so it cannot change under
+# a running container mid-request.
+
+
+def _pool_setting(value: str | None) -> bool:
+    """Is the pool on? Anything that reads as "no" turns it off.
+
+    Written out rather than inlined so it can be tested without reloading this
+    module, which would replace every class in it and leave anything holding a
+    reference to the old ones -- `AuditRequired`, most confusingly -- comparing
+    against a class that is no longer the one being raised.
+    """
+    return (value or "1").strip().lower() not in ("0", "false", "no", "off", "")
+
+
+POOL_ENABLED = _pool_setting(os.environ.get("DB_POOL"))
 
 _BUSY_MARKERS = ("database is locked", "database is busy",
                  "sqlite_busy", "sqlite_locked")
@@ -143,8 +178,16 @@ class _Handle:
         self._begin_sql = begin_sql
         self.last_insert_id = None
         self.rows_changed = 0
+        # For the pool: when it was opened, and which thread may touch it.
+        # `sqlite3` refuses cross-thread use outright and the remote driver is
+        # not documented to allow it, so the pool guarantees by construction
+        # that a connection is only ever handed back to the thread that opened
+        # it. This field is what makes that assertable rather than hoped for.
+        self.opened_at = time.monotonic()
+        self.thread_id = threading.get_ident()
 
     def execute(self, sql: str, params: Sequence[Any]) -> list[Row]:
+        self._check_thread()
         cursor = self._run_with_retry(sql, tuple(params))
 
         # The two drivers disagree about how to say "this returned no rows",
@@ -185,7 +228,26 @@ class _Handle:
                 time.sleep(delay + random.uniform(0, delay))
         raise AssertionError("unreachable")
 
+    def _check_thread(self) -> None:
+        """One connection, one thread. Enforced here rather than by the driver.
+
+        `sqlite3` used to enforce this itself and is now told not to, for the
+        reason given in `_open_local`; the remote driver never did. So it is
+        checked in the one place both go through, and it says which thread
+        rather than only that something is wrong.
+        """
+        if threading.get_ident() != self.thread_id:
+            raise RuntimeError(
+                f"this connection was opened on thread {self.thread_id} and is "
+                f"being used from thread {threading.get_ident()}. The pool in "
+                f"db.py hands a connection back only to the thread that opened "
+                f"it, so this means something is holding a Tx across a thread "
+                f"boundary -- middleware, or a handler that hands a Tx to a "
+                f"worker. Open a transaction where you use it."
+            )
+
     def begin(self) -> None:
+        self._check_thread()
         self._run_with_retry(self._begin_sql, ())
 
     def commit(self) -> None:
@@ -199,7 +261,20 @@ class _Handle:
 
 
 def _open_local(path: str) -> _Handle:
-    conn = sqlite3.connect(path, isolation_level=None)
+    # `check_same_thread=False` needs justifying, because it switches off the
+    # exact guard that caught two earlier attempts at pooling.
+    #
+    # What it actually guards is "this connection is used by one thread at a
+    # time", and the pool now guarantees that by construction: a connection is
+    # only ever handed to the thread it was opened on, and only ever to one
+    # transaction at a time. What the driver's version ALSO forbids is closing
+    # a connection from another thread, which left `Database.close()` unable to
+    # release anything the threadpool was holding -- connections nothing could
+    # close, which is precisely how the second attempt failed.
+    #
+    # The check is not gone. `_Handle.execute` makes it itself, below, where it
+    # covers the remote driver too -- which never had one.
+    conn = sqlite3.connect(path, isolation_level=None, check_same_thread=False)
     # Without this every foreign key in the schema is decorative. SQLite
     # defaults it OFF and the failure is completely silent.
     conn.execute("PRAGMA foreign_keys = ON")
@@ -304,6 +379,42 @@ def _open_remote(url: str, auth_token: str | None) -> _Handle:
     # Plain BEGIN, not IMMEDIATE: a hosted database has a single writer already,
     # and IMMEDIATE is a local-file locking concern that remote need not honour.
     return _Handle(conn, begin_sql="BEGIN")
+
+
+class _ThreadIdle:
+    """The idle connections belonging to one thread, and a way to know when
+    that thread is gone.
+
+    WHY THIS IS NOT JUST A LIST. anyio retires a threadpool worker after ten
+    seconds idle, which on a quiet evening is after almost every request. The
+    connections that worker was holding become unreachable at that moment, and
+    left to the garbage collector they are closed eventually, untidily, and
+    with a ResourceWarning -- a socket to Turso held open for no reason and
+    closed by nobody in particular.
+
+    So the list lives on an object with a finalizer. When the thread ends, its
+    thread-local storage is released, this object dies, and the finalizer
+    closes what it was holding -- deterministically, under CPython, at the
+    moment the thread goes away. The finalizer is given the LIST rather than
+    this object, because a callback holding the object would keep it alive and
+    it would never fire at all.
+    """
+
+    __slots__ = ("idle", "__weakref__")
+
+    def __init__(self) -> None:
+        self.idle: list[_Handle] = []
+
+
+def _close_abandoned(handles: list) -> None:
+    """Close the connections a dead thread was holding."""
+    while handles:
+        try:
+            handles.pop().close()
+        except Exception:
+            # The thread that owned it is gone; there is nobody to tell and
+            # nothing to do.
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -434,23 +545,160 @@ class Tx:
 # ---------------------------------------------------------------------------
 
 class Database:
-    """A connection factory. Every transaction gets its own handle."""
+    """A connection factory, with a small pool in front of it.
+
+    WHY THERE IS A POOL AT ALL, since a connection per transaction is simpler
+    and is what this did first:
+
+        Opening a connection to Turso costs a TLS handshake. Measured from the
+        browser: a request that opens one takes about 350 ms, and one that
+        opened three took about three seconds. An authenticated request opens
+        two as a matter of course -- the guard reads the session, then the
+        handler reads the data -- so the handshake, not the query, was most of
+        what a sponsor was waiting for.
+
+    WHAT IS POOLED, PRECISELY:
+
+        Idle connections, per thread, never shared between threads. A
+        transaction checks one out and it is gone from the pool until it is
+        released, so the nesting hazard that a handle per transaction existed
+        to avoid is still avoided: a read opened inside a write gets a
+        DIFFERENT connection, exactly as before, because the outer one is not
+        idle.
+
+        Handlers run on the threadpool and the pool is thread-local, so a
+        connection is only ever used by the thread that opened it. Two earlier
+        attempts at this failed by ignoring that: a connection opened in
+        middleware, which runs on the event loop, is then used cross-thread by
+        the handler, and `sqlite3` refuses outright.
+
+    HOW TO TURN IT OFF, without a deploy:
+
+        Set `DB_POOL=0` in the Modal secret and restart. Every transaction then
+        opens and closes its own connection, which is what this did for months
+        and is known to work. If production behaviour looks wrong and the pool
+        is a suspect, turn it off first and diagnose second.
+    """
 
     def __init__(self, *, path: str | None = None,
-                 url: str | None = None, auth_token: str | None = None):
+                 url: str | None = None, auth_token: str | None = None,
+                 pool: bool | None = None):
         self._path = path
         self._url = url
         self._auth_token = auth_token
+        self._pool_enabled = POOL_ENABLED if pool is None else pool
+        self._local = threading.local()
+        # Every connection currently open, on any thread. Only close() reads
+        # it, and only to shut everything down: without it, a connection idle
+        # on a threadpool thread is unreachable from anywhere.
+        #
+        # WEAK, AND THAT IS THE WHOLE POINT. anyio retires a threadpool worker
+        # after ten seconds idle, which on a quiet evening is after almost
+        # every request. The connection it was holding becomes unreachable at
+        # that moment, and a strong reference here would keep it -- and its
+        # socket -- alive for the life of the container while nothing could
+        # ever use it again. That is the leak both earlier attempts died of,
+        # and a set that does not own its contents is what fixes it: the
+        # handle is collected with the thread, and the driver closes the
+        # connection as it goes.
+        self._live: weakref.WeakSet[_Handle] = weakref.WeakSet()
+        self._live_lock = threading.Lock()
+        # Plain ints, incremented without a lock. They are counters for a human
+        # reading Settings -> Operations, not a control input, and a lost
+        # increment under contention costs nothing worth a lock on every query.
+        self.opens = 0
+        self.reuses = 0
+        self.discards = 0
+
+    # -- the pool -----------------------------------------------------------
+
+    def _idle(self) -> list[_Handle]:
+        holder = getattr(self._local, "holder", None)
+        if holder is None:
+            holder = self._local.holder = _ThreadIdle()
+            # Fires when this thread ends and its local storage is released.
+            weakref.finalize(holder, _close_abandoned, holder.idle)
+        return holder.idle
 
     def _open(self) -> _Handle:
         if self._url is not None:
-            return _open_remote(self._url, self._auth_token)
-        if self._path is None:
+            handle = _open_remote(self._url, self._auth_token)
+        elif self._path is None:
             # An `assert` here vanishes under `python -O`, and this is a real
             # invariant rather than a debugging aid: a Database with neither a
             # path nor a url would otherwise fail somewhere less obvious.
             raise ValueError("a Database has either a path or a url")
-        return _open_local(self._path)
+        else:
+            handle = _open_local(self._path)
+
+        self.opens += 1
+        with self._live_lock:
+            self._live.add(handle)
+        return handle
+
+    def _checkout(self) -> _Handle:
+        """An open connection with a transaction started on it.
+
+        A pooled one if this thread has a usable one, otherwise a new one. The
+        BEGIN happens here rather than in the caller because it is the first
+        thing to touch the wire, and therefore the first thing to discover that
+        a connection the server quietly dropped is no longer a connection.
+        """
+        while self._pool_enabled and self._idle():
+            handle = self._idle().pop()
+            if time.monotonic() - handle.opened_at > POOL_MAX_AGE:
+                # Old enough that the far end may well have dropped it. Cheaper
+                # to open a new one than to find out mid-request.
+                self._discard(handle)
+                continue
+            try:
+                handle.begin()
+            except Exception:
+                # Stale. Nothing has run inside a transaction yet, so there is
+                # no half-applied work and starting over is safe.
+                self._discard(handle)
+                continue
+            self.reuses += 1
+            return handle
+
+        handle = self._open()
+        handle.begin()
+        return handle
+
+    def _release(self, handle: _Handle) -> None:
+        """Put a finished connection back, or close it.
+
+        Called only after a commit or a rollback, so what goes back has no
+        transaction on it. Anything else is closed rather than reasoned about.
+        """
+        if not self._pool_enabled or len(self._idle()) >= POOL_PER_THREAD:
+            self._discard(handle)
+            return
+        self._idle().append(handle)
+
+    def _discard(self, handle: _Handle) -> None:
+        self.discards += 1
+        with self._live_lock:
+            self._live.discard(handle)
+        try:
+            handle.close()
+        except Exception:
+            # A connection being closed because it is already broken is not
+            # news, and there is nothing to be done about it either way.
+            pass
+
+    def stats(self) -> dict:
+        """Connection counters, for Settings -> Operations.
+
+        `reuses` climbing while `opens` stays flat is the pool working. `opens`
+        climbing in step with requests means it is not, and the first thing to
+        check is whether `DB_POOL=0` is set.
+        """
+        total = self.opens + self.reuses
+        return {"pool": self._pool_enabled, "opens": self.opens,
+                "reuses": self.reuses, "discards": self.discards,
+                "reuse_rate": round(self.reuses / total, 3) if total else None,
+                "idle_on_this_thread": len(self._idle())}
 
     @contextmanager
     def tx(self, *, request_id: str | None = None) -> Iterator[Tx]:
@@ -459,18 +707,20 @@ class Database:
         If the mutation rolls back, so does its audit entry -- which is exactly
         the point of writing them together.
         """
-        handle = self._open()
+        handle = self._checkout()
         transaction = Tx(handle, request_id=request_id)
-        handle.begin()
         try:
             yield transaction
             transaction._check_before_commit()
         except BaseException:
-            handle.rollback()
-            handle.close()
+            self._unwind(handle)
             raise
-        handle.commit()
-        handle.close()
+        try:
+            handle.commit()
+        except BaseException:
+            self._discard(handle)
+            raise
+        self._release(handle)
 
     @contextmanager
     def read(self) -> Iterator[Tx]:
@@ -479,9 +729,8 @@ class Database:
         Used by every GET endpoint, so a query accidentally written as an UPDATE
         cannot slip through unlogged.
         """
-        handle = self._open()
+        handle = self._checkout()
         transaction = Tx(handle)
-        handle.begin()
         try:
             yield transaction
             if transaction._mutated:
@@ -490,20 +739,57 @@ class Database:
                     + ", ".join(sorted(set(transaction._mutated)))
                 )
         except BaseException:
-            handle.rollback()
-            handle.close()
+            self._unwind(handle)
             raise
-        handle.rollback()
-        handle.close()
+        try:
+            handle.rollback()
+        except BaseException:
+            self._discard(handle)
+            raise
+        self._release(handle)
+
+    def _unwind(self, handle: _Handle) -> None:
+        """Roll a failed transaction back, and decide whether to keep the
+        connection.
+
+        MOST FAILURES ARE THE APPLICATION'S, not the connection's: a validation
+        error raised inside a `with db.tx()` block is the ordinary way an
+        endpoint refuses something, and the connection under it is perfectly
+        healthy. So: roll back, and if the rollback works, the connection goes
+        back in the pool. A rollback that itself fails is the only reliable
+        signal that the connection is the problem, and that one is closed.
+        """
+        try:
+            handle.rollback()
+        except BaseException:
+            self._discard(handle)
+            return
+        self._release(handle)
 
     def close(self) -> None:
-        """Nothing to release.
+        """Close every connection this Database has open, on any thread.
 
-        Connections are opened and closed per transaction, so a Database holds
-        no resources of its own. This exists because callers reasonably expect
-        it to.
+        FOR SHUTDOWN, NOT FOR HOUSEKEEPING. A connection in the middle of a
+        transaction on another thread is closed along with the rest, so calling
+        this while requests are in flight breaks them. Nothing in the request
+        path calls it; a Modal container is torn down whole and the operating
+        system closes the sockets.
+
+        It matters in the test suite. Handlers run on threadpool threads, and a
+        connection left idle on one is reachable from nowhere else -- which on
+        Windows keeps a temporary file undeletable, and in pytest surfaces as
+        an unraisable ResourceWarning from whichever test happens to trigger
+        the collection.
         """
-        return None
+        with self._live_lock:
+            handles, self._live = list(self._live), weakref.WeakSet()
+        for handle in handles:
+            self.discards += 1
+            try:
+                handle.close()
+            except Exception:
+                pass
+        del self._idle()[:]
 
 
 REMOTE_SCHEMES = ("libsql://", "https://", "http://", "wss://", "ws://")
