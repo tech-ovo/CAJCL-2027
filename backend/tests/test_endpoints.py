@@ -36,7 +36,14 @@ def fx(tmp_path, monkeypatch):
 @pytest.fixture
 def client(fx):
     from fastapi.testclient import TestClient
-    return TestClient(api.app, raise_server_exceptions=False)
+    # AS A CONTEXT MANAGER, so the portal and its threadpool shut down when
+    # the test ends. A TestClient that is never closed leaves its worker
+    # threads running, and each holds an idle database connection for the
+    # rest of the session -- hundreds of open handles on files the tests
+    # have finished with, which turned a two-minute suite into a
+    # seven-minute one.
+    with TestClient(api.app, raise_server_exceptions=False) as client:
+        yield client
 
 
 def as_(fx, who: str) -> dict:
@@ -107,6 +114,11 @@ ROUTES = [
     ("admin.schools.update", "PATCH", "/admin/schools/{school}", {"city": "Nowhere"}),
     ("admin.schools.people", "POST", "/admin/schools/{school}/people",
      {"first_name": "Ann", "last_name": "Example"}),
+    ("admin.schools.sponsors", "GET", "/admin/schools/{school}/sponsors", None),
+    ("admin.schools.sponsors.add", "POST", "/admin/schools/{school}/sponsors",
+     {"person_id": "{person}"}),
+    ("admin.schools.sponsors.remove", "DELETE",
+     "/admin/schools/{school}/sponsors/{person}", None),
     ("admin.registration", "GET", "/admin/registration", None),
     ("admin.payments.list", "GET", "/admin/payments?school_id={school}", None),
     ("admin.payments.record", "POST", "/admin/payments",

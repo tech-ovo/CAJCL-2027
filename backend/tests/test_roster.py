@@ -32,7 +32,14 @@ def fx(tmp_path, monkeypatch):
 @pytest.fixture
 def client(fx):
     from fastapi.testclient import TestClient
-    return TestClient(api.app, raise_server_exceptions=False)
+    # AS A CONTEXT MANAGER, so the portal and its threadpool shut down when
+    # the test ends. A TestClient that is never closed leaves its worker
+    # threads running, and each holds an idle database connection for the
+    # rest of the session -- hundreds of open handles on files the tests
+    # have finished with, which turned a two-minute suite into a
+    # seven-minute one.
+    with TestClient(api.app, raise_server_exceptions=False) as client:
+        yield client
 
 
 @pytest.fixture
@@ -677,7 +684,8 @@ def test_removing_a_row_before_committing_still_commits_once(fx):
     from backend import api
 
     api._db = fx.db
-    client = TestClient(api.app, raise_server_exceptions=False)
+    closing = TestClient(api.app, raise_server_exceptions=False)
+    client = closing.__enter__()
     headers = {"Authorization": f"Bearer {fx.sign_in('uni_sponsor')}"}
 
     text = "Ann Example\nBeth Sample\nAnn Example"
@@ -697,6 +705,7 @@ def test_removing_a_row_before_committing_still_commits_once(fx):
     replay = client.post("/sponsor/roster/commit", json=body, headers=headers).json()
     assert replay["already_committed"] is True
     assert replay["committed_count"] == 2, "the guard still holds on a short list"
+    closing.__exit__(None, None, None)
 
 
 def test_a_chapter_cannot_exceed_its_three_digit_numbering(fx):

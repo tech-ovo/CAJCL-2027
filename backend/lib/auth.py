@@ -130,6 +130,14 @@ class Principal:
     school_seq: int | None = None
     scopes: frozenset[str] = field(default_factory=frozenset)
     roles: tuple[str, ...] = ()
+    # Chapters this person may act for BESIDES their own. Empty for almost
+    # everybody. See migration 007: a sponsor still belongs to one chapter, and
+    # this is the list of the others they have been given access to.
+    #
+    # IT WIDENS REACH, NEVER PERMISSION. What a sponsor may do is decided by
+    # their scopes, which come only through roles; this decides which chapters
+    # those scopes apply to.
+    granted_school_ids: frozenset[int] = field(default_factory=frozenset)
     session_id: int | None = None
     impersonator_person_id: int | None = None
     impersonator_name: str | None = None
@@ -143,6 +151,11 @@ class Principal:
     @property
     def is_impersonating(self) -> bool:
         return self.impersonator_person_id is not None
+
+    @property
+    def school_ids(self) -> frozenset[int]:
+        """Every chapter this person may act for. Their own, plus any grants."""
+        return frozenset({self.school_id}) | self.granted_school_ids
 
     @property
     def display_name(self) -> str:
@@ -210,7 +223,10 @@ def require_school(principal: Principal, school_id: int) -> None:
     """
     if principal.scopes & ADMIN_SCOPES:
         return
-    if principal.school_id != school_id:
+    # `school_ids` is their own chapter plus any granted to them, which for
+    # almost everybody is the one. A grant does not change what they may do --
+    # only which chapters they may do it to.
+    if school_id not in principal.school_ids:
         raise ForbiddenError("that belongs to a different school")
 
 
@@ -357,6 +373,16 @@ def _principal_from_person(tx: Tx, person: dict, *, session_id: int | None = Non
                            can_write: bool = False) -> Principal:
     scopes = frozenset(r["scope"] for r in tx.all("auth.scopes_for_person", (person["id"],)))
     roles = tuple(r["key"] for r in tx.all("auth.roles_for_person", (person["id"],)))
+
+    # ONLY FOR SPONSORS, and this is a read-quota decision as much as a
+    # correctness one. This runs on every authenticated request; asking it for
+    # every delegate would add a lookup per page view to serve a case that
+    # applies to a handful of adults. A grant to somebody without the sponsor
+    # role is refused where it is written, so there is nothing to find.
+    granted: frozenset[int] = frozenset()
+    if "sponsor" in roles:
+        granted = frozenset(row["school_id"] for row
+                            in tx.all("grants.for_person", (person["id"],)))
     return Principal(
         person_id=person["id"],
         school_id=person["school_id"],
@@ -372,6 +398,7 @@ def _principal_from_person(tx: Tx, person: dict, *, session_id: int | None = Non
                    else person["school_seq"],
         scopes=scopes,
         roles=roles,
+        granted_school_ids=granted,
         session_id=session_id,
         impersonator_person_id=impersonator["id"] if impersonator else None,
         impersonator_name=(

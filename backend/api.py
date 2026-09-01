@@ -321,10 +321,26 @@ def me(principal: auth.Principal = Depends(any_session)):
         # the chapter counters use, so a delegate and their sponsor never
         # disagree about whether that person is done.
         own = tx.one("forms.own_completeness", (principal.person_id,))
+
+        # THE EXTRA CHAPTERS, and only when there are any -- which for almost
+        # everybody is never. This is what lets the roster page offer a chapter
+        # to switch to; without it a sponsor granted a second chapter would
+        # have access they could not reach.
+        other_schools = []
+        if principal.granted_school_ids:
+            other_schools = [
+                {"id": row["school_id"], "name": row["school_name"],
+                 "level": row["school_level"], "number": row["school_number"]}
+                for row in tx.all("grants.list_for_person",
+                                  (principal.person_id,))]
+
     body = principal.to_public_dict()
     body["sessions"] = sessions
     body["demo_mode"] = demo
     body["registration_complete"] = _own_registration_complete(own)
+    # Their own chapter first: it is where their number comes from, and it is
+    # the one the roster opens on.
+    body["schools"] = ([body["school"]] + other_schools) if other_schools else []
     return body
 
 
@@ -401,7 +417,9 @@ def _school_of(tx, principal: auth.Principal, school_id: int | None) -> dict:
     without proving anything.
     """
     if school_id and not (principal.scopes & auth.ADMIN_SCOPES):
-        if int(school_id) != principal.school_id:
+        # `school_ids` is their own chapter plus any granted to them, which for
+        # almost everybody is just the one. See migration 007.
+        if int(school_id) not in principal.school_ids:
             raise auth.ForbiddenError("that belongs to a different school")
 
     target = int(school_id) if school_id else principal.school_id
@@ -1072,6 +1090,123 @@ def create_sponsor(school_id: int, request: Request, payload: dict = Body(...),
     return {**created, "code": code,
             "note": "This is the only time this code is shown. Send it to the "
                     "sponsor from the official CAJCL account."}
+
+
+@app.get("/admin/schools/{school_id}/sponsors")
+def school_sponsors(school_id: int,
+                    principal: auth.Principal = guard("admin.schools.sponsors",
+                                                      "registration",
+                                                      school_rule="any")):
+    """Who can act for this chapter besides its own people, and who could.
+
+    `available` is every sponsor at another chapter, which is what the chair
+    picks from. It is a list of adults who already hold the sponsor role --
+    a grant to anybody else is refused, because a grant widens which chapters
+    a scope reaches and cannot conjure the scope itself.
+    """
+    with database().read() as tx:
+        if tx.one("schools.get", (school_id,)) is None:
+            raise auth.ForbiddenError("no such school")
+        return {
+            "granted": [dict(r) for r in
+                        tx.all("grants.list_for_school", (school_id,))],
+            "available": [dict(r) for r in
+                          tx.all("grants.sponsors_available", (school_id,))],
+        }
+
+
+@app.post("/admin/schools/{school_id}/sponsors")
+def grant_school(school_id: int, request: Request, payload: dict = Body(...),
+                 principal: auth.Principal = guard("admin.schools.sponsors.add",
+                                                   "registration",
+                                                   school_rule="any",
+                                                   writes=True)):
+    """Let a sponsor at another chapter act for this one as well.
+
+    ONE PERSON, MORE THAN ONE CHAPTER. A teacher who moved schools mid-year, a
+    district where one person covers the middle school and the high school, a
+    sponsor covering for a colleague on leave.
+
+    THE SPONSOR ROLE IS REQUIRED AND IS NOT GRANTED HERE. A grant says which
+    chapters somebody's existing scopes reach. Handing this to a delegate would
+    do nothing at all, which is a worse outcome than a refusal, so it refuses.
+    """
+    person_id = payload.get("person_id")
+    try:
+        person_id = int(person_id)
+    except (TypeError, ValueError):
+        raise catalog.ValidationError(["Choose a sponsor."])
+
+    note = (payload.get("note") or "").strip() or None
+
+    with database().tx(request_id=request_id(request)) as tx:
+        school = tx.one("schools.get", (school_id,))
+        if school is None:
+            raise auth.ForbiddenError("no such school")
+
+        person = tx.one("people.get", (person_id,))
+        if person is None or person["status"] != "active":
+            raise catalog.ValidationError(["That person is not on the roster."])
+        if person["school_id"] == school_id:
+            raise catalog.ValidationError([
+                f"{person['first_name']} already belongs to {school['name']}."])
+
+        roles = {r["key"] for r in tx.all("auth.roles_for_person", (person_id,))}
+        if "sponsor" not in roles:
+            raise catalog.ValidationError([
+                f"{person['first_name']} {person['last_name']} is not a sponsor. "
+                "Give them the sponsor role at their own chapter first — this "
+                "only widens which chapters a sponsor covers."])
+
+        if tx.one("grants.get", (person_id, school_id)):
+            raise catalog.ValidationError([
+                f"{person['first_name']} can already act for {school['name']}."])
+
+        tx.insert("grants.create", (person_id, school_id, principal.person_id,
+                                    clock.now_iso(), note))
+        name = f"{person['first_name']} {person['last_name']}".strip()
+        tx.audit("sponsor.grant",
+                 f"{principal.display_name} gave {name} access to "
+                 f"{school['name']} as well as their own chapter."
+                 + (f" Note: {note}" if note else ""),
+                 actor_person_id=principal.person_id,
+                 impersonator_person_id=principal.impersonator_person_id,
+                 school_id=school_id, entity_type="person", entity_id=person_id)
+
+    return {"ok": True}
+
+
+@app.delete("/admin/schools/{school_id}/sponsors/{person_id}")
+def revoke_school(school_id: int, person_id: int, request: Request,
+                  principal: auth.Principal = guard("admin.schools.sponsors.remove",
+                                                    "registration",
+                                                    school_rule="any",
+                                                    writes=True)):
+    """Take back access to one chapter.
+
+    Only the extra chapter. Somebody's own chapter is `people.school_id` and is
+    not reachable from here -- removing that is "they have left", which is a
+    different action with different consequences.
+    """
+    with database().tx(request_id=request_id(request)) as tx:
+        school = tx.one("schools.get", (school_id,))
+        person = tx.one("people.get", (person_id,))
+        if school is None or person is None:
+            raise auth.ForbiddenError("no such school")
+        if not tx.one("grants.get", (person_id, school_id)):
+            raise catalog.ValidationError([
+                "That access has already been removed."])
+
+        tx.run("grants.delete", (person_id, school_id))
+        name = f"{person['first_name']} {person['last_name']}".strip()
+        tx.audit("sponsor.revoke",
+                 f"{principal.display_name} removed {name}'s access to "
+                 f"{school['name']}. They keep their own chapter.",
+                 actor_person_id=principal.person_id,
+                 impersonator_person_id=principal.impersonator_person_id,
+                 school_id=school_id, entity_type="person", entity_id=person_id)
+
+    return {"ok": True}
 
 
 @app.get("/admin/registration")

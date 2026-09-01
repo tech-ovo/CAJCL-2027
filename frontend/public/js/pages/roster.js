@@ -12,10 +12,15 @@ import { add, el, clear, tabula, table, button, emptyState, loadingRows,
 import { state, route, hasScope, adopt } from "../main.js";
 
 export async function rosterPage(host, params = []) {
-  // Set when a chair has opened one chapter from the Chapters table. A sponsor
-  // reaching their own roster leaves it null and the server uses their school.
+  // Set when a chapter is named in the URL. A sponsor reaching their own
+  // roster leaves it null and the server uses their school.
   const schoolId = params[0] ? Number(params[0]) : null;
-  const asChair = schoolId !== null;
+  // WHO IS LOOKING, not which URL they used. This decides whether the page is
+  // the chair's read-only view of somebody else's chapter or a sponsor's own
+  // working roster, and it used to be `schoolId !== null` -- which was the
+  // same question until a sponsor could cover a second chapter. Reaching that
+  // one names it in the URL, and it is still their roster to work on.
+  const asChair = schoolId !== null && hasScope("registration");
   const path = asChair ? `/sponsor/roster?school_id=${schoolId}` : "/sponsor/roster";
 
   let data = null;
@@ -80,12 +85,20 @@ export async function rosterPage(host, params = []) {
             button("Add the sponsor", {
               variant: "btn--small btn--primary",
               onclick: () => addSponsor(school),
+            }),
+            // The other way a chapter gets a sponsor: somebody who already
+            // sponsors one. A teacher covering two schools in a district does
+            // not want, and should not have, two accounts and two codes.
+            button("Use an existing sponsor", {
+              variant: "btn--small",
+              onclick: () => shareSponsor(school),
             }))
         : null,
 
       el("section", { class: "grid" },
         el("div", { class: "span-8" },
           el("h1", {}, asChair ? school.name : "Roster"),
+          chapterSwitch(school),
           el("p", { class: "lede" },
             asChair
               ? "Everyone this chapter is bringing. To change a form or paste a "
@@ -108,7 +121,10 @@ export async function rosterPage(host, params = []) {
                   href: asChair ? `#/roster/${schoolId}/import` : "#/roster/import" },
           "Paste a roster"),
         button("Add one person", { onclick: () => addPerson(school) }),
-        asChair ? null : el("a", { class: "btn", href: "#/invoice" }, "View invoice"),
+        asChair ? null
+          : el("a", { class: "btn",
+                      href: schoolId ? `#/invoice/${schoolId}` : "#/invoice" },
+               "View invoice"),
         el("a", { class: "btn",
                   href: asChair ? `#/teams/${schoolId}` : "#/teams" },
           "Chapter teams"),
@@ -391,6 +407,126 @@ export async function rosterPage(host, params = []) {
           variant: "btn--primary",
           onclick: () => reload(),
         }))));
+  }
+
+  /* WHICH CHAPTER AM I LOOKING AT, when the answer is not always the same one.
+   *
+   * Almost every sponsor covers one chapter and never sees this. A sponsor who
+   * has been given a second -- a teacher who moved schools mid-year, one person
+   * covering a district's middle and high school -- gets a line of links, with
+   * the one they are on marked. Without it the access is real and unreachable:
+   * the roster opens on their own chapter and nothing offers the other.
+   */
+  function chapterSwitch(school) {
+    const mine = (state.me && state.me.schools) || [];
+    if (asChair || mine.length < 2) return null;
+
+    return el("p", { class: "small muted", style: "margin-bottom:.5rem" },
+      "Chapters you cover: ",
+      ...mine.flatMap((entry, index) => [
+        index ? " · " : "",
+        entry.id === school.id
+          ? el("strong", {}, entry.name)
+          : el("a", { href: `#/roster/${entry.id}` }, entry.name),
+      ]));
+  }
+
+  /* Give a sponsor at another chapter access to this one as well.
+   *
+   * A GRANT WIDENS REACH, NEVER PERMISSION. It says which chapters somebody's
+   * existing sponsor scope applies to; it cannot give the scope itself, which
+   * is why the list only offers people who already have it. The server refuses
+   * anybody else rather than silently creating a row that would do nothing.
+   */
+  async function shareSponsor(school) {
+    let data;
+    try {
+      data = await api.get(`/admin/schools/${school.id}/sponsors`);
+    } catch (error) {
+      await tell({ body: error.message });
+      return;
+    }
+
+    const available = data.available || [];
+    const granted = data.granted || [];
+
+    if (!available.length && !granted.length) {
+      await tell({
+        title: "No other sponsors yet",
+        body: "There is nobody at another chapter to share. Add this "
+            + "chapter's own sponsor instead.",
+      });
+      return;
+    }
+
+    const who = select(
+      available.map((row) => [String(row.id),
+                              `${row.first_name} ${row.last_name} — ${row.school_name}`]),
+      { id: "share-who" });
+    const note = input({ id: "share-note" });
+
+    const rows = el("div", {});
+    for (const row of granted) {
+      add(rows, el("div", { class: "catalog-item" },
+        el("span", {},
+          `${row.first_name} ${row.last_name}`,
+          el("span", { class: "choice__why" },
+            `Their own chapter is ${row.home_school_name}`
+            + (row.note ? ` · ${row.note}` : ""))),
+        button("Remove access", {
+          variant: "btn--small btn--quiet btn--danger",
+          onclick: async () => {
+            const ok = await check({
+              title: `Remove ${row.first_name}'s access to ${school.name}?`,
+              body: "They keep their own chapter and their access code. This "
+                  + "only stops them seeing this one.",
+              confirmLabel: "Remove access", danger: true,
+            });
+            if (!ok) return;
+            try {
+              await api.del(`/admin/schools/${school.id}/sponsors/${row.person_id}`);
+                await reload();
+            } catch (error) { await tell({ body: error.message }); }
+          },
+        })));
+    }
+
+    const ok = await check({
+      title: `Who else can act for ${school.name}?`,
+      body: [
+        el("p", {}, "For one person covering two chapters. They keep their own "
+                  + "chapter, their own code, and their own number — this adds "
+                  + "this chapter to what that code reaches."),
+        granted.length
+          ? el("div", {},
+              el("p", { class: "label label--ink" }, "Already covering it"),
+              rows)
+          : null,
+        available.length
+          ? field({ id: "share-who", label: "Sponsor", control: who, wide: true,
+                    help: "Sponsors at other chapters." })
+          : el("p", { class: "muted" }, "There is nobody else to add."),
+        available.length
+          ? field({ id: "share-note", label: "Why", control: note, wide: true,
+                    help: "\"Covering while Ms Alvarez is on leave.\" Optional, "
+                        + "and worth writing: access nobody can explain is "
+                        + "access nobody dares remove." })
+          : null,
+      ],
+      confirmLabel: available.length ? "Give them access" : "Done",
+      cancelLabel: "Close",
+    });
+    if (!ok || !available.length) return;
+
+    try {
+      await api.post(`/admin/schools/${school.id}/sponsors`, {
+        person_id: Number(who.value),
+        note: note.value.trim() || null,
+      });
+      await reload();
+    } catch (error) {
+      await tell({ body: error.message });
+    }
   }
 
   /* Create a chapter's sponsor, and show their code once.

@@ -57,7 +57,6 @@ Registration is running by now. These make the months in between bearable.
 | NOW | Four-digit test IDs | 3 | auto | A number per test, entered on a **subset** of Settings → Values. The scoped settings view is the real work: `academics` must not reach the fee or the deadlines. |
 | NEEDS YOU | Apps Script for Drive exports | 5 | you | Needs the Workspace account and its Drive root. Exports download to the browser today, which works; this is for contest submissions. |
 | NOW | Pre-convention contest uploads | 8 | auto | Modern Myth, Poetry, Slogan. Depends on Apps Script above. Schema exists (`docs/schema.md`, "Contest submissions"). |
-| NOW | A sponsor serving more than one chapter | 3 | auto | `people.school_id` is one column, so this needs a grant table. Touches `auth.require_school`, the most safety-critical code here — do it alone. Has never happened; this is future-proofing. |
 
 ---
 
@@ -150,6 +149,11 @@ Short list of things that took a while to get right and look ordinary now.
   computed live. `backend/queries/stats.sql` explains the arithmetic.
 - **Scopes only through roles.** There is no table attaching a scope to a
   person and there must never be one.
+- **A sponsor can cover more than one chapter.** `people.school_id` still says
+  which chapter somebody belongs to; `sponsor_school_grants` says which others
+  they may act for. A grant widens reach, never permission — it cannot give
+  anybody a scope, and the endpoint refuses one for a person without the
+  sponsor role. `backend/tests/test_grants.py` is written to be suspicious.
 - **One connection per authenticated request.** It was two: the guard reads
   the session, then the handler reads the data. Each was a TLS handshake to
   Turso — about 350 ms as the browser saw it — so the second was most of the

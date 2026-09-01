@@ -21,8 +21,10 @@ something is genuinely hard, it says so.
 6. [Deploying a change](#6-deploying-a-change)
 7. [Secrets, and what breaks if you change one](#7-secrets-and-what-breaks-if-you-change-one)
 8. [Keeping the site fast for an event](#8-keeping-the-site-fast-for-an-event)
+    - [If pages are slow even when the server is awake](#if-pages-are-slow-even-when-the-server-is-awake)
 9. [Backups, exports, and restoring](#9-backups-exports-and-restoring)
 10. [Adding a chair and giving them access](#10-adding-a-chair-and-giving-them-access)
+    - [One sponsor, two chapters](#10b-one-sponsor-two-chapters)
 11. [Watching the database quota](#11-watching-the-database-quota)
 12. [When something is broken](#12-when-something-is-broken)
 13. [Things that will catch you out](#13-things-that-will-catch-you-out)
@@ -644,6 +646,27 @@ to the person's own chapter, and nothing can change that.
 
 Granting or removing a role signs that person out everywhere, because their
 open sessions still carry their old permissions.
+
+---
+
+## 10b. One sponsor, two chapters
+
+A teacher who moved schools mid-year. A district where one person covers the
+middle school and the high school. Somebody covering while a colleague is on
+leave.
+
+**Chapters → open the second chapter → Use an existing sponsor.** Pick them
+from the list and write down why. They keep their own chapter, their own access
+code and their own number; the second chapter is added to what that one code
+reaches. A line at the top of their roster lets them switch between the two.
+
+The list only offers people who are already sponsors somewhere, and a grant
+cannot make somebody one: it widens which chapters an existing sponsor scope
+reaches and nothing else. Removing it is the same screen.
+
+**Their own chapter is not on that screen**, and that is deliberate. Removing
+the chapter somebody belongs to is "they have left", which is a different thing
+with different consequences — see Settings → Roles.
 
 ---
 

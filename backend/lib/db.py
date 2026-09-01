@@ -767,28 +767,25 @@ class Database:
         self._release(handle)
 
     def close(self) -> None:
-        """Close every connection this Database has open, on any thread.
+        """Close the connections THIS THREAD is holding idle.
 
-        FOR SHUTDOWN, NOT FOR HOUSEKEEPING. A connection in the middle of a
-        transaction on another thread is closed along with the rest, so calling
-        this while requests are in flight breaks them. Nothing in the request
-        path calls it; a Modal container is torn down whole and the operating
-        system closes the sockets.
+        NOT OTHER THREADS', and this is not fastidiousness. An earlier version
+        closed every connection in the register, on the reasoning that a
+        connection idle on a retired threadpool worker is reachable from
+        nowhere else. It worked, until it did not: closing a connection another
+        live thread still has in its pool is a use of that connection from the
+        wrong thread, and `sqlite3` with `check_same_thread=False` does not
+        refuse it -- it segfaults the interpreter. That showed up as a test run
+        that hung, twice, and once as `Windows fatal exception: access
+        violation` from faulthandler.
 
-        It matters in the test suite. Handlers run on threadpool threads, and a
-        connection left idle on one is reachable from nowhere else -- which on
-        Windows keeps a temporary file undeletable, and in pytest surfaces as
-        an unraisable ResourceWarning from whichever test happens to trigger
-        the collection.
+        So the rule holds with no exceptions anywhere: a connection is touched
+        only by the thread that opened it. What another thread is holding is
+        closed by ITS finalizer when that thread ends -- see `_ThreadIdle` --
+        and at process exit by the operating system.
         """
-        with self._live_lock:
-            handles, self._live = list(self._live), weakref.WeakSet()
-        for handle in handles:
-            self.discards += 1
-            try:
-                handle.close()
-            except Exception:
-                pass
+        for handle in self._idle():
+            self._discard(handle)
         del self._idle()[:]
 
 

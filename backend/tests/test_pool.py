@@ -240,13 +240,18 @@ def test_two_threads_never_hold_the_same_connection(fx):
     assert seen, "the threads did no work"
 
 
-def test_close_reaches_connections_opened_on_other_threads(tmp_path):
-    """What the second attempt could not do, and why it was reverted: a
-    connection idle on a threadpool thread was reachable from nowhere, and on
-    Windows that keeps a temporary file undeletable.
+def test_close_leaves_another_thread_s_connections_alone(tmp_path):
+    """The rule with no exception, and it was learned the hard way.
 
-    The worker is held open while `close()` runs, because a thread that has
-    already ended has cleaned up after itself -- which is the test below.
+    An earlier version closed every connection this Database had open, on any
+    thread, so that one idle on a retired threadpool worker could be released.
+    Closing a connection that another LIVE thread still holds is a use from the
+    wrong thread, and `sqlite3` with `check_same_thread=False` does not refuse
+    it -- it segfaults. It showed up as a test run that hung, and once as
+    `Windows fatal exception: access violation`.
+
+    A thread that has ended has already closed what it was holding, which is
+    the test below, so nothing is left needing this.
     """
     opened = threading.Event()
     finish = threading.Event()
@@ -262,13 +267,13 @@ def test_close_reaches_connections_opened_on_other_threads(tmp_path):
         thread.start()
         opened.wait(5)
 
-        with f.db._live_lock:
-            assert any(handle.thread_id == thread.ident
-                       for handle in f.db._live)
-
         f.db.close()
+
         with f.db._live_lock:
-            assert list(f.db._live) == []
+            still_open = [h.thread_id for h in f.db._live]
+        assert thread.ident in still_open, (
+            "close() reached into another live thread's pool, which is the "
+            "cross-thread use that crashes the interpreter")
 
         finish.set()
         thread.join()
@@ -407,14 +412,14 @@ def test_an_authenticated_request_opens_one_connection_not_two(fx, monkeypatch):
     from backend import api
 
     monkeypatch.setattr(api, "_db", fx.db)
-    client = TestClient(api.app)
     headers = {"Authorization": f"Bearer {fx.sign_in('uni_sponsor')}"}
 
-    client.get("/sponsor/roster", headers=headers)      # warm the worker
-    opens = fx.db.opens
+    with TestClient(api.app) as client:
+        client.get("/sponsor/roster", headers=headers)  # warm the worker
+        opens = fx.db.opens
 
-    response = client.get("/sponsor/roster", headers=headers)
-    assert response.status_code == 200
+        response = client.get("/sponsor/roster", headers=headers)
+        assert response.status_code == 200
 
     assert fx.db.opens - opens <= 1, (
         f"a warm request opened {fx.db.opens - opens} connections; the guard "

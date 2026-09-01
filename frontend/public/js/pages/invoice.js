@@ -12,8 +12,14 @@ import * as api from "../api.js";
 import { add, el, clear, tabula, table, money, localDate, renderMarkdown, chapterNumber } from "../ui.js";
 import { openPrintView } from "./roster.js";
 
-export async function invoicePage(host) {
-  const invoice = await api.get("/sponsor/invoice", { statusHost: host });
+export async function invoicePage(host, params = []) {
+  // Named when a sponsor covers more than one chapter and is looking at one
+  // that is not their own. Left off, the server uses the chapter they belong
+  // to, which is what every other sponsor gets.
+  const schoolId = params[0] ? Number(params[0]) : null;
+  const invoice = await api.get(
+    schoolId ? `/sponsor/invoice?school_id=${schoolId}` : "/sponsor/invoice",
+    { statusHost: host });
   clear(host);
 
   const school = invoice.school;

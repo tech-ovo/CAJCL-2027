@@ -280,6 +280,42 @@ def test_setup_passes_the_reset_through_to_the_migrate_step():
         "schema that was just built")
 
 
+def test_schema_md_documents_every_table_that_exists(tmp_path):
+    """The gap in the test below, found by adding a table and watching it pass.
+
+    That one walks the CREATE TABLE blocks in the DOCUMENT and checks each
+    against the database, so a table nobody wrote a block for is a table
+    nothing checks. This walks the other way.
+    """
+    import sqlite3
+
+    from backend.lib import migrate
+    from backend.lib.db import connect
+
+    path = str(tmp_path / "documented.db")
+    database = connect(path)
+    migrate.run(database)
+    database.close()
+
+    doc = (pathlib.Path(__file__).resolve().parents[2]
+           / "docs" / "schema.md").read_text(encoding="utf-8")
+
+    raw = sqlite3.connect(path)
+    tables = [row[0] for row in raw.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' "
+        "AND name NOT LIKE 'sqlite_%'")]
+    raw.close()
+
+    # `schema_migrations` is the migration runner's own bookkeeping and is
+    # described in prose there rather than as a table anybody queries.
+    missing = [t for t in tables
+               if t != "schema_migrations" and f"CREATE TABLE {t} (" not in doc]
+
+    assert missing == [], (
+        "these tables exist and docs/schema.md does not describe them. It is "
+        "the authority on data, so it has to be true:\n  " + "\n  ".join(missing))
+
+
 def test_schema_md_documents_every_column_that_exists(tmp_path):
     """`docs/schema.md` is the authority on data, so it has to be true.
 

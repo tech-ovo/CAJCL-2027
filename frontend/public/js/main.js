@@ -60,6 +60,10 @@ const ROUTES = [
   // school_id from an administrative scope and refuse it from everyone else.
   [/^\/roster\/(\d+)\/import$/,   importPage,        { scope: "registration" }],
   [/^\/invoice$/,                invoicePage,       { scope: "sponsor" }],
+  // A sponsor covering more than one chapter names the one they mean. See
+  // migration 007; without it the roster switches chapter and the invoice
+  // silently does not.
+  [/^\/invoice\/(\d+)$/,          invoicePage,       { scope: "sponsor" }],
   // Chapter team entries. `chapter` is carried by a sponsor and by any
   // delegate the sponsor has made chapter leader, which is exactly who may
   // speak for a chapter about how many teams it is bringing.

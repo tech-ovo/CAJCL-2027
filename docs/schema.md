@@ -183,6 +183,25 @@ System roles seeded: `admin` (`*`), `registration_chair` (`registration`), `acad
 `chapter_leader` is granted by a sponsor to a delegate so that student leadership can manage chapter team entries. It is a scope on the delegate's existing account — **never a second code**.
 
 ```sql
+CREATE TABLE sponsor_school_grants (
+  id                   INTEGER PRIMARY KEY,
+  person_id            INTEGER NOT NULL REFERENCES people(id),
+  school_id            INTEGER NOT NULL REFERENCES schools(id),
+  granted_by_person_id INTEGER REFERENCES people(id),
+  granted_at           TEXT NOT NULL,
+  note                 TEXT              -- "Covering while Ms Alvarez is on leave."
+);
+CREATE UNIQUE INDEX sponsor_school_grants_unique    ON sponsor_school_grants (person_id, school_id);
+CREATE INDEX        sponsor_school_grants_by_school ON sponsor_school_grants (school_id);
+```
+
+One sponsor, more than one chapter: a teacher who moved schools mid-year, a district where one person covers the middle school and the high school, somebody covering for a colleague on leave.
+
+`people.school_id` still says which chapter a person **belongs** to — it is where their number comes from, and changing it into a relationship would rewrite the meaning of every person in the system. This table records the additional chapters a sponsor may **act for**.
+
+**A grant widens reach, never permission.** Scopes reach a person only through roles, and nothing here changes that: a row for somebody without the sponsor role does nothing at all, which is why the endpoint that writes one refuses it. `authenticate` asks for grants only when the person already holds the sponsor role, so a delegate signing in never runs the query.
+
+```sql
 CREATE TABLE login_attempts (
   id                  INTEGER PRIMARY KEY,
   attempted_code_hmac TEXT NOT NULL,   -- HMAC of whatever was typed, valid or not
