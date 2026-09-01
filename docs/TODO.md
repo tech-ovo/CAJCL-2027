@@ -54,7 +54,6 @@ Registration is running by now. These make the months in between bearable.
 
 | | What | Hrs | Who | Notes |
 | --- | --- | --- | --- | --- |
-| NOW | Four-digit test IDs | 3 | auto | A number per test, entered on a **subset** of Settings → Values. The scoped settings view is the real work: `academics` must not reach the fee or the deadlines. |
 | NEEDS YOU | Apps Script for Drive exports | 5 | you | Needs the Workspace account and its Drive root. Exports download to the browser today, which works; this is for contest submissions. |
 | NOW | Pre-convention contest uploads | 8 | auto | Modern Myth, Poetry, Slogan. Depends on Apps Script above. Schema exists (`docs/schema.md`, "Contest submissions"). |
 
@@ -101,7 +100,7 @@ You have said not to build these. Recorded so the reasoning survives.
 Everything above marked **you** or **ask**, gathered:
 
 1. **The Workspace account** (`conventionpresidents@cajcl.org`). Unblocks
-   two-factor and Apps Script — two of the five remaining large items.
+   two-factor and Apps Script — two of the four remaining large items.
 2. **Tabulation rules from the awards chair**, in writing. Blocks all of §3.
 3. **How scores are entered at convention** — paper then typed, or live on a
    laptop in a room with no wifi. One sentence unblocks 12 hours of work.
@@ -133,6 +132,14 @@ opened it; `check_same_thread` comes off the driver and the same check goes on
 carries a finalizer, so a retired worker closes what it was holding as it goes.
 `backend/tests/test_pool.py` holds all three to account. **`DB_POOL=0` in the
 Modal secret turns the whole thing off without a deploy.**
+
+**Closing another thread's connection.** A fourth thing that looks obvious and
+is not, found while building the above: with `check_same_thread=False`,
+`sqlite3` does not refuse a close from the wrong thread — it segfaults. It
+surfaced as a test run that hung twice and once as `Windows fatal exception:
+access violation`. `Database.close()` therefore closes only what the calling
+thread is holding, and everything else is closed by its own thread's
+finalizer.
 
 ---
 
