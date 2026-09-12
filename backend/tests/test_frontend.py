@@ -939,3 +939,133 @@ def test_the_csp_does_not_allow_every_inline_script():
     assert "unsafe-inline" not in script_src.group(1)
     assert "unsafe-eval" not in directives, "nothing here evaluates a string"
     assert "object-src 'none'" in directives
+
+
+# ---------------------------------------------------------------------------
+# Specificity, where it has already cost something
+# ---------------------------------------------------------------------------
+
+def _specificity(selector: str) -> tuple[int, int, int]:
+    """(ids, classes, elements) for one selector, near enough for this check.
+
+    Counts `#id`, then classes plus attribute selectors plus pseudo-classes,
+    then type selectors plus pseudo-elements. Good enough to compare an
+    everyday stylesheet selector against `input[type="text"]`; it does not
+    implement `:is()`, `:where()` or `:not()`, none of which this stylesheet
+    uses.
+    """
+    selector = re.sub(r"::[\w-]+", " PSEUDOELEMENT ", selector)
+    ids = len(re.findall(r"#[\w-]+", selector))
+    classes = (len(re.findall(r"\.[\w-]+", selector))
+               + len(re.findall(r"\[[^\]]*\]", selector))
+               + len(re.findall(r":[\w-]+", selector)))
+    stripped = re.sub(r"[#.][\w-]+|\[[^\]]*\]|:[\w-]+", " ", selector)
+    elements = (len(re.findall(r"\b[a-zA-Z][\w-]*\b", stripped))
+                - stripped.count("PSEUDOELEMENT")
+                + selector.count("PSEUDOELEMENT"))
+    return (ids, classes, elements)
+
+
+def test_every_rule_that_styles_an_input_actually_wins():
+    """The bug that made the access code impossible to type on a phone.
+
+    `app.css` styles text fields with
+
+        input[type="text"], input[type="email"], … { padding: … }
+
+    which is specificity (0,1,1). A rule written as a bare `.some-class` is
+    (0,1,0) and LOSES to it no matter how far down the file it sits -- so a
+    class meant to restyle an input silently does nothing, and the failure is
+    invisible in the source: the rule is right there, it reads correctly, and
+    the browser ignores the half of it that collides.
+
+    Two rules had it. `.code-box` asked for no side padding and kept the base
+    rule's 0.75rem, twice over, along with the small-screen rules written to
+    fix that; on a 320px phone it left each of the thirteen boxes about 18px
+    wide carrying 24px of padding and 2px of border, which is negative room for
+    the character. People typed their code and watched nothing appear. And
+    `.mono` lost its font-family, so the three inputs that ask for a monospaced
+    face -- the access code, the four-digit test number, the code on the
+    impersonate form -- were all rendering in the sans one.
+
+    Naming the element is the fix: `input.code-box` is (0,1,1), ties, and wins
+    on order.
+    """
+    css = (PUBLIC / "app.css").read_text(encoding="utf-8")
+    css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)      # comments are not CSS
+
+    # Classes the JS sets on an <input>. Only these can collide; a class on a
+    # div has nothing to outrank.
+    on_inputs: set[str] = set()
+    for path in JS_FILES:
+        source = path.read_text(encoding="utf-8")
+        for match in re.finditer(r'el\(\s*"input"\s*,\s*\{(.*?)\}\s*[,)]',
+                                 source, re.S):
+            for names in re.findall(r'class:\s*"([^"]+)"', match.group(1)):
+                on_inputs.update(names.split())
+
+    # The rule to beat, and the properties it sets. Anything else a class sets
+    # is uncontested and fine.
+    base = re.search(r'input\[type="text"\][^{]*\{([^}]*)\}', css)
+    assert base, "the base input rule has moved or changed shape"
+    base_at = base.start()
+    base_specificity = (0, 1, 1)
+    contested = {line.split(":")[0].strip()
+                 for line in base.group(1).split(";") if ":" in line}
+
+    # For each class the JS puts on an input, and each property the base rule
+    # also sets, ask the cascade's question rather than a per-rule one: is
+    # there ANY rule for this class that beats the base rule for that property?
+    # A rule that loses is harmless if a later, stronger one supplies the same
+    # thing -- which is exactly how `.mono` and `input.mono` divide the work.
+    wins_for: dict[tuple[str, str], bool] = {}
+
+    for rule in re.finditer(r"([^{}]+)\{([^}]*)\}", css):
+        selector, body = rule.group(1).strip(), rule.group(2)
+        if selector.startswith("@") or not selector:
+            continue
+        declared = {line.split(":")[0].strip()
+                    for line in body.split(";") if ":" in line} & contested
+        if not declared:
+            continue
+
+        parts = [part.strip() for part in selector.split(",")]
+        for name in on_inputs:
+            matching = [part for part in parts
+                        if re.search(r"\." + re.escape(name) + r"\b", part)]
+            if not matching:
+                continue
+            # What decides the cascade for an input carrying this class is the
+            # strongest part of the selector that matches it.
+            best = max(_specificity(part) for part in matching)
+            wins = best > base_specificity or (
+                best == base_specificity and rule.start() > base_at)
+            for prop in declared:
+                wins_for[(name, prop)] = wins_for.get((name, prop), False) or wins
+
+    problems = [f"`.{name}` sets {prop} on an input and never beats "
+                f'`input[type="text"], …`'
+                for (name, prop), wins in sorted(wins_for.items()) if not wins]
+
+    assert problems == [], (
+        'these lose to `input[type="text"], …` (0, 1, 1) and do nothing. Name '
+        "the element, and put the rule BELOW that one -- a tie is settled by "
+        "which comes last:\n  " + "\n  ".join(problems))
+
+
+def test_the_code_boxes_have_no_side_padding():
+    """The specific thing that broke, asserted in its own right.
+
+    Thirteen boxes across a phone leave each one about 18px wide. Any side
+    padding at all is most of that, and the character has nowhere to render.
+    The character is centred, so there is nothing for the padding to do.
+    """
+    css = (PUBLIC / "app.css").read_text(encoding="utf-8")
+    rule = re.search(r"input\.code-box\s*\{([^}]*)\}", css)
+    assert rule, "input.code-box has been renamed or lost its `input`"
+
+    padding = re.search(r"padding:\s*([^;]+);", rule.group(1))
+    assert padding, "input.code-box no longer sets its own padding"
+    parts = padding.group(1).split()
+    sides = parts[1] if len(parts) > 1 else parts[0]
+    assert sides == "0", f"the code boxes have {sides} of side padding"

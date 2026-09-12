@@ -317,6 +317,31 @@ modulo the modulus, and the guarantee exact. `codes.py` now asserts
 `len(ALPHABET) == CHECK_MODULUS` at import. Cost: 0.4 bits of entropy across the
 whole code.
 
+### Half the access code's stylesheet was never applied
+**FIXED — reported from a phone, then caught by a test that found a second
+one.** Text inputs are styled by `input[type="text"], input[type="email"], …`,
+which is CSS specificity (0,1,1). A rule written as a bare `.code-box` is
+(0,1,0) and loses to it however far down the file it sits, so the declarations
+that mattered were discarded while the rule sat there reading perfectly
+correctly — including the small-screen rules written specifically to fix the
+symptom.
+
+The boxes therefore kept the base rule's 0.75rem of side padding, twice over.
+On a 320px phone, thirteen boxes across the width are about 18px each; 24px of
+padding and 2px of border leaves **negative** room for the character. People
+typed their access code and watched nothing appear.
+
+The same trap had also silently taken `font-family` off `.mono`, so the three
+inputs that ask for a monospaced face — the access code, the four-digit test
+number, the code on the impersonate form — all rendered in the sans one. On a
+code read off a printed sheet that is what keeps 0 apart from O and 1 from I.
+
+Naming the element fixes it, but only halfway: `input.mono` ties at (0,1,1) and
+a tie is settled by document order, so the rule also has to sit *below* the one
+it beats. `test_every_rule_that_styles_an_input_actually_wins` computes
+specificity and checks the whole cascade, per class and per property, rather
+than trusting any single rule to be the one that lands.
+
 ### Rate limiting counted nothing
 **FIXED — caught by a test.** A failed redemption recorded its `login_attempts`
 row and then raised; the raise rolled the transaction back, taking the row with

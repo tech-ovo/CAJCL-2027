@@ -125,6 +125,8 @@ a:hover { text-decoration-thickness: 2px; }
 }
 .label--ink { color: var(--text); }
 
+/* On an <input> this needs a second rule, further down the file. See
+ * `input.mono` under the form controls. */
 .mono {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
@@ -572,6 +574,21 @@ input[aria-invalid="true"], textarea[aria-invalid="true"], select[aria-invalid="
 }
 input::placeholder, textarea::placeholder { color: var(--text-muted); opacity: 1; }
 
+/* A monospaced input, and it has to live HERE rather than beside `.mono` in
+ * the typography section.
+ *
+ * `input.mono` and `input[type="text"]` are both specificity (0,1,1), so the
+ * tie is settled by which comes last in the file — and `.mono` is three
+ * hundred lines above. Written up there it lost twice over: once for being
+ * (0,1,0), and once more for being early. So the three inputs that ask for
+ * this font — the access code boxes, the four-digit test number, the code on
+ * the impersonate form — all rendered in the sans face, while the rule sat
+ * there looking perfectly correct.
+ *
+ * It matters most on the access code, which is read off a printed sheet: a
+ * monospaced face is how 0 stays distinct from O, and 1 from I. */
+input.mono { font-family: var(--font-mono); }
+
 /* Error messages appear directly beneath the field, navy on a lavender tint,
  * with a text label. Never colour alone; never a floating toast for a
  * field-level problem. Copy states what happened and how to fix it. */
@@ -609,20 +626,51 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); opacity: 1
  * and typing one into a field that strips and re-inserts them made the caret
  * jump — so characters appeared to disappear as people typed.
  *
- * They shrink rather than wrap: thirteen boxes and two dashes have to fit the
- * width of a phone, and a code broken across two lines is a code nobody can
- * check against the sheet in their hand.
+ * EVERY SELECTOR HERE NAMES `input`, and that is not decoration. The base rule
+ * for text inputs is `input[type="text"], …`, which is specificity (0,1,1);
+ * a bare `.code-box` is (0,1,0) and LOSES to it however far down the file it
+ * sits. So the boxes kept the base rule's 0.75rem of side padding — 24px of it
+ * — while the rule written to remove that padding did nothing at all, and
+ * neither did the small-screen rules below it, which were written to fix
+ * exactly this.
+ *
+ * On a 320px phone that left thirteen boxes about 18px wide carrying 24px of
+ * padding and 2px of border: negative room for the character. People typed
+ * their code and watched nothing appear.
  */
 .code-boxes {
-  display: flex; align-items: center; gap: 0.3rem;
-  flex-wrap: nowrap; max-width: 100%;
+  /* One size for every box, set here so the media queries below have one
+     number to change and all thirteen stay identical. */
+  --code-box: 2.25rem;
+  display: flex; align-items: center;
+  /* GROUPS WRAP, CHARACTERS DO NOT. The old rule was `nowrap`, on the
+     reasoning that a code broken across two lines is a code nobody can check
+     against the sheet in their hand. That is true of a break in the MIDDLE of
+     a group and not true of a break between them: the sheet prints
+     PPP-XXXXX-XXXXX, so a line that ends where a dash does is still a line you
+     can read off. Wrapping at the groups is what lets the boxes stay big
+     enough to type into on the narrowest phone, rather than shrinking until
+     they cannot hold a character. */
+  flex-wrap: wrap;
+  gap: var(--space-2) 0.3rem;
+  max-width: 100%;
 }
-.code-box {
-  width: 100%; min-width: 0; flex: 1 1 auto;
-  max-width: 2.5rem;
+.code-boxes__group {
+  display: flex; align-items: center; gap: 0.3rem;
+  flex-wrap: nowrap;
+}
+input.code-box {
+  flex: 0 0 auto;
+  width: var(--code-box); min-width: 0; max-width: none;
   min-height: var(--control-h);
+  /* NO SIDE PADDING. A box this narrow is all padding otherwise, which is the
+     bug above. The character is centred, so there is nothing for padding to
+     do. */
   padding: var(--space-2) 0;
   text-align: center;
+  /* 16px, and it stays 16px on a phone. iOS Safari zooms the whole page in
+     when a focused field is smaller than that, which on this form means the
+     other twelve boxes slide off the screen as you start typing. */
   font-size: var(--size-base);
   text-transform: uppercase;
 }
@@ -632,13 +680,20 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); opacity: 1
 }
 /* The box you are in, unmistakably. A focus ring alone is easy to lose among
  * twelve identical neighbours. */
-.code-box:focus {
+input.code-box:focus {
   border-color: var(--link); border-width: 2px;
   background: var(--tint);
 }
+/* Narrower, so the row breaks into TWO lines rather than three. The sizes are
+ * picked from the arithmetic, not by eye: at 30rem the first two groups have
+ * to fit 2rem boxes on one line, and at 22rem — an iPhone SE, or any phone
+ * with the browser zoomed — they only fit at 1.8rem. Either way the character
+ * has more than twice the room it needs. */
 @media (max-width: 30rem) {
-  .code-boxes { gap: 0.15rem; }
-  .code-box { font-size: var(--size-sm); padding: var(--space-2) 0; }
+  .code-boxes { --code-box: 2rem; gap: var(--space-2) 0.2rem; }
+}
+@media (max-width: 22rem) {
+  .code-boxes { --code-box: 1.8rem; gap: var(--space-2) 0.15rem; }
 }
 
 /* Choice lists — real checkboxes and radios, never a styled div. */

@@ -97,14 +97,24 @@ export async function signInPage(host) {
       boxes.push(box);
     }
 
+    /* THREE GROUPS, NOT FIFTEEN LOOSE CHILDREN, so that a narrow screen can
+     * only ever break the row between groups. The sheet prints
+     * PPP-XXXXX-XXXXX; a line ending where a dash does is still a line you can
+     * read off it, and a line ending in the middle of the five is not.
+     *
+     * Each dash travels with the group it follows, so a wrapped line ends on
+     * the dash rather than starting with one. */
+    const group = (...children) =>
+      el("div", { class: "code-boxes__group" }, ...children);
+    const dash = () =>
+      el("span", { class: "code-boxes__dash", "aria-hidden": "true" }, "–");
+
     const codeInput = el("div",
       { class: "code-boxes", role: "group",
         "aria-label": "Your access code, thirteen characters" },
-      ...boxes.slice(0, 3),
-      el("span", { class: "code-boxes__dash", "aria-hidden": "true" }, "–"),
-      ...boxes.slice(3, 8),
-      el("span", { class: "code-boxes__dash", "aria-hidden": "true" }, "–"),
-      ...boxes.slice(8, 13));
+      group(...boxes.slice(0, 3), dash()),
+      group(...boxes.slice(3, 8), dash()),
+      group(...boxes.slice(8, 13)));
 
     const status = el("div");
     const submit = button("Sign in", { variant: "btn--primary", type: "submit" });
