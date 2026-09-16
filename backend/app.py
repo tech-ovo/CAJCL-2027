@@ -29,8 +29,11 @@ app = modal.App("cajcl-2027")
 
 # Secrets live ONLY here and in GitHub Actions. Never in the repository, never
 # in the frontend. See docs/RUNBOOK.md for what each one is and what breaks when
-# it is rotated.
-secrets = [modal.Secret.from_name("cajcl-2027")]
+# it is rotated. `apps-script` holds only APPS_SCRIPT_URL and APPS_SCRIPT_KEY,
+# the Drive puppet's address and key; everything else is in `cajcl-2027`.
+# Deploys fail if either secret is missing.
+secrets = [modal.Secret.from_name("cajcl-2027"),
+           modal.Secret.from_name("apps-script")]
 
 # ---------------------------------------------------------------------------
 # TURN THIS ON BEFORE CONVENTION WEEKEND, AND OFF AFTERWARDS

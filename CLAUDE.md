@@ -10,6 +10,9 @@ rules), then `docs/design.md` for the visual rules.
   `.tabula`, `.stats`, `.dialog`, `.empty`, `.waking`, …). Light/dark via
   `data-theme` on `<html>` + `localStorage["theme"]`.
 - `backend/` — FastAPI (`api.py`), Modal wrapper (`app.py`), SQL in `queries/`.
+  `app.py` attaches two Modal secrets: `cajcl-2027` (database, pepper, …) and
+  `apps-script` (only `APPS_SCRIPT_URL`/`APPS_SCRIPT_KEY`); a missing one fails
+  the deploy. `modal run backend/app.py::doctor` shows what the container sees.
   Every route needs a `guard(...)` AND a row in `tests/test_endpoints.py`
   `ROUTES`; every named query needs a Python caller; a new migration needs
   `python scripts/checksum_migrations.py`; a new table needs a block in

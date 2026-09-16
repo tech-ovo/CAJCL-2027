@@ -292,7 +292,9 @@ modal setup                              # opens a browser to log you in
 
 Modal keeps configuration in something it calls a **secret**: a named bundle of
 settings that the deployed code can read, and that is never written down in the
-repository. This project uses one secret, named `cajcl-2027`.
+repository. This project uses two: `cajcl-2027` for everything, and
+`apps-script` for the Drive helper's `APPS_SCRIPT_URL` and `APPS_SCRIPT_KEY`
+(see `apps-script/README.md`). Both must exist, or deploys fail.
 
 ### Running `modal setup` twice is fine
 

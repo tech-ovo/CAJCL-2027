@@ -131,14 +131,16 @@ Delete the folder. If it fails, see *When it does not work* below.
 
 ### 5. Give the two values to Modal
 
-The site reads `APPS_SCRIPT_URL` and `APPS_SCRIPT_KEY` from the Modal secret
-`cajcl-2027`, beside the database settings.
+The site reads `APPS_SCRIPT_URL` and `APPS_SCRIPT_KEY` from their own Modal
+secret, `apps-script` (the database settings live in `cajcl-2027`). Both
+secrets must exist, or every deploy fails.
 
-- **Easiest:** modal.com → *Secrets* → `cajcl-2027` → *Edit* → add both keys →
+- **Easiest:** modal.com → *Secrets* → `apps-script` → *Edit* → set both keys →
   save.
-- **Or from a terminal:** `modal secret create cajcl-2027 … --force` replaces
-  the **whole** secret, so repeat every existing value from
-  `docs/DEPLOY.md` step 2 and add the two new ones.
+- **Or from a terminal:** the secret holds only these two, so
+  `modal secret create apps-script APPS_SCRIPT_URL=… APPS_SCRIPT_KEY=… --force`
+  is safe. Do **not** put them in `cajcl-2027` with `--force` — that replaces
+  the whole database secret.
 
 A running container keeps the secret it started with, so **deploy again**
 (push to `main`, or `modal deploy backend/app.py`). Then

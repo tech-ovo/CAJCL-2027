@@ -502,7 +502,7 @@ the repository, never in the website's files.
 | `TURSO_DATABASE_URL` | Which database to use | Nothing, if the new one has the same data |
 | `TURSO_AUTH_TOKEN` | Permission to use it | The site errors until you update it |
 | `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET` | Lets the robot deploy | Deploys fail |
-| `APPS_SCRIPT_URL` / `APPS_SCRIPT_KEY` | The Drive helper, for contest file uploads | Uploads fail with "not switched on yet" until both match the deployed script |
+| `APPS_SCRIPT_URL` / `APPS_SCRIPT_KEY` | The Drive helper, for contest file uploads. In the separate `apps-script` secret | Uploads fail with "not switched on yet" until both match the deployed script |
 | `DB_POOL` | Optional. `0` stops connections being reused | Every page gets slower. See section 8. |
 
 ### Viewing and updating a secret
