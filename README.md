@@ -18,6 +18,7 @@ pip install -r backend/requirements.txt
 pip install pytest httpx esprima fonttools brotli
 
 export CODE_PEPPER="anything-for-local-work"
+export DRIVE_LOCAL_DIR="$PWD/.drive-local"      # contest uploads, without Apps Script
 python scripts/seed.py --db dev.db --reset      # 12 chapters, ~150 delegates
 uvicorn backend.api:app --reload --port 8000
 

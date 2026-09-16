@@ -33,6 +33,8 @@ import { academicsPage } from "./pages/academics.js";
 import { overviewPage } from "./pages/overview.js";
 import { checkinPage } from "./pages/checkin.js";
 import { accountPage } from "./pages/account.js";
+import { contestsPage, chapterContestsPage } from "./pages/contests.js";
+import { judgingPage, contestResultsPage } from "./pages/judging.js";
 
 export const state = {
   me: null,          // /auth/me, or null when signed out
@@ -78,6 +80,17 @@ const ROUTES = [
   [/^\/check-in$/,               checkinPage,       { scope: "registration" }],
   [/^\/dashboard$/,              dashboardPage,     { scope: "registration" }],
   [/^\/entries$/,                academicsPage,     { scope: ["academics", "awards"] }],
+  // Pre-convention contests. A delegate enters their own; a chapter enters
+  // Publicity, and a chair can open any chapter's page the way they open its
+  // roster. Judging is for judges ONLY; the chairs read the results, with
+  // names, and set the rubric, but do not score.
+  [/^\/contests$/,               contestsPage,      { scope: "delegate" }],
+  [/^\/chapter-contests$/,       chapterContestsPage, { scope: ["chapter", "registration", "academics"] }],
+  [/^\/chapter-contests\/(\d+)$/, chapterContestsPage, { scope: ["registration", "academics"] }],
+  [/^\/judging$/,                judgingPage,       { scope: "judge" }],
+  [/^\/judging\/(\d+)$/,         judgingPage,       { scope: "judge" }],
+  [/^\/contest-results$/,        contestResultsPage, { scope: ["academics", "awards"] }],
+  [/^\/contest-results\/(\d+)(?:\/(rubric))?$/, contestResultsPage, { scope: ["academics", "awards"] }],
   [/^\/admin$/,                  adminPage,         { scope: "*" }],
   [/^\/audit$/,                  auditPage,         { scope: "*" }],
 ];
@@ -480,7 +493,7 @@ function renderNav() {
     };
 
     if (state.me.person_type === "delegate") {
-      add(nav, ownLink("#/activity-sheet"));
+      add(nav, ownLink("#/activity-sheet"), link("#/contests", "Contests"));
     } else if (state.me.person_type === "adult") {
       // NOT gated on scope. This used to be hidden from anyone holding `*`,
       // on the assumption that an administrator is not an attendee -- but a
@@ -495,6 +508,10 @@ function renderNav() {
     // them it is the whole reason they were given the role.
     if (hasScope("chapter")) {
       add(nav, link("#/teams", "Teams"));
+      // A sponsor's chapter-wide contests page. A chapter leader already has
+      // "Contests" for their own entries, so theirs is named for what it holds.
+      add(nav, link("#/chapter-contests",
+                    holdsRole("sponsor") ? "Contests" : "Publicity"));
     }
 
     const administrative = [];
@@ -509,7 +526,13 @@ function renderNav() {
                           ["#/check-in", "Check-in"]);
     }
     if (hasScope("academics") || hasScope("awards")) {
-      administrative.push(["#/entries", "Entries"]);
+      administrative.push(["#/entries", "Entries"],
+                          ["#/contest-results", "Contest results"]);
+    }
+    // By ROLE, not scope: `*` holds every scope, and an administrator is not
+    // thereby a judge. The Contest Judge role is what makes somebody one.
+    if (holdsRole("contest_judge")) {
+      administrative.push(["#/judging", "Judging"]);
     }
     if (hasScope("*")) {
       administrative.push(["#/admin", "Settings"], ["#/audit", "Log"]);

@@ -56,8 +56,9 @@ any special tools.
 
 **Google Apps Script** is a small helper that writes files into the Google
 Drive. It exists only because nothing else can act as his Google identity. It is
-**not needed to run registration** and can be ignored until pre-convention contests are
-built.
+**not needed to run registration**. It **is** needed for pre-convention contest
+entries that are files (art, myths, poems): without it those answer "not
+switched on yet", while slogans and Publicity portfolios still work.
 
 ### How a single click travels
 
@@ -501,7 +502,7 @@ the repository, never in the website's files.
 | `TURSO_DATABASE_URL` | Which database to use | Nothing, if the new one has the same data |
 | `TURSO_AUTH_TOKEN` | Permission to use it | The site errors until you update it |
 | `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET` | Lets the robot deploy | Deploys fail |
-| `APPS_SCRIPT_URL` / `APPS_SCRIPT_KEY` | The Drive helper | Not used yet |
+| `APPS_SCRIPT_URL` / `APPS_SCRIPT_KEY` | The Drive helper, for contest file uploads | Uploads fail with "not switched on yet" until both match the deployed script |
 | `DB_POOL` | Optional. `0` stops connections being reused | Every page gets slower. See section 8. |
 
 ### Viewing and updating a secret
@@ -639,10 +640,15 @@ check in the system assumes this.
 | `awards` | Scores, test printing, tabulation |
 | `sponsor` | One chapter's roster — always their own |
 | `delegate` | Their own activity sheet |
-| `chapter` | Team entries for their own chapter |
+| `chapter` | Team entries and the Publicity portfolio for their own chapter |
+| `judge` | Judging pre-convention contests, without seeing names (role: Contest Judge). Refused to anyone who also holds `academics`. |
 
-The first four work across every chapter. The last three are **always** limited
-to the person's own chapter, and nothing can change that.
+The first four work across every chapter. `sponsor`, `delegate` and `chapter`
+are **always** limited to the person's own chapter, and nothing can change
+that. `judge` reaches every contest entry but no roster or chapter.
+
+**Making someone a contest judge:** Settings → Roles → grant *Contest Judge* to
+their account. They sign in with their own code and see a *Judging* tab.
 
 Granting or removing a role signs that person out everywhere, because their
 open sessions still carry their old permissions.

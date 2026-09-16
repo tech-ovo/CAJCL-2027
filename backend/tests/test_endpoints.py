@@ -170,6 +170,26 @@ ROUTES = [
     ("admin.export", "POST", "/admin/export", {"format": "sql"}),
     ("admin.usage", "GET", "/admin/usage", None),
     ("admin.demo.reset", "POST", "/admin/demo/reset", {}),
+
+    ("me.contests", "GET", "/me/contests", None),
+    ("me.contests.submit", "POST", "/me/contests/1", {"text": "Latin lives"}),
+    ("me.contests.withdraw", "DELETE", "/me/contests/1", None),
+    ("me.contests.file", "GET", "/me/contests/1/file", None),
+    ("sponsor.contests", "GET", "/sponsor/contests?school_id={school}", None),
+    ("sponsor.contests.submit", "POST", "/sponsor/contests/1",
+     {"school_id": "{school}", "link_url": "https://docs.google.com/document/d/x",
+      "facets": ["Media"]}),
+    ("sponsor.contests.withdraw", "DELETE",
+     "/sponsor/contests/1?school_id={school}", None),
+    ("judge.contests", "GET", "/judge/contests", None),
+    ("judge.contest", "GET", "/judge/contests/1", None),
+    ("judge.entries.file", "GET", "/judge/entries/{entry}/file", None),
+    ("judge.entries.score", "PUT", "/judge/entries/{entry}/score",
+     {"points": {}, "submit": True}),
+    ("admin.contests.list", "GET", "/admin/contests", None),
+    ("admin.contests.file", "GET", "/admin/contests/entries/{entry}/file", None),
+    ("admin.contests.results", "GET", "/admin/contests/1/results", None),
+    ("admin.contests.update", "PUT", "/admin/contests/1", {"rules_md": "x"}),
 ]
 
 

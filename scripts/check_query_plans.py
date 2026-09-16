@@ -50,6 +50,8 @@ SMALL_TABLES = {
     "announcements": 50,
     "roster_imports": 200,      # one row per committed import
     "schema_migrations": 50,
+    "contests": 10,             # six pre-convention contests
+    "contest_criteria": 60,     # a rubric line or six per contest
 }
 
 # Tables that WILL exceed 200 rows and must always be reached by an index.
@@ -59,7 +61,7 @@ BIG_TABLES = {
     "people", "sessions", "login_attempts", "audit_log", "form_submissions",
     "paper_forms", "activity_selections", "activity_selection_options",
     "adult_role_selections", "chapter_entries", "payments", "person_roles",
-    "contest_submissions", "scores",
+    "contest_entries", "contest_scores", "scores",
 }
 
 # Queries allowed to scan a large table, each with the reason. Keep this list

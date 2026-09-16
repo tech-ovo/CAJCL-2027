@@ -960,6 +960,39 @@ th[aria-sort] { color: var(--text); }
   font-size: var(--size-md); font-weight: var(--weight-semi); padding-top: var(--space-3); }
 .totals__row .mono { font-variant-numeric: tabular-nums; }
 
+/* Pre-convention contests.
+ *
+ * A judge reads a myth in the page, so its text keeps the student's line
+ * breaks -- a poem without them is not the poem. Long entries scroll inside
+ * their own box so the score sheet beside them stays in view. */
+.entry-text {
+  white-space: pre-wrap; font-family: var(--font-serif);
+  line-height: var(--leading-body);
+  max-height: 70vh; overflow: auto;
+  padding: var(--space-4); margin: var(--space-4) 0;
+  background: var(--panel-bg); border: var(--border);
+}
+.entry-preview {
+  display: block; max-width: 100%; height: auto;
+  margin: var(--space-4) 0; border: var(--border); background: var(--panel-bg);
+}
+.entry-preview--document { width: 100%; height: 70vh; }
+
+/* One rubric line: its name takes the room, its points stay narrow. */
+.rubric {
+  display: grid; grid-template-columns: 1fr 7rem auto;
+  gap: var(--space-3); align-items: end;
+}
+.rubric__points { max-width: 7rem; font-variant-numeric: tabular-nums; }
+@media (max-width: 40rem) {
+  .rubric { grid-template-columns: 1fr 5rem; }
+}
+
+details > summary {
+  cursor: pointer; font-family: var(--font-sans); font-size: var(--size-sm);
+  color: var(--link); margin: var(--space-2) 0;
+}
+
 /* ===========================================================================
  * Motion and print
  * ======================================================================== */

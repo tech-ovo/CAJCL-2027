@@ -42,7 +42,8 @@
   default-src 'self';
   script-src 'self' 'sha256-zJhoCkFJ+lmliFye2xaVAw3k2TCEwQ1TkDcLVTBoATo=';
   style-src 'self' 'unsafe-inline';
-  img-src 'self' data:;
+  img-src 'self' data: blob:;
+  frame-src blob:;
   font-src 'self';
   connect-src 'self' https://techuhsjcl--cajcl-2027-web.modal.run http://127.0.0.1:8000;
   form-action 'none';

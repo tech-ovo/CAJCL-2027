@@ -758,7 +758,7 @@ export async function adminPage(host) {
     const key = input({ placeholder: "colloquia_chair" });
     const name = input({ placeholder: "Colloquia Chair" });
     const scopes = ["registration", "academics", "awards", "sponsor",
-                    "delegate", "chapter", "*"];
+                    "delegate", "chapter", "judge", "*"];
     const chosen = new Set();
 
     add(host, 
@@ -1071,7 +1071,8 @@ export async function adminPage(host) {
       awards: "Score entry, test printing, tabulation.",
       sponsor: "One chapter's roster. Always limited to their own school.",
       delegate: "Their own activity sheet.",
-      chapter: "Chapter team entries for their own school.",
+      chapter: "Chapter team entries and the Publicity portfolio for their own school.",
+      judge: "Scores pre-convention contest entries, without seeing whose they are.",
     }[scope] || "";
   }
 

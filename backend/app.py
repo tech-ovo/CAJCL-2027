@@ -237,7 +237,8 @@ def inspect_secret() -> str:
 
     lines = []
     for name in ("TURSO_DATABASE_URL", "TURSO_AUTH_TOKEN", "CODE_PEPPER",
-                 "CAJCL_ENV", "TURSO_PLATFORM_TOKEN", "TURSO_ORG", "TURSO_DB_NAME"):
+                 "CAJCL_ENV", "TURSO_PLATFORM_TOKEN", "TURSO_ORG", "TURSO_DB_NAME",
+                 "APPS_SCRIPT_URL", "APPS_SCRIPT_KEY"):
         raw = os.environ.get(name)
         if raw is None:
             lines.append(f"{name:<22} not set")

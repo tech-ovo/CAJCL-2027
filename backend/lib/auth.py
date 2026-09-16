@@ -41,6 +41,11 @@ CODE_LIMIT, CODE_WINDOW_MINUTES = 5, 60
 
 ADMIN_SCOPES = frozenset({"*", "registration", "academics", "awards"})
 IDENTITY_SCOPES = frozenset({"sponsor", "delegate", "chapter"})
+# Global, but narrow: a contest judge reads anonymous entries and writes their
+# own scores, and that is all. NOT an administrative scope -- `require_school`
+# must never treat a judge as able to reach any chapter.
+JUDGING_SCOPES = frozenset({"judge"})
+ALL_SCOPES = ADMIN_SCOPES | IDENTITY_SCOPES | JUDGING_SCOPES
 
 
 class AuthError(Exception):

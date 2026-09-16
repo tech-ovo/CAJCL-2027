@@ -26,6 +26,9 @@ board.json
 
 board-codes.txt
 
+# Contest uploads during local work (DRIVE_LOCAL_DIR). Stand-in for Drive.
+.drive-local/
+
 # Certamen bot dependencies & artifacts
 certamen-bot/node_modules/
 .DS_Store

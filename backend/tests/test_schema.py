@@ -170,6 +170,9 @@ def test_system_roles_and_their_scopes(db):
         "sponsor": {"sponsor", "chapter"},
         "delegate": {"delegate"},
         "chapter_leader": {"chapter"},
+        # Reads anonymous contest entries and writes its own scores. Nothing
+        # administrative: see auth.JUDGING_SCOPES.
+        "contest_judge": {"judge"},
     }
 
 

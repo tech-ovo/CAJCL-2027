@@ -30,6 +30,7 @@ presentation can be rerun cleanly if something goes wrong mid-demo.
 from __future__ import annotations
 
 import argparse
+import json
 import pathlib
 import random
 import sys
@@ -40,7 +41,7 @@ for _stream in (sys.stdout, sys.stderr):
     if hasattr(_stream, "reconfigure"):
         _stream.reconfigure(encoding="utf-8", errors="replace")
 
-from backend.lib import auth, clock, settings, stats  # noqa: E402
+from backend.lib import auth, clock, contests, settings, stats  # noqa: E402
 from backend.lib.db import connect  # noqa: E402
 from backend.lib import migrate as migrate_runner  # noqa: E402
 
@@ -285,6 +286,8 @@ class Seeder:
         self._seed_scl(days_ago)
         step("payments")
         self._seed_payment(uni, days_ago)
+        step("pre-convention contests")
+        self._seed_contests(uni, days_ago)
         step("done")
         self._finish()
         return self.codes
@@ -574,6 +577,85 @@ class Seeder:
                      value_detail={"amount_cents": 250000, "reference": "3418",
                                    "previous_total_cents": 0},
                      ts=when)
+
+    def _seed_contests(self, uni: int, days_ago) -> None:
+        """Slogans, a Publicity portfolio, a judge, and a few scores.
+
+        Text entries only: a file entry needs Drive, and the seed must run
+        without it. Half the English slogans are scored so Results has
+        something to rank and Judging still has work left to do.
+        """
+        english = [
+            "Latin: the language that never gets old",
+            "Veni, vidi, studied",
+            "Ask me about my declensions",
+            "JCL: where the past is present",
+            "Keep calm and conjugate",
+            "Honk if you love the ablative",
+        ]
+        latin = [
+            ("Lingua Latina numquam moritur", "The Latin language never dies"),
+            ("Carpe librum", "Seize the book"),
+            ("Disce, gaude, vince", "Learn, rejoice, win"),
+        ]
+        with self.db.tx() as tx:
+            by_key = {c["key"]: c for c in contests.load(tx)}
+            judge_id, code = self._person(
+                tx, uni, "Rosalind", "", "Achebe", person_type="adult",
+                adult_type="other", role="contest_judge", created=days_ago(30),
+                email="rosalind.achebe@example.org", latin_knowledge="advanced",
+                meal="regular")
+            self.codes["Contest judge: Rosalind Achebe (sees entries without names)"] = code
+
+            school = dict(tx.one("schools.get", (uni,)))
+            entered = []
+            for index, pid in enumerate(self.uni_delegate_ids[:len(english)]):
+                person = dict(tx.one("people.get", (pid,)))
+                if person["status"] != "active":
+                    continue
+                when = days_ago(20 - index)
+                for key, text, translation in (
+                        [("slogan_english", english[index], None)]
+                        + ([("slogan_latin", *latin[index])] if index < len(latin) else [])):
+                    contest = by_key[key]
+                    entry_id = tx.insert("contests.entry_create", (
+                        contest["item_id"], uni, pid,
+                        contests.division_for(contest, school, person),
+                        None, text, translation, None, None, None, None,
+                        None, None, None, None, None, pid, when, when))
+                    tx.audit("contest.enter",
+                             f"{person['first_name']} {person['last_name']} entered "
+                             f"their {contest['name']}.",
+                             actor_person_id=pid, school_id=uni,
+                             entity_type="contest_entry", entity_id=entry_id, ts=when)
+                    entered.append((contest, entry_id, index))
+
+            publicity = by_key["publicity"]
+            entry_id = tx.insert("contests.entry_create", (
+                publicity["item_id"], uni, None, "HS", None, None, None,
+                "https://docs.google.com/document/d/example-portfolio/edit",
+                "Media\nPosters/Displays at school\nBest Club Swag",
+                None, None, None, None, None, None, None,
+                self.uni_sponsor_id, days_ago(9), days_ago(9)))
+            tx.audit("contest.enter",
+                     "Mark Michalak entered University High School's Publicity.",
+                     actor_person_id=self.uni_sponsor_id, school_id=uni,
+                     entity_type="contest_entry", entity_id=entry_id, ts=days_ago(9))
+
+            for contest, entry_id, index in entered:
+                if contest["key"] != "slogan_english" or index % 2:
+                    continue
+                criterion = contest["criteria"][0]
+                points = 60 + (index * 7) % 35
+                tx.run("contests.score_upsert", (
+                    entry_id, judge_id, "",
+                    json.dumps({str(criterion["id"]): points}), 0, points,
+                    None, "submitted", days_ago(3), days_ago(3)))
+                tx.audit("contest.score",
+                         f"Rosalind Achebe handed in a score for "
+                         f"{contest['name']} entry {entry_id}.",
+                         actor_person_id=judge_id, entity_type="contest_entry",
+                         entity_id=entry_id, ts=days_ago(3))
 
     def _finish(self) -> None:
         """Recompute every counter, and raise the demonstration-data marker."""

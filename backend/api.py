@@ -19,8 +19,11 @@ EVERY ENDPOINT DECLARES ITS SCOPE AND ITS SCHOOL RULE
 
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import os
+import re
 import uuid
 from dataclasses import dataclass
 
@@ -28,7 +31,8 @@ from fastapi import Body, Depends, FastAPI, Header, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
-from .lib import auth, catalog, clock, codes, forms, printing, roster, settings, stats
+from .lib import (auth, catalog, clock, codes, contests, drive, forms, printing,
+                  roster, settings, stats)
 from .lib.db import connect
 
 # GitHub Pages plus the custom domain, and nothing else. The frontend never
@@ -54,13 +58,28 @@ app = FastAPI(title="CAJCL 2027 Convention",
 # mistake or a probe, and either way the answer is the same.
 MAX_BODY_BYTES = 1_048_576
 
+# THE ONE EXCEPTION: a pre-convention contest entry, which carries its file
+# base64-encoded. contests.MAX_FILE_BYTES is the real limit and is checked on
+# the decoded bytes; this is that, plus base64's third, plus room for the rest
+# of the form. Only the one path, and only POST.
+MAX_UPLOAD_BODY_BYTES = contests.MAX_FILE_BYTES * 4 // 3 + 262_144
+_UPLOAD_PATH = re.compile(r"^/me/contests/\d+$")
+
 
 @app.middleware("http")
 async def limit_body_size(request: Request, call_next):
     declared = request.headers.get("content-length")
     if declared is not None:
         try:
-            if int(declared) > MAX_BODY_BYTES:
+            upload = (request.method == "POST"
+                      and bool(_UPLOAD_PATH.match(request.url.path)))
+            limit = MAX_UPLOAD_BODY_BYTES if upload else MAX_BODY_BYTES
+            if upload and int(declared) > limit:
+                message = (f"That file is too large. The limit is "
+                           f"{contests.MAX_FILE_BYTES // 1048576} MB.")
+                return JSONResponse(status_code=413,
+                                    content={"error": message, "detail": message})
+            if int(declared) > limit:
                 return JSONResponse(
                     status_code=413,
                     content={"detail": "That is too large to send. If you are "
@@ -962,6 +981,647 @@ def _self(tx, principal: auth.Principal) -> dict:
     # The chapter half of the number printed beside their name: 07014.
     person["school_number"] = school["number"]
     return person
+
+
+# ===========================================================================
+# Pre-convention contests
+# ===========================================================================
+#
+# THREE AUDIENCES, THREE SETS OF ENDPOINTS.
+#   /me/contests        a delegate's own entries
+#   /sponsor/contests   a chapter's Publicity portfolio, and its delegates' entries
+#   /judge/...          entries WITHOUT names, and the judge's own scores.
+#                       Scope `judge` ONLY: the chairs who read the results
+#                       with names attached do not also score the entries.
+#   /admin/contests     results WITH names, and the rubric, for the chairs
+#
+# A file entry is two steps that cannot share a transaction: Drive first, then
+# the row. Drive is slow, and holding the single write lock across a 20 MB
+# upload would queue every other request on the site behind one student. If
+# the row then fails to write, the file just uploaded is put in Drive's trash.
+
+def _contest_error(message: str) -> catalog.ValidationError:
+    return catalog.ValidationError([message])
+
+
+def _contests_open(tx) -> None:
+    deadline = settings.get(tx, "deadline.contests")
+    if deadline and clock.is_past(deadline):
+        raise _contest_error(
+            f"Pre-convention contests closed on "
+            f"{clock.render_local(deadline, with_time=False)}. Entries can no "
+            f"longer be submitted, changed or withdrawn.")
+
+
+def _deadline_view(tx) -> dict:
+    deadline = settings.get(tx, "deadline.contests")
+    return {"deadline": deadline or None,
+            "closed": bool(deadline) and clock.is_past(deadline)}
+
+
+def _own_entry_view(row) -> dict:
+    """An entry as the person who made it sees it -- including the file name
+    they chose, which a judge never sees."""
+    if row is None:
+        return None
+    return {
+        "id": row["id"],
+        "division": row["division"],
+        "title": row["title"],
+        "text": row["body_text"] if not row["drive_file_id"] else None,
+        "translation": row["translation"],
+        "link_url": row.get("link_url"),
+        "facets": contests.split_lines(row.get("facets")),
+        "word_count": row["word_count"],
+        "word_count_source": row["word_count_source"],
+        "original_name": row["original_name"],
+        "size_bytes": row["size_bytes"],
+        "has_file": bool(row["drive_file_id"]),
+        "submitted_at": row["submitted_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+def _decode_upload(payload: dict) -> tuple[str, bytes] | None:
+    upload = payload.get("file")
+    if not upload:
+        return None
+    if not isinstance(upload, dict):
+        raise _contest_error("That file did not arrive intact. Try again.")
+    name = str(upload.get("name") or "").strip()[:200]
+    try:
+        data = base64.b64decode(str(upload.get("data") or ""), validate=True)
+    except (binascii.Error, ValueError):
+        raise _contest_error("That file did not arrive intact. Try again.") from None
+    if not name:
+        raise _contest_error("That file has no name.")
+    return name, data
+
+
+def _prepare_entry(contest: dict, payload: dict, existing, person, school) -> dict:
+    """Validate an entry and, for a file, put it in Drive. Returns the columns."""
+    fields = {
+        "title": contests.check_title(contest, payload),
+        "body_text": None, "translation": None, "link_url": None, "facets": None,
+        "word_count": None, "word_count_source": None,
+        "drive_file_id": None, "drive_folder_id": None, "original_name": None,
+        "mime_type": None, "size_bytes": None, "uploaded": False,
+    }
+    kind = contest["entry_kind"]
+    if kind == "text":
+        fields["body_text"], fields["translation"] = \
+            contests.check_text_entry(contest, payload)
+        return fields
+    if kind == "link":
+        fields["link_url"], fields["facets"] = \
+            contests.check_link_entry(contest, payload)
+        return fields
+
+    upload = _decode_upload(payload)
+    counts_words = contest["min_words"] is not None or contest["max_words"] is not None
+
+    if upload is None:
+        # Changing the title, or a declared length, without sending the file
+        # again. A first entry has nothing to keep.
+        if existing is None or not existing["drive_file_id"]:
+            raise _contest_error("Choose the file to upload.")
+        for key in ("body_text", "word_count", "word_count_source", "drive_file_id",
+                    "drive_folder_id", "original_name", "mime_type", "size_bytes"):
+            fields[key] = existing[key]
+        if counts_words and existing["word_count_source"] != "counted":
+            fields["word_count"] = contests.declared_words(payload)
+            fields["word_count_source"] = "declared"
+        return fields
+
+    name, data = upload
+    extension, mime = contests.check_file(contest, name, data)
+    text = contests.read_text(extension, data)
+    if text is not None:
+        fields["body_text"] = text[:contests.MAX_TEXT_KEPT]
+    if counts_words:
+        if text is not None:
+            fields["word_count"] = contests.count_words(text)
+            fields["word_count_source"] = "counted"
+        else:
+            fields["word_count"] = contests.declared_words(payload)
+            fields["word_count_source"] = "declared"
+
+    with database().read() as tx:
+        configured = settings.get(tx, "drive.contests_root")
+    store = drive.client()
+    root = drive.root_folder(configured)
+    contest_folder = store.mkdir(root, contest["name"])
+    chapter_folder = store.mkdir(contest_folder, contests.chapter_folder_name(school))
+    fields["drive_file_id"] = store.upload(
+        chapter_folder, contests.drive_name(person, school, extension), mime, data)
+    fields.update(drive_folder_id=chapter_folder, original_name=name,
+                  mime_type=mime, size_bytes=len(data), uploaded=True)
+    return fields
+
+
+def _write_entry(request: Request, principal: auth.Principal, contest: dict,
+                 school: dict, person: dict | None, division: str,
+                 fields: dict) -> dict:
+    """The row, and its audit entry. Returns the entry as its owner sees it."""
+    now = clock.now_iso()
+    person_id = person["id"] if person else None
+    replaced_file = None
+    who = principal.display_name
+    subject = "their" if person and person["id"] == principal.person_id else (
+        f"{school['name']}'s" if person is None else
+        f"{person['first_name']} {person['last_name']}'s")
+    try:
+        with database().tx(request_id=request_id(request)) as tx:
+            _contests_open(tx)
+            existing = (tx.one("contests.entry_for_person", (person_id, contest["item_id"]))
+                        if person else
+                        tx.one("contests.entry_for_chapter", (school["id"], contest["item_id"])))
+            columns = (division, fields["title"], fields["body_text"],
+                       fields["translation"], fields["link_url"], fields["facets"],
+                       fields["word_count"], fields["word_count_source"],
+                       fields["drive_file_id"], fields["drive_folder_id"],
+                       fields["original_name"], fields["mime_type"],
+                       fields["size_bytes"], principal.person_id)
+            if existing is None:
+                entry_id = tx.insert("contests.entry_create", (
+                    contest["item_id"], school["id"], person_id, *columns, now, now))
+                action, summary = "contest.enter", \
+                    f"{who} entered {subject} {contest['name']}."
+            else:
+                entry_id = existing["id"]
+                tx.run("contests.entry_replace", (*columns, now, entry_id))
+                # Scores were for the work that was there before.
+                tx.run("contests.scores_delete_for_entry", (entry_id,))
+                if existing["drive_file_id"] and \
+                        existing["drive_file_id"] != fields["drive_file_id"]:
+                    replaced_file = existing["drive_file_id"]
+                action, summary = "contest.replace", \
+                    f"{who} replaced {subject} {contest['name']} entry."
+            tx.audit(action, summary,
+                     actor_person_id=principal.person_id,
+                     impersonator_person_id=principal.impersonator_person_id,
+                     school_id=school["id"], entity_type="contest_entry",
+                     entity_id=entry_id,
+                     changed_fields=[k for k in ("title", "body_text", "translation",
+                                                 "link_url", "facets", "drive_file_id")
+                                     if fields[k] is not None])
+            row = tx.one("contests.entry_get", (entry_id,))
+    except Exception as error:
+        if fields["uploaded"]:
+            _trash_quietly(fields["drive_file_id"])
+        if "unique" in str(error).lower():
+            raise _contest_error(
+                "That entry was just submitted from somewhere else. Reload the "
+                "page to see it.") from None
+        raise
+
+    if replaced_file:
+        _trash_quietly(replaced_file)
+    return _own_entry_view(row)
+
+
+def _trash_quietly(file_id: str | None) -> None:
+    """Best effort. A stray file in Drive's trash costs nothing; failing the
+    request over it would tell somebody their entry failed when it did not."""
+    if not file_id:
+        return
+    try:
+        drive.client().trash(file_id)
+    except Exception:
+        pass
+
+
+def _withdraw_entry(request: Request, principal: auth.Principal, contest: dict,
+                    school: dict, person: dict | None) -> dict:
+    with database().tx(request_id=request_id(request)) as tx:
+        _contests_open(tx)
+        existing = (tx.one("contests.entry_for_person", (person["id"], contest["item_id"]))
+                    if person else
+                    tx.one("contests.entry_for_chapter", (school["id"], contest["item_id"])))
+        if existing is None:
+            raise _contest_error("There is no entry to withdraw.")
+        tx.run("contests.scores_delete_for_entry", (existing["id"],))
+        tx.run("contests.entry_delete", (existing["id"],))
+        tx.audit("contest.withdraw",
+                 f"{principal.display_name} withdrew "
+                 + ("their" if person and person["id"] == principal.person_id
+                    else f"{school['name']}'s")
+                 + f" {contest['name']} entry.",
+                 actor_person_id=principal.person_id,
+                 impersonator_person_id=principal.impersonator_person_id,
+                 school_id=school["id"], entity_type="contest_entry",
+                 entity_id=existing["id"])
+    _trash_quietly(existing["drive_file_id"])
+    return {"ok": True}
+
+
+def _file_response(row, filename: str) -> Response:
+    if not row["drive_file_id"]:
+        raise auth.ForbiddenError("that entry has no file")
+    data = drive.client().fetch(row["drive_file_id"])
+    return Response(content=data, media_type=row["mime_type"],
+                    headers={
+                        "Content-Disposition": f'inline; filename="{filename}"',
+                        # A judge's laptop may be a shared one.
+                        "Cache-Control": "private, no-store",
+                    })
+
+
+@app.exception_handler(drive.DriveUnavailable)
+async def _drive_unavailable(request: Request, exc: drive.DriveUnavailable):
+    return JSONResponse({"error": str(exc), "kind": "drive"}, status_code=503)
+
+
+# -- a delegate's own entries ----------------------------------------------
+
+@app.get("/me/contests")
+def my_contests(principal: auth.Principal = guard("me.contests", "delegate",
+                                                  school_rule="self")):
+    with database().read() as tx:
+        person = _self(tx, principal)
+        school = dict(tx.one("schools.get", (person["school_id"],)))
+        mine = {row["item_id"]: row
+                for row in tx.all("contests.entries_for_person", (person["id"],))}
+        listed = []
+        for contest in contests.load(tx):
+            if contest["entered_by"] != "delegate":
+                continue
+            view = contests.public_view(contest)
+            try:
+                view["division"] = contests.division_for(contest, school, person)
+                view["division_problem"] = None
+            except catalog.ValidationError as problem:
+                view["division"] = None
+                view["division_problem"] = problem.errors[0]
+            view["entry"] = _own_entry_view(mine.get(contest["item_id"]))
+            listed.append(view)
+        return {
+            **_deadline_view(tx),
+            "can_enter": person["person_type"] == "delegate",
+            "person": {"first_name": person["first_name"], "grade": person["grade"],
+                       "school_name": school["name"], "school_level": school["level"]},
+            "max_file_bytes": contests.MAX_FILE_BYTES,
+            "contests": listed,
+        }
+
+
+def _my_contest(tx, principal: auth.Principal, item_id: int):
+    person = _self(tx, principal)
+    if person["person_type"] != "delegate":
+        raise _contest_error(
+            "Pre-convention contests are entered by delegates. Adults cannot enter.")
+    contest = contests.by_item(tx, item_id)
+    if contest["entered_by"] != "delegate":
+        raise _contest_error(
+            f"{contest['name']} is entered by the chapter, from the sponsor's "
+            f"Contests page.")
+    school = dict(tx.one("schools.get", (person["school_id"],)))
+    return person, school, contest
+
+
+@app.post("/me/contests/{item_id}")
+def submit_my_entry(item_id: int, request: Request, payload: dict = Body(...),
+                    principal: auth.Principal = guard("me.contests.submit", "delegate",
+                                                      school_rule="self", writes=True)):
+    with database().read() as tx:
+        person, school, contest = _my_contest(tx, principal, item_id)
+        _contests_open(tx)
+        division = contests.division_for(contest, school, person)
+        existing = tx.one("contests.entry_for_person", (person["id"], item_id))
+    fields = _prepare_entry(contest, payload, existing, person, school)
+    return {"ok": True,
+            "entry": _write_entry(request, principal, contest, school, person,
+                                  division, fields)}
+
+
+@app.delete("/me/contests/{item_id}")
+def withdraw_my_entry(item_id: int, request: Request,
+                      principal: auth.Principal = guard("me.contests.withdraw",
+                                                        "delegate", school_rule="self",
+                                                        writes=True)):
+    with database().read() as tx:
+        person, school, contest = _my_contest(tx, principal, item_id)
+    return _withdraw_entry(request, principal, contest, school, person)
+
+
+@app.get("/me/contests/{item_id}/file")
+def my_entry_file(item_id: int,
+                  principal: auth.Principal = guard("me.contests.file", "delegate",
+                                                    school_rule="self")):
+    with database().read() as tx:
+        person, _, _ = _my_contest(tx, principal, item_id)
+        row = tx.one("contests.entry_for_person", (person["id"], item_id))
+    if row is None:
+        raise auth.ForbiddenError("there is no entry")
+    return _file_response(row, row["original_name"].replace('"', "'"))
+
+
+# -- a chapter's entries -----------------------------------------------------
+
+@app.get("/sponsor/contests")
+def chapter_contests(school_id: int | None = Query(default=None),
+                     principal: auth.Principal = guard("sponsor.contests", "chapter",
+                                                       "registration", "academics")):
+    """The chapter's Publicity portfolio, and -- for a sponsor or a chair --
+    which of the chapter's delegates have entered what.
+
+    A chapter leader is a delegate, and gets the portfolio without the list of
+    their classmates' entries.
+    """
+    with database().read() as tx:
+        school = _school_of(tx, principal, school_id)
+        rows = [dict(r) for r in tx.all("contests.entries_for_school", (school["id"],))]
+        catalog_ = contests.load(tx)
+        names = {c["item_id"]: c["name"] for c in catalog_}
+        chapter = []
+        for contest in catalog_:
+            if contest["entered_by"] != "chapter":
+                continue
+            view = contests.public_view(contest)
+            try:
+                view["division"] = contests.division_for(contest, school, None)
+                view["division_problem"] = None
+            except catalog.ValidationError as problem:
+                view["division"] = None
+                view["division_problem"] = problem.errors[0]
+            mine = next((r for r in rows if r["item_id"] == contest["item_id"]
+                         and r["person_id"] is None), None)
+            view["entry"] = None if mine is None else {
+                "id": mine["id"], "division": mine["division"],
+                "link_url": mine["link_url"],
+                "facets": contests.split_lines(mine["facets"]),
+                "submitted_at": mine["submitted_at"], "updated_at": mine["updated_at"],
+            }
+            chapter.append(view)
+
+        sees_students = principal.has_any("sponsor", "registration", "academics")
+        students = [{
+            "contest": names.get(r["item_id"], "—"),
+            "person_id": r["person_id"],
+            "first_name": r["first_name"], "last_name": r["last_name"],
+            "school_seq": r["school_seq"], "status": r["status"],
+            "division": r["division"], "title": r["title"],
+            "text": r["body_text"] if r["original_name"] is None else None,
+            "file": r["original_name"],
+            "updated_at": r["updated_at"],
+        } for r in rows if r["person_id"] is not None] if sees_students else None
+
+        return {**_deadline_view(tx),
+                "school": _school_public(school, principal),
+                "contests": chapter,
+                "students": students}
+
+
+def _chapter_contest(tx, principal: auth.Principal, school_id, item_id: int):
+    school = _school_of(tx, principal, school_id)
+    contest = contests.by_item(tx, item_id)
+    if contest["entered_by"] != "chapter":
+        raise _contest_error(
+            f"{contest['name']} is entered by each delegate, from their own "
+            f"Contests page.")
+    return school, contest
+
+
+@app.post("/sponsor/contests/{item_id}")
+def submit_chapter_entry(item_id: int, request: Request, payload: dict = Body(...),
+                         principal: auth.Principal = guard("sponsor.contests.submit",
+                                                           "chapter", "registration",
+                                                           writes=True)):
+    with database().read() as tx:
+        school, contest = _chapter_contest(tx, principal, payload.get("school_id"), item_id)
+        _contests_open(tx)
+        division = contests.division_for(contest, school, None)
+        existing = tx.one("contests.entry_for_chapter", (school["id"], item_id))
+    fields = _prepare_entry(contest, payload, existing, None, school)
+    return {"ok": True,
+            "entry": _write_entry(request, principal, contest, school, None,
+                                  division, fields)}
+
+
+@app.delete("/sponsor/contests/{item_id}")
+def withdraw_chapter_entry(item_id: int, request: Request,
+                           school_id: int | None = Query(default=None),
+                           principal: auth.Principal = guard("sponsor.contests.withdraw",
+                                                             "chapter", "registration",
+                                                             writes=True)):
+    with database().read() as tx:
+        school, contest = _chapter_contest(tx, principal, school_id, item_id)
+    return _withdraw_entry(request, principal, contest, school, None)
+
+
+# -- judging -----------------------------------------------------------------
+
+def _judge_only(principal: auth.Principal) -> None:
+    """An Academics chair does not judge, even holding the judge role as well.
+
+    The chairs read the results with names attached; a chair who also scored
+    would be judging entries they can identify. Checked against the scopes a
+    person actually holds, so `*` alone -- which implies every scope -- is not
+    what trips it.
+    """
+    if "academics" in principal.scopes:
+        raise auth.ForbiddenError(
+            "Academics chairs read the results and do not judge. Ask for the "
+            "Contest Judge role to be given to somebody else.")
+
+
+@app.get("/judge/contests")
+def judge_contests(principal: auth.Principal = guard("judge.contests", "judge",
+                                                     school_rule="any")):
+    _judge_only(principal)
+    with database().read() as tx:
+        progress = {r["item_id"]: dict(r)
+                    for r in tx.all("contests.judge_progress", (principal.person_id,))}
+        listed = []
+        for contest in contests.load(tx):
+            counts = progress.get(contest["item_id"], {})
+            listed.append({"item_id": contest["item_id"], "name": contest["name"],
+                           "entered_by": contest["entered_by"],
+                           "division_label": contest["division_label"],
+                           "facet_count": len(contest["facet_list"]),
+                           "entries": counts.get("entries", 0),
+                           "scored": counts.get("scored", 0)})
+        return {**_deadline_view(tx), "contests": listed}
+
+
+@app.get("/judge/contests/{item_id}")
+def judge_contest(item_id: int,
+                  principal: auth.Principal = guard("judge.contest", "judge",
+                                                    school_rule="any")):
+    _judge_only(principal)
+    with database().read() as tx:
+        contest = contests.by_item(tx, item_id)
+        rows = tx.all("contests.entries_for_judging", (principal.person_id, item_id))
+        return {**_deadline_view(tx),
+                "contest": contests.public_view(contest),
+                "entries": contests.judge_view(contest, rows)}
+
+
+@app.get("/judge/entries/{entry_id}/file")
+def judge_entry_file(entry_id: int,
+                     principal: auth.Principal = guard("judge.entries.file", "judge",
+                                                       school_rule="any")):
+    _judge_only(principal)
+    with database().read() as tx:
+        row = tx.one("contests.entry_get", (entry_id,))
+    if row is None:
+        raise auth.ForbiddenError("no such entry")
+    extension = contests.extension_of(row["original_name"] or "")
+    return _file_response(row, contests.anonymous_name(row, extension))
+
+
+@app.put("/judge/entries/{entry_id}/score")
+def judge_score(entry_id: int, request: Request, payload: dict = Body(...),
+                principal: auth.Principal = guard("judge.entries.score", "judge",
+                                                  school_rule="any", writes=True)):
+    _judge_only(principal)
+    now = clock.now_iso()
+    with database().tx(request_id=request_id(request)) as tx:
+        entry = tx.one("contests.entry_get", (entry_id,))
+        if entry is None:
+            raise auth.ForbiddenError("no such entry")
+        contest = contests.by_item(tx, entry["item_id"])
+        score = contests.check_score(contest, entry, payload)
+        tx.run("contests.score_upsert", (
+            entry_id, principal.person_id, score["facet"], score["points_json"],
+            score["penalty"], score["total"], score["comment"], score["status"],
+            now, now))
+        facet = f" ({score['facet']})" if score["facet"] else ""
+        tx.audit("contest.score",
+                 f"{principal.display_name} "
+                 + ("handed in" if score["status"] == "submitted" else "saved a draft of")
+                 + f" a score for {contest['name']} entry {entry_id}{facet}.",
+                 actor_person_id=principal.person_id,
+                 impersonator_person_id=principal.impersonator_person_id,
+                 entity_type="contest_entry", entity_id=entry_id,
+                 changed_fields=["points", "comment", "status"])
+    return {"ok": True, "total": score["total"], "penalty": score["penalty"],
+            "status": score["status"]}
+
+
+# -- the chairs --------------------------------------------------------------
+
+@app.get("/admin/contests")
+def contests_overview(principal: auth.Principal = guard("admin.contests.list",
+                                                        "academics", "awards",
+                                                        school_rule="any")):
+    """Every contest, how many entries it has, and how far judging has got."""
+    with database().read() as tx:
+        counts = {r["item_id"]: dict(r) for r in tx.all("contests.results_overview")}
+        listed = []
+        for contest in contests.load(tx):
+            row = counts.get(contest["item_id"], {})
+            listed.append({"item_id": contest["item_id"], "name": contest["name"],
+                           "entered_by": contest["entered_by"],
+                           "division_label": contest["division_label"],
+                           "facet_count": len(contest["facet_list"]),
+                           "entries": row.get("entries", 0),
+                           "judged": row.get("judged", 0),
+                           "scores": row.get("scores", 0)})
+        return {**_deadline_view(tx), "contests": listed,
+                "can_edit": principal.has_scope("academics")}
+
+
+@app.get("/admin/contests/entries/{entry_id}/file")
+def contest_entry_file(entry_id: int,
+                       principal: auth.Principal = guard("admin.contests.file",
+                                                         "academics", "awards",
+                                                         school_rule="any")):
+    """A file entry for the chairs, who already see whose it is."""
+    with database().read() as tx:
+        row = tx.one("contests.entry_get", (entry_id,))
+    if row is None:
+        raise auth.ForbiddenError("no such entry")
+    extension = contests.extension_of(row["original_name"] or "")
+    return _file_response(row, contests.anonymous_name(row, extension))
+
+
+@app.get("/admin/contests/{item_id}/results")
+def contest_results(item_id: int,
+                    principal: auth.Principal = guard("admin.contests.results",
+                                                      "academics", "awards",
+                                                      school_rule="any")):
+    """Standings with names. For the Academics and Awards chairs only."""
+    with database().read() as tx:
+        contest = contests.by_item(tx, item_id)
+        entries = [dict(r) for r in tx.all("contests.results_entries", (item_id,))]
+        scores = [dict(r) for r in tx.all("contests.results_scores", (item_id,))]
+        scored = tx.value("contests.scored_count", (item_id,), 0)
+        return {**_deadline_view(tx),
+                "contest": contests.public_view(contest),
+                "groups": contests.rank(contest, entries, scores),
+                "entry_count": len(entries),
+                "rubric_locked": scored > 0,
+                "can_edit": principal.has_scope("academics")}
+
+
+@app.put("/admin/contests/{item_id}")
+def update_contest(item_id: int, request: Request, payload: dict = Body(...),
+                   principal: auth.Principal = guard("admin.contests.update",
+                                                     "academics", school_rule="any",
+                                                     writes=True)):
+    """The rules text and the rubric.
+
+    ONCE ANYBODY HAS SCORED, THE RUBRIC'S SHAPE IS FIXED. A score is stored as
+    points per criterion, so adding, removing or re-weighting a criterion would
+    leave every score already handed in meaning something different. Labels
+    may still be reworded.
+
+    Divisions are NOT editable here. They are the Convention Book's rule, and
+    each entry's division is worked out when it arrives -- see contests.divisions
+    in migration 008.
+    """
+    changed = []
+    with database().tx(request_id=request_id(request)) as tx:
+        contest = contests.by_item(tx, item_id)
+
+        if "rules_md" in payload:
+            rules = str(payload.get("rules_md") or "").strip()[:20000]
+            tx.run("contests.update_rules", (rules or None, item_id))
+            changed.append("rules_md")
+
+        criteria = payload.get("criteria")
+        if criteria is not None:
+            rows = []
+            for index, item in enumerate(criteria):
+                label = " ".join(str(item.get("label") or "").split())[:120]
+                try:
+                    points = int(item.get("max_points"))
+                except (TypeError, ValueError):
+                    points = 0
+                if not label or points <= 0 or points > 1000:
+                    raise _contest_error(
+                        f"Line {index + 1} of the rubric needs a name and a whole "
+                        f"number of points above zero.")
+                rows.append((item.get("id"), label, points))
+            if not rows:
+                raise _contest_error("A rubric needs at least one line.")
+
+            current = [(c["id"], c["label"], c["max_points"]) for c in contest["criteria"]]
+            same_shape = ([(r[0], r[2]) for r in rows]
+                          == [(c[0], c[2]) for c in current])
+            if tx.value("contests.scored_count", (item_id,), 0):
+                if not same_shape:
+                    raise _contest_error(
+                        "Judges have already scored this contest, so its rubric "
+                        "can only be reworded, not changed.")
+                for criterion_id, label, _ in rows:
+                    tx.run("contests.criteria_update", (label, criterion_id, item_id))
+            else:
+                tx.run("contests.criteria_delete", (item_id,))
+                for index, (_, label, points) in enumerate(rows):
+                    tx.run("contests.criteria_create",
+                           (item_id, label, points, (index + 1) * 10))
+            changed.append("criteria")
+
+        if changed:
+            tx.audit("contest.update",
+                     f"{principal.display_name} changed the {contest['name']} contest.",
+                     actor_person_id=principal.person_id,
+                     impersonator_person_id=principal.impersonator_person_id,
+                     entity_type="contest", entity_id=item_id,
+                     changed_fields=changed)
+    return {"ok": True}
 
 
 # ===========================================================================
@@ -2052,8 +2712,7 @@ def create_role(request: Request, payload: dict = Body(...),
     key = (payload.get("key") or "").strip().lower().replace(" ", "_")
     name = (payload.get("name") or "").strip()
     scopes = payload.get("scopes") or []
-    valid = {"*", "registration", "academics", "awards", "sponsor", "delegate", "chapter"}
-    if not key or not name or not scopes or not set(scopes) <= valid:
+    if not key or not name or not scopes or not set(scopes) <= auth.ALL_SCOPES:
         raise catalog.ValidationError(
             ["Give the role a key, a name, and at least one valid scope."])
 

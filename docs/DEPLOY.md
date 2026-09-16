@@ -13,7 +13,8 @@ Three services are involved, and each does one job:
 
 Google Apps Script appears elsewhere in these documents. It is **not needed
 to run registration** and is not set up here. Exports download straight to your
-computer instead.
+computer instead. Pre-convention contest **file** uploads do need it — see
+`apps-script/README.md` and the "Deploy the Drive puppet" row in `docs/TODO.md`.
 
 Budget about **90 minutes** the first time you do this.
 
@@ -945,6 +946,10 @@ thing that is broken, because you know where it is meant to go.
   script. They are listed in `docs/TODO.md` with what each screen would take.
 - **Exports download to your computer.** Writing them to Google Drive requires
   Apps Script, which is not set up and is not needed here.
+- **Contest file uploads need Apps Script.** Until it is deployed and
+  Settings → *Drive folder ID for contest entries* is filled in, art, myth and
+  poem uploads say "not switched on yet". Slogans, Publicity and judging work
+  without it.
 
 ---
 

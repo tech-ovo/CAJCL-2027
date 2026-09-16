@@ -44,6 +44,7 @@ function doPost(e) {
 
     switch (request.op) {
       case 'upload': return json(upload(request));
+      case 'fetch':  return json(fetch(request));
       case 'list':   return json(list(request));
       case 'mkdir':  return json(mkdir(request));
       case 'trash':  return json(trash(request));
@@ -69,8 +70,12 @@ function verify(request) {
   var age = Math.abs((Date.now() / 1000) - Number(request.ts || 0));
   if (!request.ts || age > MAX_AGE_SECONDS) return false;
 
+  // fileId is signed too: without it, a captured `fetch` or `trash` could be
+  // pointed at a different file inside the freshness window.
+  // backend/lib/drive.py builds the same string; change both or neither.
   var material = String(request.ts) + '.' + String(request.op) + '.' +
-                 String(request.folderId || '') + '.' + String(request.name || '');
+                 String(request.folderId || '') + '.' + String(request.name || '') + '.' +
+                 String(request.fileId || '');
   var computed = Utilities.computeHmacSha256Signature(material, key);
 
   var hex = computed.map(function (byte) {
@@ -95,6 +100,14 @@ function upload(request) {
   var file = folder.createFile(blob);
   return { ok: true, fileId: file.getId(), name: file.getName(),
            size: file.getSize(), url: file.getUrl() };
+}
+
+/** Read a file back, so a judge can see an entry without being given access
+ *  to the Drive folder -- whose chapter subfolders would say whose it is. */
+function fetch(request) {
+  var file = DriveApp.getFileById(request.fileId);
+  return { ok: true, mimeType: file.getMimeType(),
+           contentBase64: Utilities.base64Encode(file.getBlob().getBytes()) };
 }
 
 /**

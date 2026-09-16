@@ -191,6 +191,35 @@ export async function postFile(path, body, fallbackName) {
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
+/* A file to SHOW, rather than save: a contest entry a judge is reading.
+ *
+ * The request carries the session token in a header, which an <img src> or an
+ * <iframe src> cannot send -- so the bytes are fetched here and handed back as
+ * a Blob for the page to turn into an object URL. */
+export async function getBlob(path) {
+  const headers = {};
+  const auth = token.get();
+  if (auth) headers["Authorization"] = `Bearer ${auth}`;
+  let response;
+  try {
+    response = await fetch(base() + path, { headers });
+  } catch (error) {
+    throw new ApiError(
+      "Could not reach the server. Check your connection and try again.",
+      { kind: "network" });
+  }
+  if (!response.ok) {
+    let message = `Could not load that file (${response.status}).`;
+    try {
+      const payload = await response.json();
+      if (payload && payload.error) message = payload.error;
+    } catch (ignored) { /* not JSON; keep the status. */ }
+    throw new ApiError(message, { status: response.status });
+  }
+  return { blob: await response.blob(),
+           name: fileName(response, "entry") };
+}
+
 function fileName(response, fallback) {
   const header = response.headers.get("Content-Disposition") || "";
   const match = header.match(/filename="([^"]+)"/);
