@@ -1,6 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { useCertamen } from '../context/CertamenContext';
-import { Sliders, Cloud, AlertTriangle } from 'lucide-react';
+
+const Setting: React.FC<{ name: string; help: string; htmlFor?: string; children: React.ReactNode }> = ({
+  name,
+  help,
+  htmlFor,
+  children,
+}) => (
+  <div className="setting">
+    <div>
+      <p className="setting__name">{htmlFor ? <label htmlFor={htmlFor}>{name}</label> : name}</p>
+      <p className="setting__help">{help}</p>
+    </div>
+    <div className="setting__control">{children}</div>
+  </div>
+);
 
 export const SettingsView: React.FC = () => {
   const { settings, updateSettings, resetUserStats } = useCertamen();
@@ -17,107 +31,62 @@ export const SettingsView: React.FC = () => {
   }, []);
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-6">
-      {/* Header */}
-      <div className="pb-3 border-b border-sky-200/80">
-        <h2 className="text-xl font-display font-bold text-slate-900 flex items-center gap-2">
-          <Sliders className="w-5 h-5 text-sky-600" />
-          <span>Certamen Configuration</span>
-        </h2>
-        <div className="text-xs text-slate-500 font-editorial italic">
-          Configure reader speed, timer duration, speech synthesis, and cloud backend
+    <>
+      <div className="page-head">
+        <div>
+          <h1>Settings</h1>
+          <p className="small muted">Saved on this device.</p>
         </div>
       </div>
 
-      {/* Settings Card */}
-      <div className="classical-card-elevated rounded-3xl divide-y divide-sky-100 overflow-hidden text-xs shadow-md">
-        {/* Practice Mode */}
-        <div className="p-4 sm:p-5 flex items-center justify-between gap-4">
-          <div>
-            <div className="text-slate-900 font-semibold">Moderator Practice Mode</div>
-            <div className="text-slate-500 font-editorial text-sm">Choose between reading visual text or speech moderator audio</div>
-          </div>
-          <div className="flex items-center gap-1 bg-sky-50 p-1 rounded-xl border border-sky-200">
-            <button
-              onClick={() => updateSettings({ readerMode: 'visual' })}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                settings.readerMode === 'visual'
-                  ? 'bg-sky-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Visual
-            </button>
-            <button
-              onClick={() => updateSettings({ readerMode: 'audio' })}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                settings.readerMode === 'audio'
-                  ? 'bg-sky-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Audio Speech
-            </button>
-          </div>
-        </div>
+      <h2>Reading</h2>
+      <div className="settings">
+        <Setting name="Reader" help="Read the question as text on screen, or have it spoken aloud.">
+          <span className="seg">
+            <button type="button" className="btn btn--small" aria-pressed={settings.readerMode === 'visual'}
+              onClick={() => updateSettings({ readerMode: 'visual' })}>Text</button>
+            <button type="button" className="btn btn--small" aria-pressed={settings.readerMode === 'audio'}
+              onClick={() => updateSettings({ readerMode: 'audio' })}>Voice</button>
+          </span>
+        </Setting>
 
-        {/* Typewriter Speed */}
-        <div className="p-4 sm:p-5 flex items-center justify-between gap-4">
-          <div>
-            <div className="text-slate-900 font-semibold">Typewriter Pace</div>
-            <div className="text-slate-500 font-editorial text-sm">Speed at which visual question text reveals on screen</div>
-          </div>
-          <div className="flex items-center gap-3">
-            <input
-              type="range"
-              min="20"
-              max="90"
-              step="5"
-              value={settings.readingSpeed}
-              onChange={(e) => updateSettings({ readingSpeed: Number(e.target.value) })}
-              className="w-32 accent-sky-600 cursor-pointer"
-            />
-            <span className="text-sky-900 font-bold w-16 text-right">
-              {settings.readingSpeed <= 30 ? 'Fast' : settings.readingSpeed <= 55 ? 'Normal' : 'Slow'}
-            </span>
-          </div>
-        </div>
+        <Setting name="Text pace" help="How quickly the question appears on screen." htmlFor="set-pace">
+          <input
+            id="set-pace"
+            type="range"
+            min="20"
+            max="90"
+            step="5"
+            // Lower is faster, so the slider runs the other way.
+            value={110 - settings.readingSpeed}
+            onChange={(e) => updateSettings({ readingSpeed: 110 - Number(e.target.value) })}
+          />
+          <span className="mono small">
+            {settings.readingSpeed <= 30 ? 'Fast' : settings.readingSpeed <= 55 ? 'Normal' : 'Slow'}
+          </span>
+        </Setting>
 
-        {/* Audio Speech Rate */}
-        <div className="p-4 sm:p-5 flex items-center justify-between gap-4">
-          <div>
-            <div className="text-slate-900 font-semibold">Speech Modulation Speed</div>
-            <div className="text-slate-500 font-editorial text-sm">Moderator speech synthesis rate</div>
-          </div>
-          <div className="flex items-center gap-3">
-            <input
-              type="range"
-              min="0.75"
-              max="1.5"
-              step="0.05"
-              value={settings.speechRate || 1.0}
-              onChange={(e) => updateSettings({ speechRate: Number(e.target.value) })}
-              className="w-32 accent-sky-600 cursor-pointer"
-            />
-            <span className="text-sky-900 font-bold w-12 text-right">
-              {(settings.speechRate || 1.0).toFixed(2)}x
-            </span>
-          </div>
-        </div>
+        <Setting name="Voice pace" help="How quickly the spoken moderator reads." htmlFor="set-rate">
+          <input
+            id="set-rate"
+            type="range"
+            min="0.75"
+            max="1.5"
+            step="0.05"
+            value={settings.speechRate || 1.0}
+            onChange={(e) => updateSettings({ speechRate: Number(e.target.value) })}
+          />
+          <span className="mono small">{(settings.speechRate || 1.0).toFixed(2)}×</span>
+        </Setting>
 
-        {/* Speech Voice */}
         {voices.length > 0 && (
-          <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <div className="text-slate-900 font-semibold">Moderator Voice Engine</div>
-              <div className="text-slate-500 font-editorial text-sm">Select synthesis voice profile</div>
-            </div>
+          <Setting name="Voice" help="Which of this device's voices reads the questions." htmlFor="set-voice">
             <select
+              id="set-voice"
               value={settings.selectedVoiceURI || ''}
               onChange={(e) => updateSettings({ selectedVoiceURI: e.target.value })}
-              className="bg-white border border-sky-200 text-slate-900 rounded-xl px-3 py-2 text-xs outline-none max-w-xs focus:border-sky-500 shadow-xs"
             >
-              <option value="">System Default Voice</option>
+              <option value="">System default</option>
               {voices
                 .filter((v) => v.lang.startsWith('en') || v.lang.startsWith('la') || v.lang.startsWith('it'))
                 .map((v) => (
@@ -126,107 +95,79 @@ export const SettingsView: React.FC = () => {
                   </option>
                 ))}
             </select>
-          </div>
+          </Setting>
         )}
+      </div>
 
-        {/* Response Timer Duration */}
-        <div className="p-4 sm:p-5 flex items-center justify-between gap-4">
-          <div>
-            <div className="text-slate-900 font-semibold">Buzzer Countdown Timer</div>
-            <div className="text-slate-500 font-editorial text-sm">Seconds allotted to submit answer after buzz</div>
-          </div>
-          <div className="flex items-center gap-1.5 bg-sky-50 p-1 rounded-xl border border-sky-200">
+      <h2>Scoring</h2>
+      <div className="settings">
+        <Setting name="Answer time" help="Seconds to answer after you buzz.">
+          <span className="seg">
             {[3, 5, 8, 10].map((sec) => (
               <button
                 key={sec}
+                type="button"
+                className="btn btn--small"
+                aria-pressed={settings.timerDuration === sec}
                 onClick={() => updateSettings({ timerDuration: sec })}
-                className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                  settings.timerDuration === sec
-                    ? 'bg-sky-600 text-white shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
               >
-                {sec}s
+                {sec} s
               </button>
             ))}
-          </div>
-        </div>
+          </span>
+        </Setting>
 
-        {/* Sound FX */}
-        <div className="p-4 sm:p-5 flex items-center justify-between gap-4">
-          <div>
-            <div className="text-slate-900 font-semibold">Buzzer Audio FX</div>
-            <div className="text-slate-500 font-editorial text-sm">Synthesizer tones on buzz, correct, and incorrect</div>
-          </div>
-          <button
-            onClick={() => updateSettings({ soundEnabled: !settings.soundEnabled })}
-            className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              settings.soundEnabled
-                ? 'bg-sky-600 text-white shadow-xs'
-                : 'bg-slate-100 text-slate-500 border border-slate-200'
-            }`}
-          >
-            {settings.soundEnabled ? 'Active' : 'Muted'}
-          </button>
-        </div>
+        <Setting name="Power buzz" help="Fifteen points instead of ten for buzzing before the question is finished.">
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={settings.powerBuzzEnabled}
+              onChange={(e) => updateSettings({ powerBuzzEnabled: e.target.checked })}
+            />
+            {settings.powerBuzzEnabled ? 'On' : 'Off'}
+          </label>
+        </Setting>
 
-        {/* Power Buzz Rule */}
-        <div className="p-4 sm:p-5 flex items-center justify-between gap-4">
-          <div>
-            <div className="text-slate-900 font-semibold">Power Buzz (+15 pts)</div>
-            <div className="text-slate-500 font-editorial text-sm">Grants 15 points instead of 10 for early buzzes</div>
-          </div>
-          <button
-            onClick={() => updateSettings({ powerBuzzEnabled: !settings.powerBuzzEnabled })}
-            className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              settings.powerBuzzEnabled
-                ? 'bg-sky-600 text-white shadow-xs'
-                : 'bg-slate-100 text-slate-500 border border-slate-200'
-            }`}
-          >
-            {settings.powerBuzzEnabled ? 'Active' : 'Off'}
-          </button>
-        </div>
+        <Setting name="Sounds" help="A tone on the buzz, and on a right or wrong answer.">
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={settings.soundEnabled}
+              onChange={(e) => updateSettings({ soundEnabled: e.target.checked })}
+            />
+            {settings.soundEnabled ? 'On' : 'Off'}
+          </label>
+        </Setting>
+      </div>
 
-        {/* Google Apps Script Endpoint */}
-        <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <div className="text-slate-900 font-semibold flex items-center gap-1.5">
-              <Cloud className="w-4 h-4 text-sky-600" />
-              <span>Google Apps Script Endpoint</span>
-            </div>
-            <div className="text-slate-500 font-editorial text-sm">Cloud Web App backend deployment URL</div>
-          </div>
+      <h2>Data</h2>
+      <div className="settings">
+        <Setting
+          name="Google Apps Script address"
+          help="Where questions and the leaderboard are stored. Change it only if you have been told to."
+          htmlFor="set-url"
+        >
           <input
+            id="set-url"
             type="url"
             value={settings.appsScriptUrl}
             onChange={(e) => updateSettings({ appsScriptUrl: e.target.value.trim() })}
             placeholder="https://script.google.com/macros/s/.../exec"
-            className="w-full sm:w-80 bg-white border border-sky-200 focus:border-sky-500 rounded-xl px-3 py-2 text-xs text-slate-900 placeholder-slate-400 outline-none shadow-xs"
           />
-        </div>
+        </Setting>
 
-        {/* Reset Local Data */}
-        <div className="p-4 sm:p-5 flex items-center justify-between gap-4">
-          <div>
-            <div className="text-rose-700 font-semibold flex items-center gap-1.5">
-              <AlertTriangle className="w-4 h-4 text-rose-600" />
-              <span>Reset Local Data</span>
-            </div>
-            <div className="text-slate-500 font-editorial text-sm">Clear local session attempt history and scores</div>
-          </div>
+        <Setting name="Reset" help="Clear your scores and answer history on this device. This cannot be undone.">
           <button
+            type="button"
+            className="btn btn--danger"
             onClick={() => {
-              if (confirm('Reset all statistics and question history?')) {
-                resetUserStats();
-              }
+              if (confirm('Reset all statistics and question history?')) resetUserStats();
             }}
-            className="px-4 py-1.5 rounded-xl text-rose-700 hover:bg-rose-50 border border-rose-200 text-xs font-bold transition-all cursor-pointer shadow-xs"
           >
-            Reset Data
+            Reset my data
           </button>
-        </div>
+        </Setting>
       </div>
-    </div>
+    </>
   );
 };

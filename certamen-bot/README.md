@@ -1,20 +1,26 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Certamen Arena
 
-# Run and deploy your AI Studio app
+Certamen practice for the CAJCL convention site, served at `/certamen/`.
+React + Vite; questions and the leaderboard live in a Google Sheet behind an
+Apps Script web app (see `src/services/googleSheetsService.ts`).
 
-This contains everything you need to run your app locally.
+```bash
+npm install
+npm run dev      # http://localhost:3000
+npm run lint     # tsc --noEmit
+npm run build    # writes ../frontend/public/certamen/ — commit the result
+```
 
-View your app in AI Studio: https://ai.studio/apps/7b1e58e8-19fc-4a31-9ed8-0bf9c8a943cf
+## Styling
 
-## Run Locally
+The arena has no design system of its own. `vite.config.ts` injects links to
+the convention site's `../tokens.css` and `../app.css` (and its fonts and
+favicon) into the built page, and serves those files from `frontend/public`
+during `npm run dev`. Components use the site's classes — `.masthead`, `.nav`,
+`.btn`, `.field`, `.table`, `.tabula`, `.stats`, `.dialog` — and
+`src/index.css` holds only the arena-specific pieces, written against the same
+tokens. Never put a colour literal in it; `backend/tests/test_frontend.py`
+checks the built CSS.
 
-**Prerequisites:**  Node.js
-
-
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+The theme toggle shares the site's `localStorage` key, so light/dark carries
+across both.

@@ -49,6 +49,9 @@ backend
   tests/
 apps-script          the Drive puppet, mirrored with clasp
 scripts              seed, exports, font build, query-plan check, usage
+certamen-bot         the Certamen practice arena (React + Vite). Builds into
+                     frontend/public/certamen/ and links the site's own
+                     tokens.css and app.css, so it re-skins with the site.
 docs                 the specification, the risks, and the runbook
 ```
 

@@ -1,35 +1,43 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useCertamen } from '../context/CertamenContext';
-import { X, LogOut, ShieldCheck } from 'lucide-react';
 
 interface UserLoginModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
+/* A native <dialog>, as on the convention site: the browser handles the focus
+ * trap, Escape and the backdrop. */
 export const UserLoginModal: React.FC<UserLoginModalProps> = ({ isOpen, onClose }) => {
   const { user, loginUser, logoutUser, isSyncing } = useCertamen();
+  const dialogRef = useRef<HTMLDialogElement>(null);
 
   const [username, setUsername] = useState<string>(user.username);
   const [pin, setPin] = useState<string>(user.pin);
   const [school, setSchool] = useState<string>(user.school || 'University High School');
   const [message, setMessage] = useState<string>('');
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    if (isOpen && !dialog.open) dialog.showModal();
+    if (!isOpen && dialog.open) dialog.close();
+  }, [isOpen]);
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username.trim()) return;
 
-    setMessage('Synchronizing cloud profile...');
+    setMessage('Saving your profile…');
     const success = await loginUser(username.trim(), pin.trim(), school.trim());
     if (success) {
-      setMessage('Profile saved to UHSJCL Cloud!');
+      setMessage('Saved.');
       setTimeout(() => {
         onClose();
+        setMessage('');
       }, 500);
     } else {
-      setMessage('Error updating profile.');
+      setMessage('Your profile could not be saved. Check your connection and try again.');
     }
   };
 
@@ -38,104 +46,91 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({ isOpen, onClose 
     setUsername('Discipulus');
     setPin('1234');
     setSchool('University High School');
-    setMessage('Session reset');
+    setMessage('Signed out. You are playing as a guest.');
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-      <div className="classical-card-elevated rounded-3xl max-w-sm w-full shadow-2xl p-6 space-y-4 text-xs">
-        {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-sky-100">
-          <span className="font-display font-bold text-slate-900 text-sm tracking-wider">
-            Scholar Profile
-          </span>
-          <button
-            onClick={onClose}
-            className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-sky-50 transition-colors cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
+    <dialog
+      ref={dialogRef}
+      className="dialog"
+      aria-labelledby="profile-title"
+      onClose={onClose}
+      onClick={(e) => {
+        // A click on the backdrop lands on the dialog element itself, but so
+        // does one on its padding; only the first is outside the box.
+        if (e.target !== dialogRef.current) return;
+        const box = dialogRef.current.getBoundingClientRect();
+        const inside = e.clientX >= box.left && e.clientX <= box.right
+          && e.clientY >= box.top && e.clientY <= box.bottom;
+        if (!inside) onClose();
+      }}
+    >
+      <button type="button" className="btn btn--quiet btn--small dialog__close" onClick={onClose}>
+        Close
+      </button>
+      <h2 id="profile-title">Your profile</h2>
+
+      <div className="tabula">
+        <p className="label">Playing as</p>
+        <p className="tabula__name">{user.username}</p>
+        <div className="tabula__row">
+          <span className="small muted">{user.school || 'University High School'}</span>
+          <span className="tabula__code">{user.stats.totalPoints} pts</span>
         </div>
-
-        {/* Current user summary */}
-        <div className="p-3.5 rounded-2xl bg-sky-50 border border-sky-200 flex items-center justify-between shadow-xs">
-          <div>
-            <div className="font-bold text-slate-900 text-sm">{user.username}</div>
-            <div className="text-xs text-slate-600 font-editorial italic">
-              {user.school || 'University High School'} • <span className="font-semibold text-sky-800 not-italic">{user.stats.totalPoints} pts</span>
-            </div>
-          </div>
-          <button
-            onClick={handleLogout}
-            className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-            title="Reset session"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* Form */}
-        <form onSubmit={handleLoginSubmit} className="space-y-3.5 pt-1">
-          <div>
-            <label className="block text-[11px] text-slate-700 font-semibold mb-1">
-              Scholar Name / Handle
-            </label>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              required
-              placeholder="e.g. Cicero, Caesar, Tullia"
-              className="w-full bg-white border border-sky-200 focus:border-sky-500 rounded-xl px-3 py-2 text-xs text-slate-900 outline-none transition-all shadow-xs"
-            />
-          </div>
-
-          <div>
-            <label className="block text-[11px] text-slate-700 font-semibold mb-1">
-              Security PIN (4-6 digits)
-            </label>
-            <input
-              type="password"
-              maxLength={6}
-              value={pin}
-              onChange={(e) => setPin(e.target.value)}
-              required
-              placeholder="••••"
-              className="w-full bg-white border border-sky-200 focus:border-sky-500 rounded-xl px-3 py-2 text-xs text-slate-900 outline-none tracking-widest transition-all shadow-xs"
-            />
-          </div>
-
-          <div>
-            <label className="block text-[11px] text-slate-700 font-semibold mb-1">
-              School / JCL Chapter
-            </label>
-            <input
-              type="text"
-              value={school}
-              onChange={(e) => setSchool(e.target.value)}
-              placeholder="e.g. University High School JCL"
-              className="w-full bg-white border border-sky-200 focus:border-sky-500 rounded-xl px-3 py-2 text-xs text-slate-900 outline-none transition-all shadow-xs"
-            />
-          </div>
-
-          {message && (
-            <div className="text-xs text-sky-800 text-center font-medium pt-1">
-              {message}
-            </div>
-          )}
-
-          <div className="pt-2">
-            <button
-              type="submit"
-              disabled={isSyncing}
-              className="w-full py-3 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <ShieldCheck className="w-4 h-4 text-white" />
-              <span>Save & Sync Profile</span>
-            </button>
-          </div>
-        </form>
       </div>
-    </div>
+
+      <form onSubmit={handleLoginSubmit}>
+        <div className="field">
+          <label htmlFor="profile-name">Name</label>
+          <p className="field__help">Shown on the leaderboard.</p>
+          <input
+            id="profile-name"
+            type="text"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            required
+            autoComplete="nickname"
+          />
+        </div>
+
+        <div className="field">
+          <label htmlFor="profile-pin">PIN</label>
+          <p className="field__help">Four to six digits, so nobody else can post scores under your name.</p>
+          <input
+            id="profile-pin"
+            type="password"
+            inputMode="numeric"
+            maxLength={6}
+            value={pin}
+            onChange={(e) => setPin(e.target.value)}
+            required
+            className="mono"
+          />
+        </div>
+
+        <div className="field">
+          <label htmlFor="profile-school">Chapter</label>
+          <input
+            id="profile-school"
+            type="text"
+            value={school}
+            onChange={(e) => setSchool(e.target.value)}
+            placeholder="University High School"
+          />
+        </div>
+
+        {message && <p className="status-note" role="status">{message}</p>}
+
+        <div className="btn-row">
+          <button type="submit" className="btn btn--primary" disabled={isSyncing}>
+            {isSyncing && <span className="btn__spinner" aria-hidden="true" />}
+            Save profile
+          </button>
+          <button type="button" className="btn btn--small nav__signout" onClick={handleLogout}>
+            Sign out
+          </button>
+        </div>
+      </form>
+    </dialog>
   );
 };

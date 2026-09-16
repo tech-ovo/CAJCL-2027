@@ -113,7 +113,10 @@ def test_colours_live_only_in_tokens_css():
     This is the file next year's commissioners re-skin from. A stray hex in
     app.css is a colour they will not find."""
     offenders = {}
-    css_files = [p for p in PUBLIC.rglob("*.css") if "certamen" not in p.parts]
+    # The Certamen arena's built CSS is included: it is written against the
+    # same tokens, and linking the site's own stylesheets is what keeps it on
+    # brand. Its bundled JS is not -- minified React is full of false hits.
+    css_files = list(PUBLIC.rglob("*.css"))
     for path in css_files + JS_FILES + [PUBLIC / "index.html"]:
         if path.name == "tokens.css":
             continue

@@ -38,6 +38,16 @@ export const INITIAL_USER_STATS: UserStats = {
   },
 };
 
+// Confetti draws on a canvas, so it cannot take var(). Read the palette from
+// the site's tokens.css at the moment of firing, so a re-skin reaches it too.
+function brandColours(): string[] | undefined {
+  const css = getComputedStyle(document.documentElement);
+  const colours = ['--purple', '--gold', '--lavender', '--blue']
+    .map((name) => css.getPropertyValue(name).trim())
+    .filter(Boolean);
+  return colours.length ? colours : undefined;
+}
+
 const DEFAULT_SETTINGS: AppSettings = {
   readerMode: 'visual',
   readingSpeed: 45, // ms per character (or ~250-300 wpm)
@@ -586,7 +596,7 @@ export const CertamenProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           particleCount: isPowerBuzz ? 80 : 40,
           spread: 60,
           origin: { y: 0.7 },
-          colors: ['#D97706', '#F59E0B', '#B45309', '#10B981', '#6366F1'],
+          colors: brandColours(),
         });
       } else {
         soundService.playIncorrect();
@@ -730,6 +740,7 @@ export const CertamenProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       particleCount: 50,
       spread: 50,
       origin: { y: 0.7 },
+      colors: brandColours(),
     });
 
     setLastEvaluation((prev) =>
@@ -889,7 +900,7 @@ export const CertamenProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const handleKeyDown = (e: KeyboardEvent) => {
       // If user is currently typing in an input or textarea, don't trigger global shortcuts
       const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') {
         return;
       }
 
