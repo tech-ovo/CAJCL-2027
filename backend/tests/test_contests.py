@@ -292,6 +292,57 @@ def test_a_sponsor_sees_their_delegates_entries_and_nobody_elses(fx, client):
                       headers=as_(fx, "uni_sponsor")).status_code == 403
 
 
+def test_a_sponsor_downloads_their_delegates_files_and_nobody_elses(fx, client):
+    myth = item(client, fx, "modern_myth")
+    mine = client.post(f"/me/contests/{myth}", headers=as_(fx, "delegate"), json={
+        "title": "Ours", "file": upload("ours.docx", docx(1300))}).json()["entry"]
+    theirs = client.post(f"/me/contests/{myth}", headers=as_(fx, "other_delegate"), json={
+        "title": "Theirs", "file": upload("theirs.docx", docx(1300))}).json()["entry"]
+
+    students = client.get("/sponsor/contests", headers=as_(fx, "uni_sponsor")).json()["students"]
+    assert [(s["id"], s["has_file"]) for s in students] == [(mine["id"], True)]
+
+    own = client.get(f"/sponsor/contests/entries/{mine['id']}/file",
+                     headers=as_(fx, "uni_sponsor"))
+    assert own.status_code == 200 and own.content == docx(1300)
+    assert "Modern Myth" in own.headers["content-disposition"]
+
+    assert client.get(f"/sponsor/contests/entries/{theirs['id']}/file",
+                      headers=as_(fx, "uni_sponsor")).status_code == 403
+    # A chapter leader sees the portfolio, not classmates' work.
+    assert client.get(f"/sponsor/contests/entries/{mine['id']}/file",
+                      headers=as_(fx, "delegate")).status_code == 403
+    # The registration chairs may open any chapter's.
+    assert client.get(f"/sponsor/contests/entries/{theirs['id']}/file",
+                      headers=as_(fx, "chair")).status_code == 200
+
+
+def test_the_registration_chairs_see_every_submission(fx, client):
+    english = item(client, fx, "slogan_english")
+    publicity = item(client, fx, "publicity")
+    client.post(f"/me/contests/{english}", headers=as_(fx, "delegate"),
+                json={"text": "Uni slogan"})
+    client.post(f"/me/contests/{english}", headers=as_(fx, "other_delegate"),
+                json={"text": "Rival slogan"})
+    client.post(f"/sponsor/contests/{publicity}", headers=as_(fx, "uni_sponsor"), json={
+        "link_url": "https://docs.google.com/document/d/abc/edit", "facets": ["Media"]})
+
+    response = client.get("/admin/contests/submissions", headers=as_(fx, "chair"))
+    assert response.status_code == 200, response.text
+    data = response.json()
+    counts = {c["item_id"]: c["entries"] for c in data["contests"]}
+    assert counts[english] == 2 and counts[publicity] == 1
+    slogans = sorted(e["text"] for e in data["entries"] if e["item_id"] == english)
+    assert slogans == ["Rival slogan", "Uni slogan"]
+    portfolio = next(e for e in data["entries"] if e["item_id"] == publicity)
+    assert portfolio["person_id"] is None and portfolio["facets"] == ["Media"]
+    assert portfolio["school_name"].endswith("University High School")
+
+    for who in ("uni_sponsor", "delegate", "judge"):
+        assert client.get("/admin/contests/submissions",
+                          headers=as_(fx, who)).status_code == 403
+
+
 # ---------------------------------------------------------------------------
 # Judging
 # ---------------------------------------------------------------------------

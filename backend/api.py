@@ -1356,13 +1356,19 @@ def chapter_contests(school_id: int | None = Query(default=None),
 
         sees_students = principal.has_any("sponsor", "registration", "academics")
         students = [{
+            "id": r["id"],
+            "item_id": r["item_id"],
             "contest": names.get(r["item_id"], "—"),
             "person_id": r["person_id"],
             "first_name": r["first_name"], "last_name": r["last_name"],
             "school_seq": r["school_seq"], "status": r["status"],
             "division": r["division"], "title": r["title"],
             "text": r["body_text"] if r["original_name"] is None else None,
+            "translation": r["translation"],
             "file": r["original_name"],
+            "has_file": bool(r["has_file"]),
+            "size_bytes": r["size_bytes"],
+            "word_count": r["word_count"],
             "updated_at": r["updated_at"],
         } for r in rows if r["person_id"] is not None] if sees_students else None
 
@@ -1370,6 +1376,27 @@ def chapter_contests(school_id: int | None = Query(default=None),
                 "school": _school_public(school, principal),
                 "contests": chapter,
                 "students": students}
+
+
+@app.get("/sponsor/contests/entries/{entry_id}/file")
+def chapter_entry_file(entry_id: int,
+                       principal: auth.Principal = guard("sponsor.contests.file",
+                                                         "sponsor", "registration",
+                                                         "academics")):
+    """A delegate's file, for their sponsor. The entry's own chapter is what
+    is checked: a sponsor naming another school's entry is refused."""
+    with database().read() as tx:
+        row = tx.one("contests.entry_get", (entry_id,))
+        if row is None:
+            raise auth.ForbiddenError("no such entry")
+        _school_of(tx, principal, row["school_id"])
+        person = (tx.one("people.get", (row["person_id"],))
+                  if row["person_id"] is not None else None)
+        contest = contests.by_item(tx, row["item_id"])
+    extension = contests.extension_of(row["original_name"] or "")
+    who = f"{person['last_name']}, {person['first_name']}" if person else "Chapter"
+    name = f"{contest['name']} - {who}.{extension}".replace('"', "'")
+    return _file_response(row, name)
 
 
 def _chapter_contest(tx, principal: auth.Principal, school_id, item_id: int):
@@ -1525,8 +1552,8 @@ def contests_overview(principal: auth.Principal = guard("admin.contests.list",
 @app.get("/admin/contests/entries/{entry_id}/file")
 def contest_entry_file(entry_id: int,
                        principal: auth.Principal = guard("admin.contests.file",
-                                                         "academics", "awards",
-                                                         school_rule="any")):
+                                                         "registration", "academics",
+                                                         "awards", school_rule="any")):
     """A file entry for the chairs, who already see whose it is."""
     with database().read() as tx:
         row = tx.one("contests.entry_get", (entry_id,))
@@ -1534,6 +1561,44 @@ def contest_entry_file(entry_id: int,
         raise auth.ForbiddenError("no such entry")
     extension = contests.extension_of(row["original_name"] or "")
     return _file_response(row, contests.anonymous_name(row, extension))
+
+
+@app.get("/admin/contests/submissions")
+def contest_submissions(principal: auth.Principal = guard("admin.contests.submissions",
+                                                          "registration", "academics",
+                                                          "awards", school_rule="any")):
+    """Every entry in every contest, with its delegate and chapter. No scores:
+    this is who has sent what, for the chairs answering "did it arrive?"."""
+    with database().read() as tx:
+        listed, entries = [], []
+        for contest in contests.load(tx):
+            rows = tx.all("contests.submissions_for_item", (contest["item_id"],))
+            listed.append({"item_id": contest["item_id"], "name": contest["name"],
+                           "entered_by": contest["entered_by"],
+                           "entry_kind": contest["entry_kind"],
+                           "entries": len(rows)})
+            for r in rows:
+                entries.append({
+                    "id": r["id"], "item_id": r["item_id"],
+                    "contest": contest["name"], "division": r["division"],
+                    "title": r["title"],
+                    "text": r["body_text"] if r["original_name"] is None else None,
+                    "translation": r["translation"],
+                    "link_url": r["link_url"],
+                    "facets": contests.split_lines(r["facets"]),
+                    "word_count": r["word_count"],
+                    "word_count_source": r["word_count_source"],
+                    "file": r["original_name"], "has_file": bool(r["has_file"]),
+                    "size_bytes": r["size_bytes"],
+                    "submitted_at": r["submitted_at"], "updated_at": r["updated_at"],
+                    "person_id": r["person_id"],
+                    "first_name": r["first_name"], "last_name": r["last_name"],
+                    "person_status": r["person_status"],
+                    "school_seq": r["school_seq"],
+                    "school_id": r["school_id"], "school_name": r["school_name"],
+                    "school_number": r["school_number"],
+                })
+        return {**_deadline_view(tx), "contests": listed, "entries": entries}
 
 
 @app.get("/admin/contests/{item_id}/results")

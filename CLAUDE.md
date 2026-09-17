@@ -22,8 +22,13 @@ rules), then `docs/design.md` for the visual rules.
   `DRIVE_LOCAL_DIR` folder stand-in locally/tests), `queries/contests.sql`,
   endpoints under `/me/contests`, `/sponsor/contests`, `/judge/...`,
   `/admin/contests/...`. Pages: `js/pages/contests.js` (`#/contests`,
-  `#/chapter-contests`) and `js/pages/judging.js` (`#/judging[/id]` for
+  `#/chapter-contests`, `#/contest-submissions`) and `js/pages/judging.js` (`#/judging[/id]` for
   judges, `#/contest-results[/id[/rubric]]` for Academics/Awards chairs).
+  `#/contest-submissions` (nav "Submissions" for registration chairs) lists
+  every entry with names and chapters, no scores, from
+  `GET /admin/contests/submissions`. Sponsors see their delegates' entries on
+  `#/chapter-contests` and download files from
+  `GET /sponsor/contests/entries/{id}/file` (entry's own school checked).
   Scope `judge` (role `contest_judge`) is global but NOT in
   `auth.ADMIN_SCOPES`; judging endpoints take `judge` only and
   `_judge_only()` refuses anyone holding `academics`. Digital Art divisions

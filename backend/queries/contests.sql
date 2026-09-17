@@ -59,7 +59,9 @@ SELECT * FROM contest_entries WHERE id = ?;
 -- idx_contest_entries_school, then one primary-key lookup per entry.
 SELECT e.id, e.item_id, e.person_id, e.division, e.title, e.body_text,
        e.translation, e.link_url, e.facets, e.original_name, e.submitted_at,
-       e.updated_at, p.first_name, p.last_name, p.school_seq, p.status
+       e.updated_at, e.word_count, e.size_bytes,
+       e.drive_file_id IS NOT NULL AS has_file,
+       p.first_name, p.last_name, p.school_seq, p.status
 FROM contest_entries e
 LEFT JOIN people p ON p.id = e.person_id
 WHERE e.school_id = ?
@@ -175,6 +177,24 @@ JOIN schools sc ON sc.id = e.school_id
 LEFT JOIN people p ON p.id = e.person_id
 WHERE e.item_id = ?
 ORDER BY e.division, e.id;
+
+-- name: contests.submissions_for_item
+-- The registration chairs' list of every submission: who, which chapter, and
+-- what they sent. No scores. Called once per contest, so each call is
+-- idx_contest_entries_item and then primary-key lookups -- never a scan of
+-- every entry.
+SELECT e.id, e.item_id, e.division, e.title, e.body_text, e.translation,
+       e.link_url, e.facets, e.word_count, e.word_count_source,
+       e.original_name, e.size_bytes, e.submitted_at, e.updated_at,
+       e.drive_file_id IS NOT NULL AS has_file,
+       e.person_id, p.first_name, p.last_name, p.status AS person_status,
+       p.school_seq, sc.id AS school_id, sc.name AS school_name,
+       sc.number AS school_number
+FROM contest_entries e
+JOIN schools sc ON sc.id = e.school_id
+LEFT JOIN people p ON p.id = e.person_id
+WHERE e.item_id = ?
+ORDER BY sc.number, sc.name, p.last_name, p.first_name;
 
 -- name: contests.results_scores
 -- Every submitted score in one contest, with the judge's name so a chair can

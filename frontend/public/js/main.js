@@ -33,7 +33,8 @@ import { academicsPage } from "./pages/academics.js";
 import { overviewPage } from "./pages/overview.js";
 import { checkinPage } from "./pages/checkin.js";
 import { accountPage } from "./pages/account.js";
-import { contestsPage, chapterContestsPage } from "./pages/contests.js";
+import { contestsPage, chapterContestsPage,
+         contestSubmissionsPage } from "./pages/contests.js";
 import { judgingPage, contestResultsPage } from "./pages/judging.js";
 
 export const state = {
@@ -89,6 +90,7 @@ const ROUTES = [
   [/^\/chapter-contests\/(\d+)$/, chapterContestsPage, { scope: ["registration", "academics"] }],
   [/^\/judging$/,                judgingPage,       { scope: "judge" }],
   [/^\/judging\/(\d+)$/,         judgingPage,       { scope: "judge" }],
+  [/^\/contest-submissions$/,    contestSubmissionsPage, { scope: ["registration", "academics", "awards"] }],
   [/^\/contest-results$/,        contestResultsPage, { scope: ["academics", "awards"] }],
   [/^\/contest-results\/(\d+)(?:\/(rubric))?$/, contestResultsPage, { scope: ["academics", "awards"] }],
   [/^\/admin$/,                  adminPage,         { scope: "*" }],
@@ -523,7 +525,8 @@ function renderNav() {
       // for what they show: Overview, Chapters, Check-in.
       administrative.push(["#/overview", "Overview"],
                           ["#/dashboard", "Chapters"],
-                          ["#/check-in", "Check-in"]);
+                          ["#/check-in", "Check-in"],
+                          ["#/contest-submissions", "Submissions"]);
     }
     if (hasScope("academics") || hasScope("awards")) {
       administrative.push(["#/entries", "Entries"],

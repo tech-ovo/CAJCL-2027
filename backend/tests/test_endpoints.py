@@ -181,6 +181,7 @@ ROUTES = [
       "facets": ["Media"]}),
     ("sponsor.contests.withdraw", "DELETE",
      "/sponsor/contests/1?school_id={school}", None),
+    ("sponsor.contests.file", "GET", "/sponsor/contests/entries/{entry}/file", None),
     ("judge.contests", "GET", "/judge/contests", None),
     ("judge.contest", "GET", "/judge/contests/1", None),
     ("judge.entries.file", "GET", "/judge/entries/{entry}/file", None),
@@ -188,6 +189,7 @@ ROUTES = [
      {"points": {}, "submit": True}),
     ("admin.contests.list", "GET", "/admin/contests", None),
     ("admin.contests.file", "GET", "/admin/contests/entries/{entry}/file", None),
+    ("admin.contests.submissions", "GET", "/admin/contests/submissions", None),
     ("admin.contests.results", "GET", "/admin/contests/1/results", None),
     ("admin.contests.update", "PUT", "/admin/contests/1", {"rules_md": "x"}),
 ]

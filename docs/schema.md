@@ -740,6 +740,7 @@ All endpoints are under one Modal FastAPI app. Every endpoint declares a require
 | GET/POST/DELETE | `/sponsor/chapter-entries` | `sponsor` or `chapter` | |
 | GET | `/sponsor/contests` | `chapter`, `registration` or `academics` | The Publicity portfolio; the chapter's delegate entries only for a sponsor or chair |
 | POST/DELETE | `/sponsor/contests/{item_id}` | `chapter` or `registration` | Publicity portfolio link and categories; refused after `deadline.contests` |
+| GET | `/sponsor/contests/entries/{id}/file` | `sponsor`, `registration` or `academics` | A delegate's file, for their own chapter's sponsor; named `Contest - Last, First.ext` |
 
 ### Attendee
 | Method | Path | Scope | Notes |
@@ -782,7 +783,8 @@ Scope `judge` only, and refused to anybody who also holds `academics`: the chair
 | GET | `/admin/usage` | `*` | Turso rows read/written/storage |
 | GET | `/admin/contests` | `academics` or `awards` | Every contest with entry and score counts |
 | GET | `/admin/contests/{item_id}/results` | `academics` or `awards` | Standings per division and category, with names and each judge's total |
-| GET | `/admin/contests/entries/{id}/file` | `academics` or `awards` | An entry's file, for the chairs |
+| GET | `/admin/contests/submissions` | `registration`, `academics` or `awards` | Every entry from every chapter, with names and chapters, no scores |
+| GET | `/admin/contests/entries/{id}/file` | `registration`, `academics` or `awards` | An entry's file, for the chairs |
 | PUT | `/admin/contests/{item_id}` | `academics` | Rules text and rubric |
 
 ### Internal

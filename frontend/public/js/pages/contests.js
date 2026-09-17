@@ -1,9 +1,12 @@
 /* Pre-convention contests: entering them.
  *
- * TWO PAGES, ONE MODULE.
+ * THREE PAGES, ONE MODULE.
  *   #/contests            a delegate's own entries: art, myth, poetry, slogans
  *   #/chapter-contests    a chapter's Publicity portfolio, and -- for a
- *                         sponsor -- which of their delegates entered what
+ *                         sponsor -- which of their delegates entered what,
+ *                         with their files to download
+ *   #/contest-submissions every entry from every chapter, for the
+ *                         registration chairs. Names, no scores.
  *
  * ONE FORM OPEN AT A TIME. Five contests each showing an empty upload form is
  * a page nobody can read on a phone. Each contest is a short summary with a
@@ -18,7 +21,7 @@
 import * as api from "../api.js";
 import { add, el, clear, field, input, button, errorSummary, renderMarkdown,
          localDate, emptyState, loadingRows, table, check, tell,
-         fullName } from "../ui.js";
+         fullName, select, personNumber, chapterNumber } from "../ui.js";
 
 const FILE_LABELS = { jpg: "JPG", png: "PNG", gif: "GIF", tiff: "TIFF",
                       pdf: "PDF", docx: "Word (.docx)", txt: "plain text (.txt)" };
@@ -77,6 +80,57 @@ async function fileToBase64(file) {
     binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
   }
   return btoa(binary);
+}
+
+/* Save a contest file. The session token travels in a header, which a plain
+ * link cannot send, so the bytes are fetched and handed over as a Blob. The
+ * name comes from the server unless the caller knows a better one. */
+async function saveFile(path, name) {
+  try {
+    const result = await api.getBlob(path);
+    const url = URL.createObjectURL(result.blob);
+    const link = el("a", { href: url, download: name || result.name });
+    add(document.body, link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (error) {
+    await tell({ body: error.message });
+  }
+}
+
+/* What an entry IS, in one table cell: its title, its slogan, its portfolio
+ * link and categories -- whichever it has. */
+function entryCell(row) {
+  const parts = [];
+  if (row.title) parts.push(el("strong", {}, row.title));
+  if (row.text) parts.push(el("span", {}, row.text));
+  if (row.translation) {
+    parts.push(el("span", { class: "small muted" }, `Translation: ${row.translation}`));
+  }
+  if (row.link_url) {
+    parts.push(el("a", { href: row.link_url, target: "_blank",
+                         rel: "noopener noreferrer" }, "Open the portfolio"));
+  }
+  if (row.facets && row.facets.length) {
+    parts.push(el("span", { class: "small muted" }, row.facets.join(", ")));
+  }
+  if (row.word_count !== null && row.word_count !== undefined) {
+    parts.push(el("span", { class: "small muted" }, `${row.word_count} words`));
+  }
+  if (!parts.length) return "—";
+  const cell = el("span", { style: "display:flex;flex-direction:column;gap:var(--space-1)" });
+  for (const part of parts) add(cell, part);
+  return cell;
+}
+
+function fileCell(row, path) {
+  if (!row.has_file) return el("span", { class: "muted" }, "—");
+  return button("Download", {
+    variant: "btn--small",
+    title: `${row.file} · ${megabytes(row.size_bytes)}`,
+    onclick: () => saveFile(path),
+  });
 }
 
 function extensionOf(name) {
@@ -179,18 +233,8 @@ export async function contestsPage(host) {
         : null);
   }
 
-  async function download(contest, entry) {
-    try {
-      const { blob } = await api.getBlob(`/me/contests/${contest.item_id}/file`);
-      const url = URL.createObjectURL(blob);
-      const link = el("a", { href: url, download: entry.original_name });
-      add(document.body, link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
-    } catch (error) {
-      await tell({ body: error.message });
-    }
+  function download(contest, entry) {
+    return saveFile(`/me/contests/${contest.item_id}/file`, entry.original_name);
   }
 
   function entryForm(contest) {
@@ -473,12 +517,141 @@ export async function chapterContestsPage(host, params = []) {
                 + (row.status !== "active" ? " (not attending)" : "") },
             { key: "division", label: "Division" },
             { key: "entry", label: "Entry",
-              render: (row) => row.title || row.text || row.file || "—" },
+              render: (row) => entryCell(row) },
+            { key: "file", label: "File",
+              render: (row) => fileCell(row,
+                `/sponsor/contests/entries/${row.id}/file`) },
             { key: "updated_at", label: "Submitted",
               render: (row) => localDate(row.updated_at) },
           ], rows, { caption: "Pre-convention entries from this chapter" })
         : emptyState("No entries yet",
             "When your delegates submit a contest entry from their own Contests "
             + "page, it appears here."));
+  }
+}
+
+/* ------------------------------------------------------------------------ */
+/* Every submission, for the registration chairs                             */
+/* ------------------------------------------------------------------------ */
+
+/* WHO HAS SENT WHAT. The question a registration chair is asked is "did my
+ * student's poster arrive?", so this is a list with names and chapters and
+ * the files themselves -- and no scores, which belong to Contest results.
+ *
+ * Filtering is local: everything is already here. Only the list under the
+ * filters is redrawn, so the search box keeps its focus while typing. */
+export async function contestSubmissionsPage(host) {
+  let data = null;
+  let contestFilter = "";
+  let chapterFilter = "";
+  let needle = "";
+
+  add(host, loadingRows(8, "Loading submissions"));
+  data = await api.get("/admin/contests/submissions", { statusHost: host });
+
+  const chapters = [];
+  const seen = new Set();
+  for (const row of data.entries) {
+    if (seen.has(row.school_id)) continue;
+    seen.add(row.school_id);
+    chapters.push(row);
+  }
+  chapters.sort((a, b) => (a.school_number || 0) - (b.school_number || 0)
+                          || a.school_name.localeCompare(b.school_name));
+
+  const results = el("div", {});
+  clear(host);
+  add(host,
+    el("h1", {}, "Contest submissions"),
+    el("p", { class: "lede" },
+      "Every pre-convention entry from every chapter, with who sent it. "
+      + "Scores are on Contest results."),
+    deadlineLine(data),
+    headline(),
+    filters(),
+    results);
+  draw();
+
+  function headline() {
+    const people = new Set(data.entries.filter((r) => r.person_id !== null)
+                                       .map((r) => r.person_id));
+    const stat = (label, value) => el("div", { class: "stat" },
+      el("span", { class: "stat__value" }, String(value)),
+      el("span", { class: "label" }, label));
+    return el("div", { class: "stats" },
+      stat("Entries", data.entries.length),
+      stat("Chapters", chapters.length),
+      stat("Delegates", people.size),
+      ...data.contests.map((c) => stat(c.name, c.entries)));
+  }
+
+  function filters() {
+    const contest = select(
+      [["", "All contests"], ...data.contests.map((c) => [String(c.item_id), c.name])],
+      { id: "submissions-contest",
+        onchange: (event) => { contestFilter = event.target.value; draw(); } });
+    const chapter = select(
+      [["", "All chapters"],
+       ...chapters.map((c) => [String(c.school_id),
+                               `${chapterNumber({ number: c.school_number })} ${c.school_name}`])],
+      { id: "submissions-chapter",
+        onchange: (event) => { chapterFilter = event.target.value; draw(); } });
+    const search = input({
+      id: "submissions-search", type: "search",
+      placeholder: "Name or title",
+      oninput: (event) => { needle = event.target.value.trim().toLowerCase(); draw(); },
+    });
+    return el("div", { class: "btn-row", style: "margin-top:var(--space-6);align-items:flex-end" },
+      field({ id: "submissions-contest", label: "Contest", control: contest }),
+      field({ id: "submissions-chapter", label: "Chapter", control: chapter }),
+      field({ id: "submissions-search", label: "Search", control: search }));
+  }
+
+  function matches(row) {
+    if (contestFilter && String(row.item_id) !== contestFilter) return false;
+    if (chapterFilter && String(row.school_id) !== chapterFilter) return false;
+    if (!needle) return true;
+    const haystack = [row.first_name, row.last_name, row.title, row.text,
+                      row.school_name].filter(Boolean).join(" ").toLowerCase();
+    return haystack.includes(needle);
+  }
+
+  function draw() {
+    clear(results);
+    const rows = data.entries.filter(matches);
+    if (!data.entries.length) {
+      add(results, emptyState("No entries yet",
+        "When delegates and sponsors submit pre-convention entries, they appear here."));
+      return;
+    }
+    add(results,
+      el("p", { class: "small muted" },
+        `Showing ${rows.length} of ${data.entries.length}.`),
+      rows.length
+        ? table([
+            { key: "school_name", label: "Chapter",
+              render: (row) => el("a", { href: `#/chapter-contests/${row.school_id}` },
+                `${chapterNumber({ number: row.school_number })} ${row.school_name}`) },
+            { key: "contest", label: "Contest" },
+            { key: "division", label: "Division" },
+            { key: "name", label: "Entrant",
+              render: (row) => row.person_id === null
+                ? el("span", { class: "muted" }, "The chapter")
+                : el("span", {},
+                    fullName(row), " ",
+                    el("span", { class: "small muted mono" },
+                       personNumber({ number: row.school_number }, row)),
+                    row.person_status !== "active"
+                      ? el("span", { class: "pill", style: "margin-left:.5rem" },
+                           "Not attending")
+                      : null) },
+            { key: "entry", label: "Entry", render: (row) => entryCell(row) },
+            { key: "file", label: "File",
+              render: (row) => fileCell(row,
+                `/admin/contests/entries/${row.id}/file`) },
+            { key: "updated_at", label: "Submitted",
+              render: (row) => localDate(row.updated_at, { withTime: true }) },
+          ], rows, { caption: "Pre-convention contest submissions" })
+        : emptyState("Nothing matches", "Try a different contest, chapter or search."));
   }
 }
