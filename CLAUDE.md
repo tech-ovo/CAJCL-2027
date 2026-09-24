@@ -40,13 +40,16 @@ rules), then `docs/design.md` for the visual rules.
   `drive.contests_root`.
 - `certamen-bot/` — Certamen practice arena, React 19 + Vite 6 (no Tailwind,
   no icon library). `npm run build` outputs to `frontend/public/certamen/`
-  (committed). The built page links the site's `../tokens.css` and
-  `../app.css` via a plugin in `vite.config.ts`; a dev middleware serves them
-  from `frontend/public`. Components reuse site classes; `src/index.css` has
+  (committed). Connected to a separate Turso database via Modal endpoints (`/certamen/...`)
+  and `src/services/tursoService.ts` (no Google Sheets); credentials live in Modal secrets
+  (`TURSO_CERTAMEN_DATABASE_URL`, `TURSO_CERTAMEN_AUTH_TOKEN`) with fallback to local `certamen.db`.
+  Questions are flattened to tossup format. The built page links the
+  site's `../tokens.css` and `../app.css` via a plugin in `vite.config.ts`; a dev middleware
+  serves them from `frontend/public`. Components reuse site classes; `src/index.css` has
   only arena-specific rules, token-only. Sections are hash routes
   (`#/arena`, `#/stats`, `#/leaderboard`, `#/bank`, `#/settings`); the
   profile editor is a native `<dialog>`.
-- `apps-script/`, `scripts/`, `docs/`.
+- `apps-script/`, `scripts/`, `docs/`. Bulk question import: `python scripts/import_certamen_questions.py --file <path.json|path.csv>`.
 
 ## Checks
 - `python -m pytest backend/tests -q` (on this machine the installed starlette

@@ -49,10 +49,8 @@ function MainApp() {
 
       <footer className="page">
         <hr className="hair" />
-        <p className="label">
-          California Junior Classical League &middot; University High School JCL &middot;{' '}
-          <a href="https://discord.gg/cgkYcWYGYj" target="_blank" rel="noreferrer">Discord</a> &middot;{' '}
-          <a href="https://instagram.com/uhsjcl" target="_blank" rel="noreferrer">Instagram</a>
+        <p className="label" data-snapshot="footer">
+          California Junior Classical League &middot; <a href="mailto:state@uhsjcl.org">state@uhsjcl.org</a>
         </p>
       </footer>
     </>

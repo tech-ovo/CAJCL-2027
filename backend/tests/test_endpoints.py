@@ -260,6 +260,14 @@ def test_no_route_is_accidentally_public():
         "/auth/me", "/auth/logout", "/auth/impersonate/end",
         "/me/adult-sheet",
         "/auth/sessions/{session_id}/revoke",
+        # Certamen public routes:
+        "/certamen/ping",
+        "/certamen/questions",
+        "/certamen/leaderboard",
+        "/certamen/sync-user",
+        "/certamen/log-attempt",
+        "/certamen/login",
+        "/certamen/questions/batch",
     }
     guarded_paths = set()
     for name, method, path, _ in ROUTES:

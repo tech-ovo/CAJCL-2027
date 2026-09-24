@@ -3266,3 +3266,81 @@ def health():
     """Cheap liveness check. Touches no table."""
     return {"ok": True, "service": "cajcl-2027",
             "env": os.environ.get("CAJCL_ENV", "development")}
+
+
+# ===========================================================================
+# Certamen Arena -- Turso DB Proxy
+# ===========================================================================
+
+@app.get("/certamen/ping")
+def certamen_ping():
+    from backend.lib import certamen_db
+    return certamen_db.ping()
+
+
+@app.get("/certamen/questions")
+def certamen_questions(
+    category: str = Query(default="all"),
+    difficulty: str = Query(default="all"),
+    level: str = Query(default="all"),
+    limit: int = Query(default=50),
+    random: bool = Query(default=True),
+    exclude: str = Query(default=""),
+):
+    from backend.lib import certamen_db
+    diff = level if level != "all" else difficulty
+    exclude_ids = [i.strip() for i in exclude.split(",") if i.strip()] if exclude else []
+    questions = certamen_db.get_questions(
+        category=category,
+        difficulty=diff,
+        limit=limit,
+        random_order=random,
+        exclude_ids=exclude_ids,
+    )
+    return {"questions": questions}
+
+
+@app.get("/certamen/leaderboard")
+def certamen_leaderboard(
+    category: str = Query(default="all"),
+    level: str = Query(default="all"),
+    limit: int = Query(default=100),
+):
+    from backend.lib import certamen_db
+    entries = certamen_db.get_leaderboard(
+        category=category,
+        level=level,
+        limit=limit,
+    )
+    return {"leaderboard": entries}
+
+
+@app.post("/certamen/sync-user")
+def certamen_sync_user(payload: dict = Body(...)):
+    from backend.lib import certamen_db
+    user_data = payload.get("user") or payload
+    return certamen_db.sync_user(user_data)
+
+
+@app.post("/certamen/log-attempt")
+def certamen_log_attempt(payload: dict = Body(...)):
+    from backend.lib import certamen_db
+    attempt_data = payload.get("attempt") or payload
+    return certamen_db.log_attempt(attempt_data)
+
+
+@app.post("/certamen/login")
+def certamen_login(payload: dict = Body(...)):
+    from backend.lib import certamen_db
+    username = payload.get("username", "")
+    pin = payload.get("pin", "")
+    user = certamen_db.login_user(username, pin)
+    return {"user": user}
+
+
+@app.post("/certamen/questions/batch")
+def certamen_questions_batch(payload: dict = Body(...)):
+    from backend.lib import certamen_db
+    questions = payload.get("questions", [])
+    replace = bool(payload.get("replace", False))
+    return certamen_db.import_questions(questions, replace=replace)

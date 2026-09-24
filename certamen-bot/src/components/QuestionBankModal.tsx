@@ -142,15 +142,15 @@ export const QuestionBankManager: React.FC = () => {
             type="button"
             className="btn"
             disabled={isSyncing}
-            title="Fetch the latest questions from the Google Sheet"
+            title="Fetch the latest questions from the Turso database"
             onClick={async () => {
               const count = await syncQuestionsFromCloud();
-              setImportStatus(`Synced ${count} questions from the sheet.`);
+              setImportStatus(`Synced ${count} questions from Turso.`);
               setTimeout(() => setImportStatus(''), 3000);
             }}
           >
             {isSyncing && <span className="btn__spinner" aria-hidden="true" />}
-            {isSyncing ? 'Syncing' : 'Sync from sheet'}
+            {isSyncing ? 'Syncing' : 'Sync from Turso'}
           </button>
           <button type="button" className="btn btn--quiet" onClick={handleExportJSON}>
             Export JSON

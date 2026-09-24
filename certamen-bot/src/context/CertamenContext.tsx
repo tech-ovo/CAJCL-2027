@@ -1,19 +1,23 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Category,
   DifficultyLevel,
   PlayMode,
   Question,
-  BoniQuestion,
   UserProfile,
   UserStats,
   QuestionAttemptLog,
   AppSettings,
 } from '../types/certamen';
-import { INITIAL_QUESTION_BANK } from '../data/questionBank';
+import { INITIAL_QUESTION_BANK, flattenQuestions } from '../data/questionBank';
 import { checkAnswer, MatchResult } from '../services/answerChecker';
 import { soundService } from '../services/audioService';
-import { syncUserToCloud, logAttemptToCloud, loginUserFromCloud, fetchQuestionsFromCloud } from '../services/googleSheetsService';
+import {
+  syncUserToTurso,
+  logAttemptToTurso,
+  loginUserFromTurso,
+  fetchQuestionsFromTurso,
+} from '../services/tursoService';
 import confetti from 'canvas-confetti';
 
 const STORAGE_KEY_USER = 'certamen_master_user_v1';
@@ -53,9 +57,11 @@ const DEFAULT_SETTINGS: AppSettings = {
   readingSpeed: 45, // ms per character (or ~250-300 wpm)
   timerDuration: 6, // 6 seconds to answer after buzzing
   soundEnabled: true,
+  confettiEnabled: true,
   powerBuzzEnabled: true,
   speechRate: 1.0,
-  appsScriptUrl: 'https://script.google.com/macros/s/AKfycbwk0qpdmiyMAIJEAsJvzS6tpHywNf9__OJJH_8nqOfHXq2lQH5SxJT1yT4tn-QDLRaznA/exec',
+  tursoUrl: (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_TURSO_DATABASE_URL) || '',
+  tursoAuthToken: (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_TURSO_AUTH_TOKEN) || '',
   theme: 'classical-gold',
 };
 
@@ -64,12 +70,6 @@ export type GameStage =
   | 'reading_tossup'
   | 'buzzed_tossup'
   | 'result_tossup'
-  | 'reading_boni1'
-  | 'buzzed_boni1'
-  | 'result_boni1'
-  | 'reading_boni2'
-  | 'buzzed_boni2'
-  | 'result_boni2'
   | 'round_summary';
 
 interface CertamenContextType {
@@ -77,8 +77,8 @@ interface CertamenContextType {
   settings: AppSettings;
   questions: Question[];
   currentQuestion: Question | null;
-  currentBoni: BoniQuestion | null;
-  boniIndex: 1 | 2 | null;
+  currentBoni: null;
+  boniIndex: null;
   gameStage: GameStage;
   revealedText: string;
   fullQuestionText: string;
@@ -168,13 +168,11 @@ export const CertamenProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   });
 
   // 4. Session / Game Controls
-  const [selectedCategory, setSelectedCategory] = useState<Category | 'all'>('all');
-  const [selectedDifficulty, setSelectedDifficulty] = useState<DifficultyLevel | 'all'>('all');
+  const [selectedCategory, setSelectedCategoryState] = useState<Category | 'all'>('all');
+  const [selectedDifficulty, setSelectedDifficultyState] = useState<DifficultyLevel | 'all'>('all');
   const [playMode, setPlayMode] = useState<PlayMode>('tossup_only');
 
   const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
-  const [currentBoni, setCurrentBoni] = useState<BoniQuestion | null>(null);
-  const [boniIndex, setBoniIndex] = useState<1 | 2 | null>(null);
   const [gameStage, setGameStage] = useState<GameStage>('idle');
   const [revealedText, setRevealedText] = useState<string>('');
   const [userAnswerInput, setUserAnswerInput] = useState<string>('');
@@ -194,7 +192,16 @@ export const CertamenProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     new Set(user.history ? user.history.map((h) => h.questionId).filter(Boolean) : [])
   );
 
-  const allQuestions = customQuestions.length > 0 ? customQuestions : INITIAL_QUESTION_BANK;
+  // Base flattened questions - all boni treated as standalone tossup questions!
+  const baseQuestions = useMemo(() => flattenQuestions(INITIAL_QUESTION_BANK), []);
+
+  // Merge built-in questions and custom questions so no subjects are ever missing
+  const allQuestions = useMemo(() => {
+    const map = new Map<string, Question>();
+    baseQuestions.forEach((q) => map.set(q.id, q));
+    customQuestions.forEach((q) => map.set(q.id, q));
+    return Array.from(map.values());
+  }, [baseQuestions, customQuestions]);
 
   // Update sound service on settings change
   useEffect(() => {
@@ -228,124 +235,21 @@ export const CertamenProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [customQuestions]);
 
-  const fullQuestionText =
-    gameStage.startsWith('reading_boni') || gameStage.startsWith('buzzed_boni') || gameStage.startsWith('result_boni')
-      ? currentBoni?.prompt || ''
-      : currentQuestion?.tossup || '';
+  const fullQuestionText = currentQuestion?.tossup || '';
 
   // Filter available questions
-  const getEligibleQuestions = useCallback(() => {
-    return allQuestions.filter((q) => {
-      if (selectedCategory !== 'all' && q.category !== selectedCategory) return false;
-      if (selectedDifficulty !== 'all' && q.difficulty !== selectedDifficulty) return false;
-      return true;
-    });
-  }, [allQuestions, selectedCategory, selectedDifficulty]);
-
-  // Helper to fetch questions for a specific category and difficulty from Google Sheets
-  const fetchCategoryQuestions = useCallback(
-    async (
-      category: Category | 'all' = selectedCategory,
-      level: DifficultyLevel | 'all' = selectedDifficulty,
-      forceRefresh = false
-    ): Promise<Question[]> => {
-      if (!settings.appsScriptUrl) return [];
-      if (isFetchingQuestionsRef.current && !forceRefresh) return [];
-
-      try {
-        isFetchingQuestionsRef.current = true;
-        setIsSyncing(true);
-        setSyncStatus('Fetching fresh questions from Google Sheets...');
-
-        const excludeIds = Array.from(seenQuestionIdsRef.current).slice(-80);
-        const newQs = await fetchQuestionsFromCloud(
-          settings.appsScriptUrl,
-          category,
-          level,
-          50,
-          true,
-          excludeIds
-        );
-
-        if (newQs && newQs.length > 0) {
-          // Merge into customQuestions bank so questions accumulate permanently
-          setCustomQuestions((prev) => {
-            const map = new Map(prev.map((q) => [q.id, q]));
-            newQs.forEach((q) => map.set(q.id, q));
-            return Array.from(map.values());
-          });
-
-          // Unseen question IDs matching current filter
-          const eligibleUnseen = newQs.filter((q) => {
-            if (category !== 'all' && q.category !== category) return false;
-            if (level !== 'all' && q.difficulty !== level) return false;
-            return !seenQuestionIdsRef.current.has(q.id);
-          });
-
-          const currentQueueSet = new Set(unplayedQueueRef.current);
-          const freshIds = eligibleUnseen.map((q) => q.id).filter((id) => !currentQueueSet.has(id));
-
-          // Fisher-Yates shuffle fresh IDs
-          for (let i = freshIds.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            const temp = freshIds[i];
-            freshIds[i] = freshIds[j];
-            freshIds[j] = temp;
-          }
-
-          if (forceRefresh) {
-            unplayedQueueRef.current = freshIds;
-          } else {
-            unplayedQueueRef.current = [...unplayedQueueRef.current, ...freshIds];
-          }
-
-          setSyncStatus(`Loaded ${newQs.length} fresh questions from Google Sheets!`);
-          return newQs;
-        }
-        return [];
-      } catch (e) {
-        console.warn('Failed to fetch questions from Google Sheets:', e);
-        setSyncStatus('Failed to load questions from Google Sheets');
-        return [];
-      } finally {
-        isFetchingQuestionsRef.current = false;
-        setIsSyncing(false);
-      }
+  const getEligibleQuestions = useCallback(
+    (category: Category | 'all' = selectedCategory, difficulty: DifficultyLevel | 'all' = selectedDifficulty) => {
+      return allQuestions.filter((q) => {
+        if (category !== 'all' && q.category !== category) return false;
+        if (difficulty !== 'all' && q.difficulty !== difficulty) return false;
+        return true;
+      });
     },
-    [selectedCategory, selectedDifficulty, settings.appsScriptUrl]
+    [allQuestions, selectedCategory, selectedDifficulty]
   );
 
-  // Background replenish helper
-  const checkAndReplenishQuestions = useCallback(
-    (category: Category | 'all' = selectedCategory, level: DifficultyLevel | 'all' = selectedDifficulty) => {
-      if (!settings.appsScriptUrl || isFetchingQuestionsRef.current) return;
-      if (unplayedQueueRef.current.length < 12) {
-        fetchCategoryQuestions(category, level, false);
-      }
-    },
-    [fetchCategoryQuestions, selectedCategory, selectedDifficulty, settings.appsScriptUrl]
-  );
-
-  // Auto-fetch fresh questions from Google Sheets when filter changes or on initial boot
-  useEffect(() => {
-    unplayedQueueRef.current = [];
-    if (settings.appsScriptUrl) {
-      fetchCategoryQuestions(selectedCategory, selectedDifficulty, true);
-    }
-  }, [fetchCategoryQuestions, selectedCategory, selectedDifficulty, settings.appsScriptUrl]);
-
-  // Periodic background heartbeat to constantly fetch new questions and keep queue populated
-  useEffect(() => {
-    if (!settings.appsScriptUrl) return;
-    const interval = setInterval(() => {
-      if (unplayedQueueRef.current.length < 12 && !isFetchingQuestionsRef.current) {
-        fetchCategoryQuestions(selectedCategory, selectedDifficulty, false);
-      }
-    }, 12000);
-    return () => clearInterval(interval);
-  }, [fetchCategoryQuestions, selectedCategory, selectedDifficulty, settings.appsScriptUrl]);
-
-  // Typewriter effect
+  // Typewriter effect cleanup
   const stopTypewriter = useCallback(() => {
     if (typewriterTimerRef.current) {
       clearInterval(typewriterTimerRef.current);
@@ -368,156 +272,242 @@ export const CertamenProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, [stopTypewriter, stopCountdown]);
 
+  // Helper to fetch questions for a specific category and difficulty from Turso
+  const fetchCategoryQuestions = useCallback(
+    async (
+      category: Category | 'all' = selectedCategory,
+      level: DifficultyLevel | 'all' = selectedDifficulty,
+      forceRefresh = false
+    ): Promise<Question[]> => {
+      if (!settings.tursoUrl) return [];
+      if (isFetchingQuestionsRef.current && !forceRefresh) return [];
+
+      try {
+        isFetchingQuestionsRef.current = true;
+        setIsSyncing(true);
+        setSyncStatus('Fetching questions from Turso...');
+
+        const excludeIds = Array.from(seenQuestionIdsRef.current).slice(-80);
+        const newQs = await fetchQuestionsFromTurso(
+          settings.tursoUrl,
+          settings.tursoAuthToken,
+          category,
+          level,
+          50,
+          true,
+          excludeIds
+        );
+
+        if (newQs && newQs.length > 0) {
+          const flattened = flattenQuestions(newQs);
+          setCustomQuestions((prev) => {
+            const map = new Map(prev.map((q) => [q.id, q]));
+            flattened.forEach((q) => map.set(q.id, q));
+            return Array.from(map.values());
+          });
+
+          const eligibleUnseen = flattened.filter((q) => {
+            if (category !== 'all' && q.category !== category) return false;
+            if (level !== 'all' && q.difficulty !== level) return false;
+            return !seenQuestionIdsRef.current.has(q.id);
+          });
+
+          const currentQueueSet = new Set(unplayedQueueRef.current);
+          const freshIds = eligibleUnseen.map((q) => q.id).filter((id) => !currentQueueSet.has(id));
+
+          // Fisher-Yates shuffle fresh IDs
+          for (let i = freshIds.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            const temp = freshIds[i];
+            freshIds[i] = freshIds[j];
+            freshIds[j] = temp;
+          }
+
+          if (forceRefresh) {
+            unplayedQueueRef.current = freshIds;
+          } else {
+            unplayedQueueRef.current = [...unplayedQueueRef.current, ...freshIds];
+          }
+
+          setSyncStatus(`Loaded ${flattened.length} questions from Turso!`);
+          return flattened;
+        }
+        return [];
+      } catch (e) {
+        console.warn('Failed to fetch questions from Turso:', e);
+        setSyncStatus('Failed to load questions from Turso');
+        return [];
+      } finally {
+        isFetchingQuestionsRef.current = false;
+        setIsSyncing(false);
+      }
+    },
+    [selectedCategory, selectedDifficulty, settings.tursoAuthToken, settings.tursoUrl]
+  );
+
+  // Auto-fetch fresh questions from Turso when filter changes or on initial boot
+  useEffect(() => {
+    unplayedQueueRef.current = [];
+    if (settings.tursoUrl) {
+      fetchCategoryQuestions(selectedCategory, selectedDifficulty, true);
+    }
+  }, [fetchCategoryQuestions, selectedCategory, selectedDifficulty, settings.tursoUrl]);
+
   // Start next question
-  const startQuestion = useCallback(async () => {
-    stopTypewriter();
-    stopCountdown();
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-    }
+  const startQuestion = useCallback(
+    async (overrideCat?: Category | 'all', overrideDiff?: DifficultyLevel | 'all') => {
+      stopTypewriter();
+      stopCountdown();
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
 
-    let pool = getEligibleQuestions();
+      const activeCat = overrideCat !== undefined ? overrideCat : selectedCategory;
+      const activeDiff = overrideDiff !== undefined ? overrideDiff : selectedDifficulty;
 
-    // 1. If queue is empty, attempt to fill from unseen local pool or fetch
-    if (unplayedQueueRef.current.length === 0) {
-      const unseenLocal = pool.filter((q) => !seenQuestionIdsRef.current.has(q.id));
-      if (unseenLocal.length > 0) {
-        unplayedQueueRef.current = unseenLocal.map((q) => q.id).sort(() => Math.random() - 0.5);
-      } else if (settings.appsScriptUrl) {
-        // Immediate fetch from cloud
-        const fetched = await fetchCategoryQuestions(selectedCategory, selectedDifficulty, false);
-        if (fetched && fetched.length > 0) {
-          pool = getEligibleQuestions();
+      let pool = getEligibleQuestions(activeCat, activeDiff);
+
+      // If queue is empty, fill from unseen local pool or fetch
+      if (unplayedQueueRef.current.length === 0) {
+        const unseenLocal = pool.filter((q) => !seenQuestionIdsRef.current.has(q.id));
+        if (unseenLocal.length > 0) {
+          unplayedQueueRef.current = unseenLocal.map((q) => q.id).sort(() => Math.random() - 0.5);
+        } else if (settings.tursoUrl) {
+          const fetched = await fetchCategoryQuestions(activeCat, activeDiff, false);
+          if (fetched && fetched.length > 0) {
+            pool = getEligibleQuestions(activeCat, activeDiff);
+          }
+        }
+
+        // If still empty (all seen), recycle pool with recent buffer
+        if (unplayedQueueRef.current.length === 0 && pool.length > 0) {
+          const recentHistory = Array.from(seenQuestionIdsRef.current).slice(-15);
+          seenQuestionIdsRef.current = new Set(recentHistory);
+          const recycled = pool.filter((q) => !seenQuestionIdsRef.current.has(q.id));
+          const toUse = recycled.length > 0 ? recycled : pool;
+          unplayedQueueRef.current = toUse.map((q) => q.id).sort(() => Math.random() - 0.5);
         }
       }
 
-      // If still empty (all questions in bank and cloud have been seen), recycle pool with recent buffer
-      if (unplayedQueueRef.current.length === 0 && pool.length > 0) {
-        // Retain only the most recent 15 seen IDs to avoid immediate repeats
-        const recentHistory = Array.from(seenQuestionIdsRef.current).slice(-15);
-        seenQuestionIdsRef.current = new Set(recentHistory);
-        const recycled = pool.filter((q) => !seenQuestionIdsRef.current.has(q.id));
-        const toUse = recycled.length > 0 ? recycled : pool;
-        unplayedQueueRef.current = toUse.map((q) => q.id).sort(() => Math.random() - 0.5);
-      }
-    }
-
-    if (unplayedQueueRef.current.length === 0 && pool.length === 0) {
-      setSyncStatus('No questions available for this category/difficulty.');
-      return;
-    }
-
-    let nextId = unplayedQueueRef.current.shift() || pool[0]?.id;
-    if (currentQuestion && nextId === currentQuestion.id && (unplayedQueueRef.current.length > 0 || pool.length > 1)) {
-      const altId = unplayedQueueRef.current.shift() || pool.find((q) => q.id !== currentQuestion.id)?.id || nextId;
-      if (altId !== nextId) {
-        unplayedQueueRef.current.push(nextId);
-        nextId = altId;
-      }
-    }
-
-    const selected = pool.find((q) => q.id === nextId) || allQuestions.find((q) => q.id === nextId) || pool[0];
-    if (!selected) return;
-
-    seenQuestionIdsRef.current.add(selected.id);
-
-    // Proactively replenish background queue
-    checkAndReplenishQuestions(selectedCategory, selectedDifficulty);
-
-    setCurrentQuestion(selected);
-    setCurrentBoni(null);
-    setBoniIndex(null);
-    setRevealedText('');
-    setUserAnswerInput('');
-    setLastEvaluation(null);
-    setLastAttemptLog(null);
-    setScoreThisRound(0);
-    setGameStage('reading_tossup');
-
-    const targetText = selected.tossup;
-    let charIdx = 0;
-
-    // Audio Mode: In-browser Web Speech API (zero AI / zero API calls)
-    if (settings.readerMode === 'audio' && 'speechSynthesis' in window) {
-      const utterance = new SpeechSynthesisUtterance(targetText);
-      utterance.rate = settings.speechRate || 1.0;
-      utterance.lang = 'en-US';
-
-      // Pick preferred voice if available
-      if (settings.selectedVoiceURI) {
-        const voices = window.speechSynthesis.getVoices();
-        const matched = voices.find((v) => v.voiceURI === settings.selectedVoiceURI);
-        if (matched) utterance.voice = matched;
+      if (unplayedQueueRef.current.length === 0 && pool.length === 0) {
+        setSyncStatus('No questions available for this subject/level.');
+        return;
       }
 
-      utterance.onboundary = (e) => {
-        if (e.charIndex !== undefined) {
-          // Estimate spoken length at word boundary
-          const spoken = targetText.substring(0, Math.min(targetText.length, e.charIndex + (e.charLength || 6)));
-          setRevealedText(spoken);
+      let nextId = unplayedQueueRef.current.shift() || pool[0]?.id;
+      if (currentQuestion && nextId === currentQuestion.id && (unplayedQueueRef.current.length > 0 || pool.length > 1)) {
+        const altId = unplayedQueueRef.current.shift() || pool.find((q) => q.id !== currentQuestion.id)?.id || nextId;
+        if (altId !== nextId) {
+          unplayedQueueRef.current.push(nextId);
+          nextId = altId;
         }
-      };
+      }
 
-      utterance.onend = () => {
-        setRevealedText(targetText);
-      };
+      const selected = pool.find((q) => q.id === nextId) || allQuestions.find((q) => q.id === nextId) || pool[0];
+      if (!selected) return;
 
-      window.speechSynthesis.speak(utterance);
-    } else {
-      // Visual Mode: Progressive typewriter reveal on screen
-      typewriterTimerRef.current = setInterval(() => {
-        charIdx += 2; // smooth 2 chars per tick for natural flow
-        if (charIdx >= targetText.length) {
+      seenQuestionIdsRef.current.add(selected.id);
+
+      setCurrentQuestion(selected);
+      setRevealedText('');
+      setUserAnswerInput('');
+      setLastEvaluation(null);
+      setLastAttemptLog(null);
+      setScoreThisRound(0);
+      setGameStage('reading_tossup');
+
+      const targetText = selected.tossup;
+      let charIdx = 0;
+
+      // Audio Mode: In-browser Web Speech API
+      if (settings.readerMode === 'audio' && 'speechSynthesis' in window) {
+        const utterance = new SpeechSynthesisUtterance(targetText);
+        utterance.rate = settings.speechRate || 1.0;
+        utterance.lang = 'en-US';
+
+        if (settings.selectedVoiceURI) {
+          const voices = window.speechSynthesis.getVoices();
+          const matched = voices.find((v) => v.voiceURI === settings.selectedVoiceURI);
+          if (matched) utterance.voice = matched;
+        }
+
+        utterance.onboundary = (e) => {
+          if (e.charIndex !== undefined) {
+            const spoken = targetText.substring(0, Math.min(targetText.length, e.charIndex + (e.charLength || 6)));
+            setRevealedText(spoken);
+          }
+        };
+
+        utterance.onend = () => {
           setRevealedText(targetText);
-          stopTypewriter();
-        } else {
-          setRevealedText(targetText.substring(0, charIdx));
-        }
-      }, settings.readingSpeed);
-    }
-  }, [
-    allQuestions,
-    checkAndReplenishQuestions,
-    currentQuestion,
-    fetchCategoryQuestions,
-    getEligibleQuestions,
-    selectedCategory,
-    selectedDifficulty,
-    settings.appsScriptUrl,
-    settings.readerMode,
-    settings.readingSpeed,
-    settings.selectedVoiceURI,
-    settings.speechRate,
-    stopCountdown,
-    stopTypewriter,
-  ]);
+        };
+
+        window.speechSynthesis.speak(utterance);
+      } else {
+        // Visual Mode: Progressive typewriter reveal
+        typewriterTimerRef.current = setInterval(() => {
+          charIdx += 2;
+          if (charIdx >= targetText.length) {
+            setRevealedText(targetText);
+            stopTypewriter();
+          } else {
+            setRevealedText(targetText.substring(0, charIdx));
+          }
+        }, settings.readingSpeed);
+      }
+    },
+    [
+      allQuestions,
+      currentQuestion,
+      fetchCategoryQuestions,
+      getEligibleQuestions,
+      selectedCategory,
+      selectedDifficulty,
+      settings.readerMode,
+      settings.readingSpeed,
+      settings.selectedVoiceURI,
+      settings.speechRate,
+      settings.tursoUrl,
+      stopCountdown,
+      stopTypewriter,
+    ]
+  );
+
+  // Switch category immediately and restart question if playing
+  const setSelectedCategory = useCallback(
+    (cat: Category | 'all') => {
+      setSelectedCategoryState(cat);
+      unplayedQueueRef.current = [];
+      if (gameStage === 'reading_tossup' || gameStage === 'buzzed_tossup' || gameStage === 'result_tossup') {
+        startQuestion(cat, selectedDifficulty);
+      }
+    },
+    [gameStage, selectedDifficulty, startQuestion]
+  );
+
+  const setSelectedDifficulty = useCallback(
+    (diff: DifficultyLevel | 'all') => {
+      setSelectedDifficultyState(diff);
+      unplayedQueueRef.current = [];
+      if (gameStage === 'reading_tossup' || gameStage === 'buzzed_tossup' || gameStage === 'result_tossup') {
+        startQuestion(selectedCategory, diff);
+      }
+    },
+    [gameStage, selectedCategory, startQuestion]
+  );
 
   // Buzz action
   const buzz = useCallback(() => {
-    if (
-      gameStage !== 'reading_tossup' &&
-      gameStage !== 'reading_boni1' &&
-      gameStage !== 'reading_boni2'
-    ) {
-      return;
-    }
+    if (gameStage !== 'reading_tossup') return;
 
-    // Stop typewriter & speech immediately!
     stopTypewriter();
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
 
     soundService.playBuzzer();
+    setGameStage('buzzed_tossup');
 
-    const isTossup = gameStage === 'reading_tossup';
-    const isBoni1 = gameStage === 'reading_boni1';
-
-    if (isTossup) setGameStage('buzzed_tossup');
-    else if (isBoni1) setGameStage('buzzed_boni1');
-    else setGameStage('buzzed_boni2');
-
-    // Start 5-second countdown timer
     const duration = settings.timerDuration || 5;
     setTimeLeft(duration);
 
@@ -526,7 +516,6 @@ export const CertamenProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setTimeLeft((prev) => {
         if (prev <= 1) {
           stopCountdown();
-          // Timeout = incorrect auto-submit
           soundService.playIncorrect();
           handleTimeoutAnswer();
           return 0;
@@ -539,11 +528,10 @@ export const CertamenProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }, 1000);
   }, [gameStage, settings.timerDuration, stopCountdown, stopTypewriter]);
 
-  // Helper to handle timeout
+  // Handle timeout
   const handleTimeoutAnswer = useCallback(() => {
     if (!currentQuestion) return;
-    const isTossup = gameStage === 'buzzed_tossup';
-    const acceptable = isTossup ? currentQuestion.answers : currentBoni?.answers || [];
+    const acceptable = currentQuestion.answers;
 
     const evalResult: MatchResult = {
       isCorrect: false,
@@ -552,17 +540,14 @@ export const CertamenProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
 
     recordResult(evalResult, 0, false);
-  }, [currentBoni?.answers, currentQuestion, gameStage]);
+  }, [currentQuestion]);
 
-
-
-  // Record stats and sync
+  // Record stats and sync to Turso
   const recordResult = useCallback(
     (evalResult: MatchResult, pointsEarned: number, isPowerBuzz: boolean) => {
       stopCountdown();
       if (!currentQuestion) return;
 
-      const isTossup = gameStage === 'buzzed_tossup' || gameStage === 'reading_tossup';
       const cat = currentQuestion.category;
       const totalLen = fullQuestionText.length || 1;
       const buzzLen = revealedText.length;
@@ -575,11 +560,12 @@ export const CertamenProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         difficulty: currentQuestion.difficulty,
         questionText: fullQuestionText,
         userAnswer: userAnswerInput,
-        acceptableAnswers: isTossup ? currentQuestion.answers : currentBoni?.answers || [],
+        acceptableAnswers: currentQuestion.answers || [],
         isCorrect: evalResult.isCorrect,
         pointsEarned,
         buzzPercentage: buzzPercent,
         timestamp: Date.now(),
+        wasSkipped: evalResult.wasSkipped,
       };
 
       setLastEvaluation(evalResult);
@@ -592,13 +578,16 @@ export const CertamenProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           soundService.playCorrect();
         }
 
-        confetti({
-          particleCount: isPowerBuzz ? 80 : 40,
-          spread: 60,
-          origin: { y: 0.7 },
-          colors: brandColours(),
-        });
-      } else {
+        // Only fire confetti if enabled in settings
+        if (settings.confettiEnabled !== false) {
+          confetti({
+            particleCount: isPowerBuzz ? 80 : 40,
+            spread: 60,
+            origin: { y: 0.7 },
+            colors: brandColours(),
+          });
+        }
+      } else if (!evalResult.wasSkipped) {
         soundService.playIncorrect();
       }
 
@@ -641,34 +630,28 @@ export const CertamenProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           lastSyncedAt: Date.now(),
         };
 
-        // Background cloud sync
-        if (settings.appsScriptUrl) {
-          syncUserToCloud(settings.appsScriptUrl, updatedProfile);
-          logAttemptToCloud(settings.appsScriptUrl, { ...attemptLog, username: prev.username });
+        // Cloud sync to Turso
+        if (settings.tursoUrl) {
+          syncUserToTurso(settings.tursoUrl, settings.tursoAuthToken, updatedProfile);
+          logAttemptToTurso(settings.tursoUrl, settings.tursoAuthToken, {
+            ...attemptLog,
+            username: prev.username,
+          });
         }
 
         return updatedProfile;
       });
 
-      // Advance stage
-      if (isTossup) {
-        setScoreThisRound((s) => s + pointsEarned);
-        setGameStage('result_tossup');
-      } else if (gameStage === 'buzzed_boni1') {
-        setScoreThisRound((s) => s + pointsEarned);
-        setGameStage('result_boni1');
-      } else {
-        setScoreThisRound((s) => s + pointsEarned);
-        setGameStage('result_boni2');
-      }
+      setScoreThisRound((s) => s + pointsEarned);
+      setGameStage('result_tossup');
     },
     [
-      currentBoni?.answers,
       currentQuestion,
       fullQuestionText,
-      gameStage,
       revealedText.length,
-      settings.appsScriptUrl,
+      settings.confettiEnabled,
+      settings.tursoAuthToken,
+      settings.tursoUrl,
       stopCountdown,
       userAnswerInput,
     ]
@@ -678,41 +661,33 @@ export const CertamenProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const submitAnswer = useCallback(() => {
     if (!currentQuestion) return;
 
-    const isTossup = gameStage === 'buzzed_tossup';
-    const acceptable = isTossup ? currentQuestion.answers : currentBoni?.answers || [];
+    const acceptable = currentQuestion.answers || [];
     const evalResult = checkAnswer(userAnswerInput, acceptable);
 
     let points = 0;
     let isPowerBuzz = false;
 
     if (evalResult.isCorrect) {
-      if (isTossup) {
-        // Power Buzz check: if buzzed before half of the question
-        const isEarly = revealedText.length < fullQuestionText.length * 0.6;
-        if (settings.powerBuzzEnabled && isEarly) {
-          points = 15; // 15 pt power buzz
-          isPowerBuzz = true;
-        } else {
-          points = 10; // Standard 10 pt tossup
-        }
+      const isEarly = revealedText.length < fullQuestionText.length * 0.6;
+      if (settings.powerBuzzEnabled && isEarly) {
+        points = 15;
+        isPowerBuzz = true;
       } else {
-        points = 5; // Standard 5 pt boni
+        points = 10;
       }
     }
 
     recordResult(evalResult, points, isPowerBuzz);
   }, [
-    currentBoni?.answers,
     currentQuestion,
     fullQuestionText.length,
-    gameStage,
     recordResult,
     revealedText.length,
     settings.powerBuzzEnabled,
     userAnswerInput,
   ]);
 
-  // Skip question
+  // Skip question - marks wasSkipped: true
   const skipQuestion = useCallback(() => {
     stopTypewriter();
     stopCountdown();
@@ -723,29 +698,32 @@ export const CertamenProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       isCorrect: false,
       cleanedUserAnswer: '',
       feedback: `Skipped. Correct answer was: ${currentQuestion.answers.join(', ')}`,
+      wasSkipped: true,
     };
 
     recordResult(evalResult, 0, false);
   }, [currentQuestion, fullQuestionText, recordResult, stopCountdown, stopTypewriter]);
 
-  // Override answer ("I was right!" button)
+  // Override answer ("I was right!" button) - only available when not skipped
   const overrideAnswer = useCallback(() => {
-    if (!lastAttemptLog || !currentQuestion || lastAttemptLog.isCorrect) return;
+    if (!lastAttemptLog || !currentQuestion || lastAttemptLog.isCorrect || lastAttemptLog.wasSkipped) return;
 
     const cat = currentQuestion.category;
     const pointsToAward = lastAttemptLog.pointsEarned === 0 ? 10 : 0;
 
     soundService.playCorrect();
-    confetti({
-      particleCount: 50,
-      spread: 50,
-      origin: { y: 0.7 },
-      colors: brandColours(),
-    });
+    if (settings.confettiEnabled !== false) {
+      confetti({
+        particleCount: 50,
+        spread: 50,
+        origin: { y: 0.7 },
+        colors: brandColours(),
+      });
+    }
 
     setLastEvaluation((prev) =>
       prev
-        ? { ...prev, isCorrect: true, feedback: `Marked correct via manual judge override (+${pointsToAward} pts).` }
+        ? { ...prev, isCorrect: true, feedback: `Marked correct via manual override (+${pointsToAward} pts).` }
         : null
     );
 
@@ -779,170 +757,46 @@ export const CertamenProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         history: updatedHistory,
       };
 
-      if (settings.appsScriptUrl) {
-        syncUserToCloud(settings.appsScriptUrl, updatedProfile);
+      if (settings.tursoUrl) {
+        syncUserToTurso(settings.tursoUrl, settings.tursoAuthToken, updatedProfile);
       }
 
       return updatedProfile;
     });
-  }, [currentQuestion, lastAttemptLog, settings.appsScriptUrl]);
+  }, [currentQuestion, lastAttemptLog, settings.confettiEnabled, settings.tursoAuthToken, settings.tursoUrl]);
 
-  // Next step in round (e.g. Move from Tossup -> Boni 1 -> Boni 2 -> Next Tossup)
+  // Next step - always starts next tossup question
   const nextStep = useCallback(() => {
-    if (!currentQuestion) {
-      startQuestion();
-      return;
-    }
-
-    // If we're playing Tossup + Boni mode AND the tossup was answered correctly AND boni exists
-    if (playMode === 'tossup_boni' && currentQuestion.boni && currentQuestion.boni.length > 0) {
-      if (gameStage === 'result_tossup' && lastEvaluation?.isCorrect) {
-        // Start Boni 1
-        const b1 = currentQuestion.boni.find((b) => b.boniNumber === 1) || currentQuestion.boni[0];
-        setCurrentBoni(b1);
-        setBoniIndex(1);
-        setRevealedText('');
-        setUserAnswerInput('');
-        setLastEvaluation(null);
-        setGameStage('reading_boni1');
-
-        if (settings.readerMode === 'audio' && 'speechSynthesis' in window) {
-          window.speechSynthesis.cancel();
-          const utterance = new SpeechSynthesisUtterance(b1.prompt);
-          utterance.rate = settings.speechRate || 1.0;
-          utterance.lang = 'en-US';
-          if (settings.selectedVoiceURI) {
-            const matched = window.speechSynthesis.getVoices().find((v) => v.voiceURI === settings.selectedVoiceURI);
-            if (matched) utterance.voice = matched;
-          }
-          utterance.onboundary = (e) => {
-            if (e.charIndex !== undefined) {
-              const spoken = b1.prompt.substring(0, Math.min(b1.prompt.length, e.charIndex + (e.charLength || 6)));
-              setRevealedText(spoken);
-            }
-          };
-          utterance.onend = () => setRevealedText(b1.prompt);
-          window.speechSynthesis.speak(utterance);
-        } else {
-          let charIdx = 0;
-          typewriterTimerRef.current = setInterval(() => {
-            charIdx += 2;
-            if (charIdx >= b1.prompt.length) {
-              setRevealedText(b1.prompt);
-              stopTypewriter();
-            } else {
-              setRevealedText(b1.prompt.substring(0, charIdx));
-            }
-          }, settings.readingSpeed);
-        }
-        return;
-      }
-
-      if (gameStage === 'result_boni1') {
-        // Start Boni 2
-        const b2 = currentQuestion.boni.find((b) => b.boniNumber === 2);
-        if (b2) {
-          setCurrentBoni(b2);
-          setBoniIndex(2);
-          setRevealedText('');
-          setUserAnswerInput('');
-          setLastEvaluation(null);
-          setGameStage('reading_boni2');
-
-          if (settings.readerMode === 'audio' && 'speechSynthesis' in window) {
-            window.speechSynthesis.cancel();
-            const utterance = new SpeechSynthesisUtterance(b2.prompt);
-            utterance.rate = settings.speechRate || 1.0;
-            utterance.lang = 'en-US';
-            if (settings.selectedVoiceURI) {
-              const matched = window.speechSynthesis.getVoices().find((v) => v.voiceURI === settings.selectedVoiceURI);
-              if (matched) utterance.voice = matched;
-            }
-            utterance.onboundary = (e) => {
-              if (e.charIndex !== undefined) {
-                const spoken = b2.prompt.substring(0, Math.min(b2.prompt.length, e.charIndex + (e.charLength || 6)));
-                setRevealedText(spoken);
-              }
-            };
-            utterance.onend = () => setRevealedText(b2.prompt);
-            window.speechSynthesis.speak(utterance);
-          } else {
-            let charIdx = 0;
-            typewriterTimerRef.current = setInterval(() => {
-              charIdx += 2;
-              if (charIdx >= b2.prompt.length) {
-                setRevealedText(b2.prompt);
-                stopTypewriter();
-              } else {
-                setRevealedText(b2.prompt.substring(0, charIdx));
-              }
-            }, settings.readingSpeed);
-          }
-          return;
-        }
-      }
-    }
-
-    // Default: Start a fresh new question
     startQuestion();
-  }, [
-    currentQuestion,
-    gameStage,
-    lastEvaluation?.isCorrect,
-    playMode,
-    settings.readingSpeed,
-    startQuestion,
-    stopTypewriter,
-  ]);
+  }, [startQuestion]);
 
   // Keyboard Shortcuts: Spacebar to Buzz / Start, 'N' for Next Question
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // If user is currently typing in an input or textarea, don't trigger global shortcuts
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') {
         return;
       }
 
-      // 'N' shortcut for next question / next step / start
       if (e.key === 'n' || e.key === 'N') {
         e.preventDefault();
         if (gameStage === 'idle') {
           startQuestion();
-        } else if (
-          gameStage === 'result_tossup' ||
-          gameStage === 'result_boni1' ||
-          gameStage === 'result_boni2' ||
-          gameStage === 'round_summary'
-        ) {
+        } else if (gameStage === 'result_tossup' || gameStage === 'round_summary') {
           nextStep();
-        } else if (
-          gameStage === 'reading_tossup' ||
-          gameStage === 'reading_boni1' ||
-          gameStage === 'reading_boni2'
-        ) {
+        } else if (gameStage === 'reading_tossup') {
           skipQuestion();
         }
         return;
       }
 
-      // Spacebar to Buzz / Start
       if (e.code === 'Space') {
         e.preventDefault();
-        if (
-          gameStage === 'reading_tossup' ||
-          gameStage === 'reading_boni1' ||
-          gameStage === 'reading_boni2'
-        ) {
+        if (gameStage === 'reading_tossup') {
           buzz();
         } else if (gameStage === 'idle') {
           startQuestion();
-        } else if (
-          gameStage === 'result_tossup' ||
-          gameStage === 'result_boni1' ||
-          gameStage === 'result_boni2' ||
-          gameStage === 'round_summary'
-        ) {
+        } else if (gameStage === 'result_tossup' || gameStage === 'round_summary') {
           nextStep();
         }
       }
@@ -952,27 +806,30 @@ export const CertamenProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [buzz, gameStage, nextStep, skipQuestion, startQuestion]);
 
-  // Login / Switch user across devices
+  // Login / Switch user across devices using Turso
   const loginUser = async (username: string, pin: string, school?: string): Promise<boolean> => {
     setIsSyncing(true);
     setSyncStatus('Logging in...');
 
-    // Try cloud login if URL configured
-    if (settings.appsScriptUrl) {
+    if (settings.tursoUrl) {
       try {
-        const cloudUser = await loginUserFromCloud(settings.appsScriptUrl, username, pin);
+        const cloudUser = await loginUserFromTurso(
+          settings.tursoUrl,
+          settings.tursoAuthToken,
+          username,
+          pin
+        );
         if (cloudUser) {
           setUser(cloudUser);
           setIsSyncing(false);
-          setSyncStatus('Cloud profile restored!');
+          setSyncStatus('Turso profile restored!');
           return true;
         }
       } catch (e) {
-        console.warn('Cloud login failed:', e);
+        console.warn('Turso login failed:', e);
       }
     }
 
-    // Local profile creation / switch
     const newProfile: UserProfile = {
       username: username.trim(),
       pin: pin.trim(),
@@ -987,8 +844,8 @@ export const CertamenProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setIsSyncing(false);
     setSyncStatus('Logged in locally');
 
-    if (settings.appsScriptUrl) {
-      syncUserToCloud(settings.appsScriptUrl, newProfile);
+    if (settings.tursoUrl) {
+      syncUserToTurso(settings.tursoUrl, settings.tursoAuthToken, newProfile);
     }
     return true;
   };
@@ -1010,7 +867,8 @@ export const CertamenProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const addCustomQuestion = (q: Question) => {
-    setCustomQuestions((prev) => [q, ...prev]);
+    const flattened = flattenQuestions([q]);
+    setCustomQuestions((prev) => [...flattened, ...prev]);
   };
 
   const deleteCustomQuestion = (id: string) => {
@@ -1020,8 +878,9 @@ export const CertamenProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const importQuestions = (newQuestions: Question[]): number => {
     if (!Array.isArray(newQuestions)) return 0;
     const valid = newQuestions.filter((q) => q.tossup && Array.isArray(q.answers) && q.answers.length > 0);
-    setCustomQuestions((prev) => [...valid, ...prev]);
-    return valid.length;
+    const flattened = flattenQuestions(valid);
+    setCustomQuestions((prev) => [...flattened, ...prev]);
+    return flattened.length;
   };
 
   const resetUserStats = () => {
@@ -1033,38 +892,46 @@ export const CertamenProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const triggerManualSync = async () => {
-    if (!settings.appsScriptUrl) {
-      setSyncStatus('Please set a Google Apps Script URL in Settings');
+    if (!settings.tursoUrl) {
+      setSyncStatus('Please set a Turso Database URL in Settings');
       return;
     }
     setIsSyncing(true);
-    setSyncStatus('Syncing with Google Sheets...');
-    const res = await syncUserToCloud(settings.appsScriptUrl, user);
+    setSyncStatus('Syncing with Turso...');
+    const res = await syncUserToTurso(settings.tursoUrl, settings.tursoAuthToken, user);
     setIsSyncing(false);
     setSyncStatus(res.message || (res.success ? 'Sync complete!' : 'Sync failed'));
   };
 
   const syncQuestionsFromCloud = async (): Promise<number> => {
-    if (!settings.appsScriptUrl) return 0;
+    if (!settings.tursoUrl) return 0;
     try {
       setIsSyncing(true);
-      setSyncStatus('Fetching questions from Google Sheets...');
-      const cloudQuestions = await fetchQuestionsFromCloud(settings.appsScriptUrl, 'all', 'all', 0, true);
+      setSyncStatus('Fetching questions from Turso...');
+      const cloudQuestions = await fetchQuestionsFromTurso(
+        settings.tursoUrl,
+        settings.tursoAuthToken,
+        'all',
+        'all',
+        0,
+        false
+      );
       if (cloudQuestions.length > 0) {
+        const flattened = flattenQuestions(cloudQuestions);
         setCustomQuestions((prev) => {
           const map = new Map(prev.map((q) => [q.id, q]));
-          cloudQuestions.forEach((q) => map.set(q.id, q));
+          flattened.forEach((q) => map.set(q.id, q));
           return Array.from(map.values());
         });
-        setSyncStatus(`Loaded ${cloudQuestions.length} questions from cloud!`);
+        setSyncStatus(`Loaded ${flattened.length} questions from Turso!`);
         setIsSyncing(false);
-        return cloudQuestions.length;
+        return flattened.length;
       } else {
-        setSyncStatus('No questions found in Google Sheets.');
+        setSyncStatus('No questions found in Turso.');
       }
     } catch (e) {
-      console.warn('Error fetching questions from cloud:', e);
-      setSyncStatus('Failed to load questions from cloud.');
+      console.warn('Error fetching questions from Turso:', e);
+      setSyncStatus('Failed to load questions from Turso.');
     } finally {
       setIsSyncing(false);
     }
@@ -1078,12 +945,12 @@ export const CertamenProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         settings,
         questions: allQuestions,
         currentQuestion,
-        currentBoni,
-        boniIndex,
+        currentBoni: null,
+        boniIndex: null,
         gameStage,
         revealedText,
         fullQuestionText,
-        isBuzzActive: gameStage.startsWith('buzzed_'),
+        isBuzzActive: gameStage === 'buzzed_tossup',
         timeLeft,
         userAnswerInput,
         lastEvaluation,

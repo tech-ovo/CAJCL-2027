@@ -95,7 +95,29 @@ export const StatsDashboard: React.FC = () => {
                 const acc = cat.answered > 0 ? Math.round((cat.correct / cat.answered) * 100) : 0;
                 return (
                   <tr key={id}>
-                    <td>{label}</td>
+                    <td>
+                      <button
+                        type="button"
+                        style={{
+                          background: 'none',
+                          border: 0,
+                          padding: 0,
+                          font: 'inherit',
+                          color: 'var(--link)',
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                        }}
+                        onClick={() => {
+                          setHistoryFilter(id);
+                          setShown(PAGE);
+                          const el = document.getElementById('history-search');
+                          if (el) el.scrollIntoView({ behavior: 'smooth' });
+                        }}
+                        title={`Filter history by ${label}`}
+                      >
+                        {label}
+                      </button>
+                    </td>
                     <td className="num">{cat.correct} / {cat.answered}</td>
                     <td className="num">{cat.points}</td>
                     <td>

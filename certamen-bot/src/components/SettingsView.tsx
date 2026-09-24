@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useCertamen } from '../context/CertamenContext';
+import { pingTurso } from '../services/tursoService';
 
 const Setting: React.FC<{ name: string; help: string; htmlFor?: string; children: React.ReactNode }> = ({
   name,
@@ -19,6 +20,8 @@ const Setting: React.FC<{ name: string; help: string; htmlFor?: string; children
 export const SettingsView: React.FC = () => {
   const { settings, updateSettings, resetUserStats } = useCertamen();
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [testStatus, setTestStatus] = useState<{ message?: string; isError?: boolean } | null>(null);
+  const [isTesting, setIsTesting] = useState<boolean>(false);
 
   useEffect(() => {
     if ('speechSynthesis' in window) {
@@ -29,6 +32,22 @@ export const SettingsView: React.FC = () => {
       window.speechSynthesis.onvoiceschanged = loadVoices;
     }
   }, []);
+
+  const handleTestTurso = async () => {
+    if (!settings.tursoUrl) {
+      setTestStatus({ message: 'Enter a Turso Database URL first.', isError: true });
+      return;
+    }
+    setIsTesting(true);
+    setTestStatus(null);
+    const res = await pingTurso(settings.tursoUrl, settings.tursoAuthToken);
+    setIsTesting(false);
+    if (res.success) {
+      setTestStatus({ message: res.message || 'Connected successfully!', isError: false });
+    } else {
+      setTestStatus({ message: res.error || 'Connection failed.', isError: true });
+    }
+  };
 
   return (
     <>
@@ -43,10 +62,22 @@ export const SettingsView: React.FC = () => {
       <div className="settings">
         <Setting name="Reader" help="Read the question as text on screen, or have it spoken aloud.">
           <span className="seg">
-            <button type="button" className="btn btn--small" aria-pressed={settings.readerMode === 'visual'}
-              onClick={() => updateSettings({ readerMode: 'visual' })}>Text</button>
-            <button type="button" className="btn btn--small" aria-pressed={settings.readerMode === 'audio'}
-              onClick={() => updateSettings({ readerMode: 'audio' })}>Voice</button>
+            <button
+              type="button"
+              className="btn btn--small"
+              aria-pressed={settings.readerMode === 'visual'}
+              onClick={() => updateSettings({ readerMode: 'visual' })}
+            >
+              Text
+            </button>
+            <button
+              type="button"
+              className="btn btn--small"
+              aria-pressed={settings.readerMode === 'audio'}
+              onClick={() => updateSettings({ readerMode: 'audio' })}
+            >
+              Voice
+            </button>
           </span>
         </Setting>
 
@@ -57,7 +88,6 @@ export const SettingsView: React.FC = () => {
             min="20"
             max="90"
             step="5"
-            // Lower is faster, so the slider runs the other way.
             value={110 - settings.readingSpeed}
             onChange={(e) => updateSettings({ readingSpeed: 110 - Number(e.target.value) })}
           />
@@ -99,7 +129,7 @@ export const SettingsView: React.FC = () => {
         )}
       </div>
 
-      <h2>Scoring</h2>
+      <h2>Scoring & Effects</h2>
       <div className="settings">
         <Setting name="Answer time" help="Seconds to answer after you buzz.">
           <span className="seg">
@@ -138,22 +168,69 @@ export const SettingsView: React.FC = () => {
             {settings.soundEnabled ? 'On' : 'Off'}
           </label>
         </Setting>
+
+        <Setting name="Confetti" help="Celebrate correct answers with a burst of confetti.">
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={settings.confettiEnabled !== false}
+              onChange={(e) => updateSettings({ confettiEnabled: e.target.checked })}
+            />
+            {settings.confettiEnabled !== false ? 'On' : 'Off'}
+          </label>
+        </Setting>
       </div>
 
-      <h2>Data</h2>
+      <h2>Database (Turso)</h2>
       <div className="settings">
         <Setting
-          name="Google Apps Script address"
-          help="Where questions and the leaderboard are stored. Change it only if you have been told to."
-          htmlFor="set-url"
+          name="Turso Database URL"
+          help="The URL for your separate Turso database (libsql://... or https://...)."
+          htmlFor="set-turso-url"
         >
           <input
-            id="set-url"
-            type="url"
-            value={settings.appsScriptUrl}
-            onChange={(e) => updateSettings({ appsScriptUrl: e.target.value.trim() })}
-            placeholder="https://script.google.com/macros/s/.../exec"
+            id="set-turso-url"
+            type="text"
+            value={settings.tursoUrl}
+            onChange={(e) => updateSettings({ tursoUrl: e.target.value.trim() })}
+            placeholder="libsql://your-db-name.turso.io"
           />
+        </Setting>
+
+        <Setting
+          name="Turso Auth Token"
+          help="The auth token for your Turso database. Leave blank if your database is public."
+          htmlFor="set-turso-token"
+        >
+          <input
+            id="set-turso-token"
+            type="password"
+            value={settings.tursoAuthToken}
+            onChange={(e) => updateSettings({ tursoAuthToken: e.target.value.trim() })}
+            placeholder="eyJhbGciOi..."
+          />
+        </Setting>
+
+        <Setting
+          name="Connection Test"
+          help="Verify the database connection and initialize tables."
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+            <button
+              type="button"
+              className="btn btn--small"
+              onClick={handleTestTurso}
+              disabled={isTesting}
+            >
+              {isTesting && <span className="btn__spinner" aria-hidden="true" />}
+              {isTesting ? 'Testing' : 'Test connection'}
+            </button>
+            {testStatus && (
+              <span className={`small ${testStatus.isError ? 'danger' : 'status-done'}`}>
+                {testStatus.message}
+              </span>
+            )}
+          </div>
         </Setting>
 
         <Setting name="Reset" help="Clear your scores and answer history on this device. This cannot be undone.">

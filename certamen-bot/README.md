@@ -1,8 +1,8 @@
 # Certamen Arena
 
 Certamen practice for the CAJCL convention site, served at `/certamen/`.
-React + Vite; questions and the leaderboard live in a Google Sheet behind an
-Apps Script web app (see `src/services/googleSheetsService.ts`).
+React + Vite; questions, user profiles, and the leaderboard live in a separate
+Turso database (see `src/services/tursoService.ts`).
 
 ```bash
 npm install

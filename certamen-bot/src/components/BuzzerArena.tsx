@@ -18,8 +18,6 @@ const capitalise = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 export const BuzzerArena: React.FC = () => {
   const {
     currentQuestion,
-    currentBoni,
-    boniIndex,
     gameStage,
     revealedText,
     fullQuestionText,
@@ -31,8 +29,6 @@ export const BuzzerArena: React.FC = () => {
     setSelectedCategory,
     selectedDifficulty,
     setSelectedDifficulty,
-    playMode,
-    setPlayMode,
     startQuestion,
     buzz,
     submitAnswer,
@@ -48,19 +44,9 @@ export const BuzzerArena: React.FC = () => {
     questions,
   } = useCertamen();
 
-  const isReading =
-    gameStage === 'reading_tossup' ||
-    gameStage === 'reading_boni1' ||
-    gameStage === 'reading_boni2';
-  const isBuzzed =
-    gameStage === 'buzzed_tossup' ||
-    gameStage === 'buzzed_boni1' ||
-    gameStage === 'buzzed_boni2';
-  const isResult =
-    gameStage === 'result_tossup' ||
-    gameStage === 'result_boni1' ||
-    gameStage === 'result_boni2' ||
-    gameStage === 'round_summary';
+  const isReading = gameStage === 'reading_tossup';
+  const isBuzzed = gameStage === 'buzzed_tossup';
+  const isResult = gameStage === 'result_tossup' || gameStage === 'round_summary';
 
   const progressPercent =
     fullQuestionText.length > 0
@@ -84,15 +70,8 @@ export const BuzzerArena: React.FC = () => {
     }
   };
 
-  const nextLabel =
-    playMode === 'tossup_boni' && lastEvaluation?.isCorrect && !boniIndex && currentQuestion?.boni?.length
-      ? 'On to bonus 1'
-      : playMode === 'tossup_boni' && boniIndex === 1 && (currentQuestion?.boni?.length ?? 0) > 1
-      ? 'On to bonus 2'
-      : 'Next question';
-
-  const accepted = boniIndex ? currentBoni?.answers || [] : currentQuestion?.answers || [];
-  const explanation = boniIndex ? currentBoni?.explanation : currentQuestion?.explanation;
+  const accepted = currentQuestion?.answers || [];
+  const explanation = currentQuestion?.explanation;
 
   return (
     <section className="with-rail">
@@ -103,8 +82,11 @@ export const BuzzerArena: React.FC = () => {
           <ul className="filter">
             {(['all', ...Object.keys(CATEGORY_NAMES)] as (Category | 'all')[]).map((cat) => (
               <li key={cat}>
-                <button type="button" aria-pressed={selectedCategory === cat}
-                  onClick={() => setSelectedCategory(cat)}>
+                <button
+                  type="button"
+                  aria-pressed={selectedCategory === cat}
+                  onClick={() => setSelectedCategory(cat)}
+                >
                   {cat === 'all' ? 'All subjects' : CATEGORY_NAMES[cat]}
                 </button>
               </li>
@@ -116,25 +98,15 @@ export const BuzzerArena: React.FC = () => {
           <ul className="filter">
             {LEVELS.map((lvl) => (
               <li key={lvl}>
-                <button type="button" aria-pressed={selectedDifficulty === lvl}
-                  onClick={() => setSelectedDifficulty(lvl)}>
+                <button
+                  type="button"
+                  aria-pressed={selectedDifficulty === lvl}
+                  onClick={() => setSelectedDifficulty(lvl)}
+                >
                   {lvl === 'all' ? 'All levels' : capitalise(lvl)}
                 </button>
               </li>
             ))}
-          </ul>
-        </div>
-        <div className="rail__item">
-          <p className="label">Format</p>
-          <ul className="filter">
-            <li>
-              <button type="button" aria-pressed={playMode === 'tossup_only'}
-                onClick={() => setPlayMode('tossup_only')}>Tossups only</button>
-            </li>
-            <li>
-              <button type="button" aria-pressed={playMode === 'tossup_boni'}
-                onClick={() => setPlayMode('tossup_boni')}>Tossups and boni</button>
-            </li>
           </ul>
         </div>
       </div>
@@ -159,19 +131,21 @@ export const BuzzerArena: React.FC = () => {
             {currentQuestion ? (
               <p className="label label--ink">
                 {CATEGORY_NAMES[currentQuestion.category] ?? currentQuestion.category} &middot;{' '}
-                {capitalise(currentQuestion.difficulty)} &middot;{' '}
-                {boniIndex ? `Bonus ${boniIndex}, 5 points` : 'Tossup, 10 points'}
+                {capitalise(currentQuestion.difficulty)} &middot; Tossup, 10 points
               </p>
             ) : (
               <p className="label">Ready</p>
             )}
-            <p className="label">{questions.length} questions</p>
           </div>
 
           {gameStage === 'idle' ? (
             <div className="stage__idle">
-              <button type="button" className="btn btn--primary buzz" onClick={startQuestion}
-                disabled={isSyncing && questions.length === 0}>
+              <button
+                type="button"
+                className="btn btn--primary buzz"
+                onClick={() => startQuestion()}
+                disabled={isSyncing && questions.length === 0}
+              >
                 {isSyncing && questions.length === 0 ? (
                   <><span className="btn__spinner" aria-hidden="true" />Loading questions</>
                 ) : (
@@ -242,11 +216,19 @@ export const BuzzerArena: React.FC = () => {
 
           {isResult && lastEvaluation && currentQuestion && (
             <div>
-              <p className={`verdict ${lastEvaluation.isCorrect ? 'verdict--right' : 'verdict--wrong'}`}>
-                <span aria-hidden="true">{lastEvaluation.isCorrect ? '✓' : '✗'}</span>
-                <span>{lastEvaluation.isCorrect ? 'Correct' : 'Incorrect'}</span>
-                <span className="verdict__latin">{lastEvaluation.isCorrect ? 'Optimē!' : 'Ēheu!'}</span>
-              </p>
+              {lastEvaluation.wasSkipped ? (
+                <p className="verdict verdict--wrong">
+                  <span aria-hidden="true">—</span>
+                  <span>Skipped</span>
+                  <span className="verdict__latin">Praetermissum</span>
+                </p>
+              ) : (
+                <p className={`verdict ${lastEvaluation.isCorrect ? 'verdict--right' : 'verdict--wrong'}`}>
+                  <span aria-hidden="true">{lastEvaluation.isCorrect ? '✓' : '✗'}</span>
+                  <span>{lastEvaluation.isCorrect ? 'Correct' : 'Incorrect'}</span>
+                  <span className="verdict__latin">{lastEvaluation.isCorrect ? 'Optimē!' : 'Ēheu!'}</span>
+                </p>
+              )}
 
               <dl className="detail answers">
                 <dt>Accepted</dt>
@@ -268,11 +250,15 @@ export const BuzzerArena: React.FC = () => {
 
               <div className="btn-row" style={{ marginTop: 'var(--space-5)' }}>
                 <button type="button" className="btn btn--primary" onClick={nextStep}>
-                  {nextLabel} <span className="key">N</span>
+                  Next question <span className="key">N</span>
                 </button>
-                {!lastEvaluation.isCorrect && (
-                  <button type="button" className="btn" onClick={overrideAnswer}
-                    title="Count this answer as correct">
+                {!lastEvaluation.isCorrect && !lastEvaluation.wasSkipped && (
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={overrideAnswer}
+                    title="Count this answer as correct"
+                  >
                     I was right
                   </button>
                 )}
@@ -285,10 +271,22 @@ export const BuzzerArena: React.FC = () => {
           <div className="dial">
             <span className="label">Reader</span>
             <span className="seg">
-              <button type="button" className="btn btn--small" aria-pressed={settings.readerMode === 'visual'}
-                onClick={() => updateSettings({ readerMode: 'visual' })}>Text</button>
-              <button type="button" className="btn btn--small" aria-pressed={settings.readerMode === 'audio'}
-                onClick={() => updateSettings({ readerMode: 'audio' })}>Voice</button>
+              <button
+                type="button"
+                className="btn btn--small"
+                aria-pressed={settings.readerMode === 'visual'}
+                onClick={() => updateSettings({ readerMode: 'visual' })}
+              >
+                Text
+              </button>
+              <button
+                type="button"
+                className="btn btn--small"
+                aria-pressed={settings.readerMode === 'audio'}
+                onClick={() => updateSettings({ readerMode: 'audio' })}
+              >
+                Voice
+              </button>
             </span>
           </div>
 
@@ -300,7 +298,6 @@ export const BuzzerArena: React.FC = () => {
                 min="20"
                 max="90"
                 step="5"
-                // Lower is faster, so the slider runs the other way.
                 value={110 - settings.readingSpeed}
                 onChange={(e) => updateSettings({ readingSpeed: 110 - Number(e.target.value) })}
               />

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useCertamen } from '../context/CertamenContext';
 import { Category, DifficultyLevel, LeaderboardEntry } from '../types/certamen';
-import { fetchLeaderboardFromCloud } from '../services/googleSheetsService';
+import { fetchLeaderboardFromTurso } from '../services/tursoService';
 import { CATEGORY_NAMES } from './BuzzerArena';
 
 const LEVELS: (DifficultyLevel | 'all')[] = ['all', 'novice', 'intermediate', 'advanced'];
@@ -17,8 +17,9 @@ export const LeaderboardView: React.FC = () => {
   const loadLeaderboard = async () => {
     setIsLoading(true);
     try {
-      const data = await fetchLeaderboardFromCloud(
-        settings.appsScriptUrl,
+      const data = await fetchLeaderboardFromTurso(
+        settings.tursoUrl,
+        settings.tursoAuthToken,
         selectedSubject,
         selectedLevel
       );
@@ -65,7 +66,7 @@ export const LeaderboardView: React.FC = () => {
 
   useEffect(() => {
     loadLeaderboard();
-  }, [selectedSubject, selectedLevel, settings.appsScriptUrl, user.stats.totalPoints]);
+  }, [selectedSubject, selectedLevel, settings.tursoUrl, settings.tursoAuthToken, user.stats.totalPoints]);
 
   const getSubjectPoints = (entry: LeaderboardEntry) => {
     switch (selectedSubject) {
@@ -135,7 +136,7 @@ export const LeaderboardView: React.FC = () => {
       {isLoading && entries.length === 0 ? (
         <div className="waking" role="status">
           <span className="waking__dot" aria-hidden="true" />
-          <span>Loading scores from the sheet. This can take a few seconds.</span>
+          <span>Loading scores from the database...</span>
         </div>
       ) : entries.length === 0 ? (
         <div className="empty">

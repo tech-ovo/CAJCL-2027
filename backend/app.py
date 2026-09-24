@@ -241,22 +241,23 @@ def inspect_secret() -> str:
     lines = []
     for name in ("TURSO_DATABASE_URL", "TURSO_AUTH_TOKEN", "CODE_PEPPER",
                  "CAJCL_ENV", "TURSO_PLATFORM_TOKEN", "TURSO_ORG", "TURSO_DB_NAME",
-                 "APPS_SCRIPT_URL", "APPS_SCRIPT_KEY"):
+                 "APPS_SCRIPT_URL", "APPS_SCRIPT_KEY",
+                 "TURSO_CERTAMEN_DATABASE_URL", "TURSO_CERTAMEN_AUTH_TOKEN"):
         raw = os.environ.get(name)
         if raw is None:
-            lines.append(f"{name:<22} not set")
+            lines.append(f"{name:<28} not set")
             continue
 
         odd = sorted({c for c in raw if not (" " <= c <= "~")})
         described = ", ".join(f"U+{ord(c):04X}" for c in odd) or "none"
         # The URL is not a secret and is useful in full. The rest are shown
         # only at the ends, which is enough to spot a truncated paste.
-        if name == "TURSO_DATABASE_URL" or not raw:
+        if "DATABASE_URL" in name or not raw:
             shown = repr(raw)
         else:
             shown = f"{raw[:6]}...{raw[-4:]}"
         lines.append(
-            f"{name:<22} {len(raw):>4} chars  {shown}  odd characters: {described}")
+            f"{name:<28} {len(raw):>4} chars  {shown}  odd characters: {described}")
 
     from backend.lib.db import connect
     try:
@@ -266,16 +267,26 @@ def inspect_secret() -> str:
                 rows = tx.all("settings.all")
         finally:
             db.close()
-        lines.append(f"\nconnection OK - {len(rows)} setting(s) read back")
+        lines.append(f"\nconvention connection OK - {len(rows)} setting(s) read back")
     except Exception as error:
         text = str(error)
         if "no such table" in text:
             # Reaching the database and finding it bare is a success, not a
             # failure. It is what a brand new Turso database looks like.
-            lines.append("\nconnection OK - database is empty, so run "
+            lines.append("\nconvention connection OK - database is empty, so run "
                          "`modal run backend/app.py::setup` next")
         else:
-            lines.append(f"\nconnection FAILED - {type(error).__name__}: {error}")
+            lines.append(f"\nconvention connection FAILED - {type(error).__name__}: {error}")
+
+    try:
+        from backend.lib import certamen_db
+        res = certamen_db.ping()
+        if res.get("success"):
+            lines.append(f"certamen connection OK - {res.get('count', 0)} question(s) ({'remote Turso' if res.get('is_remote') else 'local'})")
+        else:
+            lines.append(f"certamen connection FAILED - {res.get('error')}")
+    except Exception as error:
+        lines.append(f"certamen connection FAILED - {type(error).__name__}: {error}")
 
     return "\n".join(lines)
 
