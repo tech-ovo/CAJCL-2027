@@ -1,24 +1,29 @@
 /* Judging the pre-convention contests, and reading the results.
  *
  *   #/judging                     every contest, and how far this judge has got
- *   #/judging/12                  one contest's entries, and the score sheet
- *   #/contest-results             every contest, for the chairs
+ *   #/judging/12                  one contest: rank your top N in each division
+ *   #/contest-results             every contest, for the chairs ("Results")
  *   #/contest-results/12          standings with names      (Academics, Awards)
- *   #/contest-results/12/rubric   rules and rubric          (Academics)
+ *   #/contest-results/12/rules    rules text and N          (Academics)
  *
- * TWO JOBS, KEPT APART. Judges score and never see names; the chairs see
- * names and never score. The server enforces both -- the judging endpoints
+ * TWO JOBS, KEPT APART. Judges rank and never see names; the chairs see
+ * names and never rank. The server enforces both -- the judging endpoints
  * take scope `judge` and nothing else -- so neither page has anything to hide.
  *
  * BLIND. A judge sees "Entry 14", a division, and the work -- never a name, a
  * chapter or the file name a student chose.
  *
- * A DRAFT IS NOT A SCORE. "Save draft" keeps a half-finished sheet for later
- * and counts for nothing; "Hand in score" is what the results read.
+ * TOP N, NOT A RUBRIC. In each division (and each Publicity category) a judge
+ * picks their best N entries, in order, and hands that list in. N is set per
+ * contest by the Academics chairs. The server combines the judges' lists; see
+ * contests.rank in backend/lib/contests.py for the points and the tie-breaks.
+ *
+ * A DRAFT IS NOT A RANKING. "Save draft" keeps a half-finished list for later
+ * and counts for nothing; "Hand in" is what the results read.
  */
 
 import * as api from "../api.js";
-import { add, el, clear, field, input, select, button, errorSummary,
+import { add, el, clear, field, select, button, errorSummary, guardUnsaved,
          localDate, emptyState, loadingRows, table, tell } from "../ui.js";
 
 const EXTENSIONS = {
@@ -34,27 +39,27 @@ const PREVIEWABLE_IMAGES = ["image/jpeg", "image/png", "image/gif"];
 
 /* ------------------------------------------------------------------------ */
 
-function statusOf(entry) {
-  const facets = entry.facets;
-  const handed = facets.filter((f) => entry.scores[f]
-                                   && entry.scores[f].status === "submitted").length;
-  const drafted = facets.some((f) => entry.scores[f]
-                                  && entry.scores[f].status === "draft");
-  if (handed === facets.length) return ["done", "✓ Handed in"];
-  if (handed || drafted) {
-    return ["part", facets.length > 1
-      ? `${handed} of ${facets.length} handed in` : "Draft saved"];
-  }
-  return ["none", "Not started"];
+function ordinal(n) {
+  const tens = n % 100;
+  if (tens >= 10 && tens <= 20) return `${n}th`;
+  return n + ({ 1: "st", 2: "nd", 3: "rd" }[n % 10] || "th");
 }
 
 function entryLabel(entry) {
   return `Entry ${entry.id}`;
 }
 
+function groupTitle(group) {
+  return group.facet ? `${group.division} · ${group.facet}` : group.division;
+}
+
+function groupKey(group) {
+  return `${group.division}\u0000${group.facet}`;
+}
+
 function chairNav(itemId, current, canEdit) {
-  const tabs = [["results", "Results", `#/contest-results/${itemId}`]];
-  if (canEdit) tabs.push(["rubric", "Rules and rubric", `#/contest-results/${itemId}/rubric`]);
+  const tabs = [["results", "Standings", `#/contest-results/${itemId}`]];
+  if (canEdit) tabs.push(["rules", "Rules and places", `#/contest-results/${itemId}/rules`]);
   return el("nav", { class: "tabs", "aria-label": "Contest sections" },
     ...tabs.map(([key, label, href]) => {
       const anchor = el("a", { href,
@@ -85,7 +90,7 @@ export async function judgingPage(host, params = []) {
     return;
   }
 
-  await scoringView(host, itemId);
+  await rankingView(host, itemId);
 }
 
 function renderOverview(host, overview) {
@@ -93,14 +98,15 @@ function renderOverview(host, overview) {
   add(host,
     el("h1", {}, "Judging"),
     el("p", { class: "lede" },
-      "Pre-convention contests. Open one to read its entries and hand in your "
-      + "scores. Entries are numbered, never named."),
+      "Pre-convention contests. Open one, read its entries, and hand in your "
+      + "top picks for each division. Entries are numbered, never named."),
     overview.deadline
       ? el("p", { class: "form-note" },
           overview.closed
             ? "Entries are closed, so nothing will change under you."
             : `Entries are still open until ${localDate(overview.deadline, { withTime: true })}. `
-              + "A student who replaces an entry clears the scores on it.")
+              + "A student who replaces an entry takes it off your list, which "
+              + "goes back to draft for you to finish again.")
       : null,
     table([
       { key: "name", label: "Contest",
@@ -108,27 +114,52 @@ function renderOverview(host, overview) {
       { key: "division_label", label: "Divisions",
         render: (row) => row.division_label
           + (row.facet_count ? ` · ${row.facet_count} categories` : "") },
+      { key: "places", label: "Rank", render: (row) => `Top ${row.places}` },
       { key: "entries", label: "Entries", num: true },
-      { key: "scored", label: "You have handed in", num: true,
-        render: (row) => (row.entries ? `${row.scored} of ${row.entries}` : "—") },
+      { key: "handed_in", label: "Your lists handed in", num: true,
+        render: (row) => (row.groups ? `${row.handed_in} of ${row.groups}` : "—") },
     ], overview.contests, { caption: "Pre-convention contests" }));
 }
 
 /* ------------------------------------------------------------------------ */
-/* Scoring                                                                   */
+/* Ranking                                                                   */
 /* ------------------------------------------------------------------------ */
 
-async function scoringView(host, itemId) {
+/* ONE LIST PER DIVISION. Each has a place picker beside every entry; giving
+ * a place that another entry already holds MOVES it, so a list can never hold
+ * one place twice. Picking a place only changes the page -- "Save draft" and
+ * "Hand in" are what reach the server, one division at a time. */
+async function rankingView(host, itemId) {
   const data = await api.get(`/judge/contests/${itemId}`, { statusHost: host });
+  const byId = new Map(data.entries.map((e) => [e.id, e]));
+  const picks = new Map();       // groupKey -> { entryId: place }
+  const comments = new Map();    // groupKey -> text
+  const dirty = new Set();       // groupKeys with unsaved changes
+  const messages = new Map();    // groupKey -> { errors, note }
+  const facets = data.contest.facet_list;
+  let facetShown = facets.find((f) => data.groups.some((g) => g.facet === f)) || "";
   let openId = null;
-  let facet = "";
-  let errors = [];
-  let note = null;
-  let preview = null;          // { entryId, url } or { entryId, error }
+  let listScroll = 0;
+  let preview = null;            // { entryId, url } or { entryId, error }
 
+  for (const group of data.groups) {
+    const key = groupKey(group);
+    // A list handed in before the chairs lowered N keeps places this page
+    // no longer offers. They count for nothing, so they are not shown.
+    const kept = {};
+    const saved = group.ballot ? group.ballot.places : {};
+    for (const id of Object.keys(saved)) {
+      if (saved[id] <= places()) kept[id] = saved[id];
+    }
+    picks.set(key, kept);
+    comments.set(key, group.ballot && group.ballot.comment ? group.ballot.comment : "");
+  }
+
+  guardUnsaved(() => dirty.size > 0, "rankings you have not saved");
   render();
 
   function contest() { return data.contest; }
+  function places() { return data.contest.places; }
 
   function render() {
     clear(host);
@@ -136,7 +167,7 @@ async function scoringView(host, itemId) {
       el("p", { class: "small" }, el("a", { href: "#/judging" }, "← All contests")),
       el("h1", {}, contest().name));
 
-    const open = data.entries.find((e) => e.id === openId);
+    const open = byId.get(openId);
     if (open) {
       add(host, entryPanel(open));
       return;
@@ -148,34 +179,167 @@ async function scoringView(host, itemId) {
       return;
     }
 
-    const divisions = [...new Set(data.entries.map((e) => e.division))];
-    for (const division of divisions) {
-      const rows = data.entries.filter((e) => e.division === division);
-      add(host,
-        el("h2", {}, division),
-        table([
-          { key: "id", label: "Entry",
-            render: (row) => el("a", { href: `#/judging/${itemId}`,
-              onclick: (event) => { event.preventDefault(); openEntry(row); } },
-              entryLabel(row)) },
-          { key: "title", label: "Title",
-            render: (row) => row.title || row.text || (row.link_url ? "Portfolio" : "—") },
-          { key: "status", label: "Your score",
-            render: (row) => {
-              const [state, text] = statusOf(row);
-              return el("span", { class: state === "done" ? "pill pill--done" : "pill" }, text);
-            } },
-        ], rows, { caption: `${contest().name}, ${division}` }));
+    add(host,
+      el("p", { class: "lede" },
+        `In each division, pick your top ${places()} in order and hand the list in. `
+        + "Open an entry to read it."),
+      contest().words_penalty
+        ? el("p", { class: "small muted" },
+            `Entries outside the length limit lose ${contest().words_penalty} points `
+            + "per 100 words under the Convention Book's rule. Weigh that in your ranking.")
+        : null);
+
+    if (facets.length) {
+      const shown = facets.filter((f) => data.groups.some((g) => g.facet === f));
+      add(host, field({ id: "facet-shown", label: "Category",
+        help: "A portfolio is ranked separately in each category it includes.",
+        control: select(shown.map((f) => {
+          const groups = data.groups.filter((g) => g.facet === f);
+          const done = groups.every((g) => g.complete && !dirty.has(groupKey(g)));
+          return [f, done ? `${f} ✓` : f, f === facetShown];
+        }), { onchange: (event) => { facetShown = event.target.value; render(); } }) }));
+    }
+
+    for (const group of data.groups) {
+      if (facets.length && group.facet !== facetShown) continue;
+      const section = el("section", {});
+      add(host, section);
+      drawGroup(section, group);
     }
   }
 
+  function statusOf(group) {
+    const key = groupKey(group);
+    if (dirty.has(key)) return ["part", "Not saved"];
+    if (!group.ballot) return ["none", "Not started"];
+    if (group.ballot.status === "draft") return ["part", "Draft saved"];
+    if (!group.complete) return ["part", `Handed in · now needs ${group.needed}`];
+    return ["done", "✓ Handed in"];
+  }
+
+  function pill(group) {
+    const [state, text] = statusOf(group);
+    return el("span", { class: state === "done" ? "pill pill--done" : "pill" }, text);
+  }
+
+  /* Give `entryId` a place (or none) in `group`, moving that place off any
+   * other entry that held it. Returns the entry that lost it, if any. */
+  function setPlace(group, entryId, place) {
+    const key = groupKey(group);
+    const chosen = picks.get(key);
+    let bumped = null;
+    if (place) {
+      for (const [other, held] of Object.entries(chosen)) {
+        if (held === place && other !== String(entryId)) {
+          delete chosen[other];
+          bumped = other;
+        }
+      }
+      chosen[String(entryId)] = place;
+    } else {
+      delete chosen[String(entryId)];
+    }
+    dirty.add(key);
+    messages.delete(key);
+    return bumped;
+  }
+
+  function placePicker(group, entry, onchange) {
+    const current = picks.get(groupKey(group))[String(entry.id)] || 0;
+    const options = [["", "—", !current]];
+    for (let place = 1; place <= places(); place += 1) {
+      options.push([String(place), ordinal(place), place === current]);
+    }
+    return select(options, {
+      class: "place-picker",
+      "aria-label": `Place for ${entryLabel(entry)}`
+                    + (group.facet ? ` in ${group.facet}` : ""),
+      onchange: (event) => onchange(Number(event.target.value) || 0),
+    });
+  }
+
+  function drawGroup(section, group) {
+    const key = groupKey(group);
+    const rows = group.entry_ids.map((id) => byId.get(id));
+    const pickers = {};
+    const status = el("span", {}, pill(group));
+    const { errors = [], note = null } = messages.get(key) || {};
+
+    const comment = el("textarea", { rows: 3, maxlength: 2000 }, comments.get(key));
+    comment.addEventListener("input", () => {
+      comments.set(key, comment.value);
+      dirty.add(key);
+      clear(status);
+      add(status, pill(group));
+    });
+
+    const handedIn = group.ballot && group.ballot.status === "submitted";
+    clear(section);
+    add(section,
+      el("h2", {}, groupTitle(group), " ", status),
+      el("p", { class: "small muted" },
+        `${rows.length} ${rows.length === 1 ? "entry" : "entries"}. `
+        + (group.needed < places()
+            ? `Fewer than ${places()}, so rank all ${group.needed}.`
+            : `Rank your top ${group.needed}.`)),
+      errorSummary(errors),
+      table([
+        { key: "place", label: "Your place",
+          render: (row) => {
+            const picker = placePicker(group, row, (place) => {
+              const bumped = setPlace(group, row.id, place);
+              if (bumped && pickers[bumped]) pickers[bumped].value = "";
+              clear(status);
+              add(status, pill(group));
+            });
+            pickers[String(row.id)] = picker;
+            return picker;
+          } },
+        { key: "id", label: "Entry",
+          render: (row) => el("a", { href: `#/judging/${itemId}`,
+            onclick: (event) => { event.preventDefault(); openEntry(row); } },
+            entryLabel(row)) },
+        { key: "title", label: "Title",
+          render: (row) => row.title || row.text || (row.link_url ? "Portfolio" : "—") },
+      ], rows, { caption: `${contest().name}, ${groupTitle(group)}` }),
+      field({ id: `comment-${data.groups.indexOf(group)}`, label: "Notes for the chairs",
+              help: "Optional. Students do not see them.",
+              control: comment, wide: true }),
+      note ? el("p", { class: "form-note" }, note) : null,
+      el("div", { class: "btn-row" },
+        button(handedIn ? "Hand in again" : `Hand in top ${group.needed}`, {
+          variant: "btn--primary",
+          onclick: () => save(section, group, true),
+        }),
+        button("Save draft", { onclick: () => save(section, group, false) })));
+  }
+
+  async function save(section, group, submit) {
+    const key = groupKey(group);
+    try {
+      const result = await api.put(`/judge/contests/${itemId}/ballot`, {
+        division: group.division, facet: group.facet,
+        places: picks.get(key), comment: comments.get(key), submit,
+      });
+      group.ballot = { status: result.status, comment: comments.get(key),
+                       places: result.places };
+      picks.set(key, { ...result.places });
+      group.complete = submit && Object.keys(result.places).length >= group.needed;
+      dirty.delete(key);
+      messages.set(key, { errors: [], note: submit
+        ? "Handed in. You can change it and hand it in again."
+        : "Draft saved. It does not count until you hand it in." });
+    } catch (error) {
+      messages.set(key, {
+        errors: error.errors && error.errors.length ? error.errors : [error.message],
+        note: null });
+    }
+    drawGroup(section, group);
+  }
+
   function openEntry(entry) {
+    listScroll = window.scrollY;
     openId = entry.id;
-    const unscored = entry.facets.find((f) => !(entry.scores[f]
-                                                && entry.scores[f].status === "submitted"));
-    facet = unscored === undefined ? entry.facets[0] : unscored;
-    errors = [];
-    note = null;
     render();
     window.scrollTo(0, 0);
     if (entry.has_file) loadPreview(entry);
@@ -185,6 +349,7 @@ async function scoringView(host, itemId) {
     openId = null;
     dropPreview();
     render();
+    window.scrollTo(0, listScroll);
   }
 
   function dropPreview() {
@@ -205,10 +370,10 @@ async function scoringView(host, itemId) {
   }
 
   function entryPanel(entry) {
-    const [, statusText] = statusOf(entry);
     const index = data.entries.indexOf(entry);
-    const next = data.entries.slice(index + 1).concat(data.entries.slice(0, index))
-      .find((e) => statusOf(e)[0] !== "done");
+    const next = data.entries[(index + 1) % data.entries.length];
+    const groups = data.groups.filter((g) => g.division === entry.division
+                                             && entry.facets.includes(g.facet));
 
     return el("div", { class: "grid" },
       el("div", { class: "span-7" },
@@ -216,14 +381,30 @@ async function scoringView(host, itemId) {
           el("p", { class: "label" }, `${contest().name} · ${entry.division}`),
           el("p", { class: "tabula__name" }, entryLabel(entry)),
           el("div", { class: "tabula__row" },
-            el("span", { class: "tabula__code" }, entry.title || ""),
-            el("span", { class: "tabula__id" }, statusText))),
+            el("span", { class: "tabula__code" }, entry.title || ""))),
         work(entry)),
       el("div", { class: "span-5" },
-        scoreSheet(entry),
+        el("div", { class: "panel" },
+          el("h2", {}, "Your place"),
+          ...groups.map((group) => {
+            const status = el("span", {}, pill(group));
+            return field({
+              id: `panel-place-${data.groups.indexOf(group)}`,
+              label: group.facet ? group.facet : `Among ${group.division}`,
+              help: status,
+              control: placePicker(group, entry, (place) => {
+                setPlace(group, entry.id, place);
+                clear(status);
+                add(status, pill(group));
+              }),
+            });
+          }),
+          el("p", { class: "small muted" },
+            "A place taken from another entry moves here. Save or hand in the "
+            + "list from the division's page.")),
         el("div", { class: "btn-row" },
           button("Back to the list", { onclick: () => closeEntry() }),
-          next ? button(`Next: ${entryLabel(next)}`, {
+          next && next !== entry ? button(`Next: ${entryLabel(next)}`, {
             variant: "btn--quiet", onclick: () => openEntry(next),
           }) : null)));
   }
@@ -234,7 +415,9 @@ async function scoringView(host, itemId) {
       parts.push(el("p", { class: "small muted" },
         `${entry.word_count} words`
         + (entry.word_count_source === "declared" ? ", as declared by the student" : "")
-        + (entry.penalty ? ` — outside the limit, so ${entry.penalty} points come off.` : ".")));
+        + (entry.penalty
+            ? ` — outside the limit: a ${entry.penalty}-point penalty under the Convention Book's rule.`
+            : ".")));
     }
     if (entry.link_url) {
       parts.push(el("p", {},
@@ -283,97 +466,6 @@ async function scoringView(host, itemId) {
           : null));
   }
 
-  function scoreSheet(entry) {
-    const saved = entry.scores[facet] || null;
-    const criteria = contest().criteria;
-    const inputs = {};
-
-    const total = el("span", { class: "mono" });
-    const recount = () => {
-      let sum = 0;
-      for (const criterion of criteria) {
-        const value = Number(inputs[criterion.id].value);
-        if (Number.isFinite(value)) sum += value;
-      }
-      total.textContent = `${Math.max(0, sum - entry.penalty)} / ${contest().max_points}`;
-    };
-
-    const rows = criteria.map((criterion) => {
-      const box = el("input", {
-        type: "number", min: 0, max: criterion.max_points, step: "0.5",
-        inputmode: "decimal", class: "rubric__points",
-        value: saved && saved.points[criterion.id] !== undefined
-          ? saved.points[criterion.id] : "",
-      });
-      box.addEventListener("input", recount);
-      inputs[criterion.id] = box;
-      return field({ id: `criterion-${criterion.id}`,
-                     label: `${criterion.label} (out of ${criterion.max_points})`,
-                     control: box });
-    });
-
-    const comment = el("textarea", { rows: 4, maxlength: 2000 },
-                       saved && saved.comment ? saved.comment : "");
-    recount();
-
-    const facetPicker = entry.facets.length > 1
-      ? field({ id: "score-facet", label: "Category",
-                help: "A portfolio is scored once for each category it includes.",
-                control: select(entry.facets.map((f) => {
-                  const done = entry.scores[f] && entry.scores[f].status === "submitted";
-                  return [f, done ? `${f} ✓` : f, f === facet];
-                }), { onchange: (event) => { facet = event.target.value; errors = []; note = null; render(); } }) })
-      : null;
-
-    return el("div", { class: "panel" },
-      el("h2", {}, facet ? `Score: ${facet}` : "Your score"),
-      facetPicker,
-      errorSummary(errors),
-      ...rows,
-      entry.penalty
-        ? el("p", { class: "small" }, `Length penalty: −${entry.penalty}`)
-        : null,
-      el("div", { class: "totals" },
-        el("div", { class: "totals__row totals__row--final" },
-          el("span", {}, "Total"), total)),
-      field({ id: "score-comment", label: "Comment",
-              help: "For the chairs. Students do not see it.",
-              control: comment, wide: true }),
-      note ? el("p", { class: "form-note" }, note) : null,
-      el("div", { class: "btn-row" },
-        button(saved && saved.status === "submitted" ? "Hand in again" : "Hand in score", {
-          variant: "btn--primary",
-          onclick: () => save(entry, inputs, comment, true),
-        }),
-        button("Save draft", {
-          onclick: () => save(entry, inputs, comment, false),
-        })));
-  }
-
-  async function save(entry, inputs, comment, submit) {
-    const points = {};
-    for (const [id, box] of Object.entries(inputs)) {
-      if (box.value !== "") points[id] = box.value;
-    }
-    try {
-      const result = await api.put(`/judge/entries/${entry.id}/score`, {
-        facet, points, comment: comment.value, submit,
-      });
-      entry.scores[facet] = {
-        points, penalty: result.penalty, total: result.total,
-        comment: comment.value, status: result.status,
-      };
-      errors = [];
-      note = submit
-        ? `Handed in: ${result.total} points. You can change it and hand it in again.`
-        : "Draft saved. It does not count until you hand it in.";
-      render();
-    } catch (error) {
-      errors = error.errors && error.errors.length ? error.errors : [error.message];
-      note = null;
-      render();
-    }
-  }
 }
 
 /* ------------------------------------------------------------------------ */
@@ -391,16 +483,16 @@ export async function contestResultsPage(host, params = []) {
     return;
   }
   const data = await api.get(`/admin/contests/${itemId}/results`, { statusHost: host });
+  const current = view === "rules" && data.can_edit ? "rules" : "results";
   clear(host);
   add(host,
     el("p", { class: "small" },
       el("a", { href: "#/contest-results" }, "← All contests")),
     el("h1", {}, data.contest.name),
-    chairNav(itemId, view === "rubric" && data.can_edit ? "rubric" : "results",
-             data.can_edit));
+    chairNav(itemId, current, data.can_edit));
 
-  if (view === "rubric" && data.can_edit) {
-    renderRubric(host, itemId, data);
+  if (current === "rules") {
+    renderRules(host, itemId, data);
   } else {
     renderResults(host, data);
   }
@@ -409,11 +501,11 @@ export async function contestResultsPage(host, params = []) {
 function renderChairOverview(host, overview) {
   clear(host);
   add(host,
-    el("h1", {}, "Contest results"),
+    el("h1", {}, "Results"),
     el("p", { class: "lede" },
-      "Standings for the pre-convention contests, with names. Judges score "
-      + "the entries without seeing whose they are; judging is done by people "
-      + "holding the Contest Judge role, not by the chairs."),
+      "Standings for the pre-convention contests, with names. Judges rank "
+      + "their top entries in each division without seeing whose they are; "
+      + "judging is done by people holding the Contest Judge role, not by the chairs."),
     overview.deadline
       ? el("p", { class: "form-note" },
           overview.closed
@@ -426,13 +518,13 @@ function renderChairOverview(host, overview) {
       { key: "division_label", label: "Divisions",
         render: (row) => row.division_label
           + (row.facet_count ? ` · ${row.facet_count} categories` : "") },
+      { key: "places", label: "Places", num: true },
       { key: "entries", label: "Entries", num: true },
-      { key: "judged", label: "Judged at least once", num: true,
-        render: (row) => (row.entries ? `${row.judged} of ${row.entries}` : "—") },
-      { key: "scores", label: "Scores handed in", num: true },
-      { key: "rubric", label: "",
+      { key: "ballots", label: "Lists handed in", num: true },
+      { key: "judges", label: "Judges", num: true },
+      { key: "rules", label: "",
         render: (row) => (overview.can_edit
-          ? el("a", { href: `#/contest-results/${row.item_id}/rubric` }, "Rules and rubric")
+          ? el("a", { href: `#/contest-results/${row.item_id}/rules` }, "Rules and places")
           : "") },
     ], overview.contests, { caption: "Pre-convention contests" }));
 }
@@ -453,31 +545,47 @@ async function openEntryFile(row) {
 }
 
 function renderResults(host, data) {
+  const n = data.contest.places;
   add(host,
     el("p", { class: "lede" },
       `${data.entry_count} ${data.entry_count === 1 ? "entry" : "entries"}. `
-      + "A score is the mean of its judges' handed-in totals; drafts do not count."),
-    data.contest.must_attend
-      ? el("p", { class: "small muted" },
-          "An entry whose delegate is no longer attending is listed but not placed.")
-      : null,
+      + `${n === 1 ? "One place is" : `${n} places are`} awarded in each division.`),
+    el("p", { class: "small muted" },
+      `Each judge ranks their top ${n}. A judge's 1st is worth ${n} `
+      + `${n === 1 ? "point" : `points, their 2nd ${n - 1}`}`
+      + (n > 2 ? `, and so on down to 1 for a ${ordinal(n)}` : "")
+      + ". Points are added across judges. Equal points go to whoever has more "
+      + "1st places, then more 2nds, and so on; entries still level share a place. "
+      + "Drafts do not count."
+      + (data.contest.must_attend
+          ? " An entry whose delegate is no longer attending is listed but not "
+            + "placed, and those below move up."
+          : "")),
     el("div", { class: "btn-row" },
       button("Print results", { onclick: () => window.print() })));
 
   if (!data.groups.length) {
     add(host, emptyState("No entries yet",
-      "Standings appear here once entries arrive and judges hand in scores."));
+      "Standings appear here once entries arrive and judges hand in their lists."));
     return;
   }
 
   for (const group of data.groups) {
     add(host,
-      el("h2", {}, group.facet ? `${group.division} · ${group.facet}` : group.division),
+      el("h2", {}, groupTitle(group)),
+      el("p", { class: "small muted" },
+        group.ballots
+          ? `${group.ballots} ${group.ballots === 1 ? "judge's list" : "judges' lists"} handed in.`
+          : "No judge has handed in a list yet."),
       table([
-        { key: "place", label: "Place", num: true,
+        { key: "place", label: "Place",
           render: (row) => {
-            if (row.place !== null) return row.place;
-            return row.eligible ? "—" : "Not placed";
+            if (row.place !== null) {
+              return row.awarded ? ordinal(row.place)
+                : el("span", { class: "muted" }, `${ordinal(row.place)} (not awarded)`);
+            }
+            if (!row.eligible) return "Not placed";
+            return "—";
           } },
         { key: "entry_id", label: "Entry", render: (row) => `#${row.entry_id}` },
         { key: "who", label: "Entrant",
@@ -485,7 +593,7 @@ function renderResults(host, data) {
             ? `${row.first_name} ${row.last_name}` : row.school_name)
             + (row.eligible ? "" : " — not attending") },
         { key: "school_name", label: "Chapter" },
-        { key: "work", label: "Entry",
+        { key: "work", label: "Work",
           render: (row) => [
             row.title || row.text || (row.link_url
               ? el("a", { href: row.link_url, target: "_blank",
@@ -496,37 +604,52 @@ function renderResults(host, data) {
               onclick: () => openEntryFile(row),
             }) : null,
           ] },
-        { key: "average", label: "Score", num: true,
-          render: (row) => (row.average === null ? "—" : row.average) },
-        { key: "judges", label: "Judges",
-          render: (row) => (row.judges.length
-            ? row.judges.map((j) => `${j.name}: ${j.total}`).join("; ")
-            : "Not yet scored") },
+        { key: "points", label: "Points", num: true,
+          render: (row) => (row.points
+            ? [String(row.points),
+               row.tie_broken ? el("span", { class: "small muted" }, " · on placings") : null]
+            : "—") },
+        { key: "votes", label: "Judges",
+          render: (row) => (row.votes.length
+            ? row.votes.map((v) => `${v.name}: ${ordinal(v.place)}`).join("; ")
+            : "Not ranked") },
       ], group.entries, {
-        caption: `${data.contest.name}, ${group.division}${group.facet ? `, ${group.facet}` : ""}`,
-      }));
+        caption: `${data.contest.name}, ${groupTitle(group)}`,
+      }),
+      group.comments.length
+        ? el("details", {},
+            el("summary", {}, `Judges' notes (${group.comments.length})`),
+            ...group.comments.map((c) =>
+              el("p", {}, el("strong", {}, `${c.name}: `), c.comment)))
+        : null);
   }
 }
 
-function renderRubric(host, itemId, data) {
+function renderRules(host, itemId, data) {
   const contest = data.contest;
-  let lines = contest.criteria.map((c) => ({ id: c.id, label: c.label,
-                                             max_points: c.max_points }));
   let errors = [];
   let saved = false;
   const holder = el("div");
   add(host, holder);
 
   const rules = el("textarea", { rows: 14 }, contest.rules_md || "");
+  const places = el("input", { type: "number", class: "places-input", min: 1, max: 20, step: 1,
+                               inputmode: "numeric", value: contest.places });
+  rules.addEventListener("input", () => { saved = false; });
+  places.addEventListener("input", () => { saved = false; });
 
   draw();
 
   function draw() {
     clear(holder);
-    const total = lines.reduce((sum, line) => sum + (Number(line.max_points) || 0), 0);
     add(holder,
       errorSummary(errors),
       saved ? el("p", { class: "form-note" }, "Saved.") : null,
+      field({ id: "contest-places", label: "Places awarded in each division",
+              help: "Also how many entries each judge ranks. It can change after "
+                + "judges have handed in: a longer list counts only its first "
+                + "places, and a shorter one is shown to its judge as needing more.",
+              control: places }),
       field({ id: "contest-rules", label: "Rules",
               help: "Shown to everybody entering. **Bold** and lines starting "
                 + "with a dash work as they do in the rest of the site.",
@@ -534,47 +657,16 @@ function renderRubric(host, itemId, data) {
       el("p", { class: "small muted" },
         `Divisions: ${contest.division_label}. These are set by the Convention `
         + "Book and are not changed here."),
-      el("h2", {}, `Rubric — ${total} points`),
-      el("p", { class: "small muted" },
-        data.rubric_locked
-          ? "Judges have already scored this contest, so lines can be reworded "
-            + "but not added, removed or re-weighted."
-          : "Each line is scored out of its points."),
-      ...lines.map((line, index) => el("div", { class: "rubric" },
-        field({ id: `line-${index}-label`, label: `Line ${index + 1}`,
-                control: bind(input({ value: line.label, maxlength: 120 }),
-                              (value) => { line.label = value; }) }),
-        field({ id: `line-${index}-points`, label: "Points",
-                control: bind(el("input", { type: "number", min: 1, max: 1000,
-                                            value: line.max_points,
-                                            disabled: data.rubric_locked }),
-                              (value) => { line.max_points = value; }) }),
-        data.rubric_locked ? null : button("Remove", {
-          variant: "btn--small btn--quiet btn--danger",
-          onclick: () => { lines = lines.filter((l) => l !== line); draw(); },
-        }))),
       el("div", { class: "btn-row" },
-        data.rubric_locked ? null : button("Add a line", {
-          onclick: () => { lines.push({ label: "", max_points: 10 }); draw(); },
-        }),
         button("Save the contest", { variant: "btn--primary", onclick: save })));
-  }
-
-  function bind(control, write) {
-    control.addEventListener("input", () => { write(control.value); saved = false; });
-    return control;
   }
 
   async function save() {
     try {
       await api.put(`/admin/contests/${itemId}`, {
         rules_md: rules.value,
-        criteria: lines.map((l) => ({ id: l.id, label: l.label,
-                                      max_points: Number(l.max_points) })),
+        places: Number(places.value),
       });
-      const fresh = await api.get(`/admin/contests/${itemId}/results`);
-      lines = fresh.contest.criteria.map((c) => ({ id: c.id, label: c.label,
-                                                   max_points: c.max_points }));
       errors = [];
       saved = true;
     } catch (error) {

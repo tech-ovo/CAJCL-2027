@@ -1,8 +1,8 @@
--- Pre-convention contests: entries, rubrics, and judges' scores.
+-- Pre-convention contests: entries, and judges' ranked ballots.
 --
--- `contests` and `contest_criteria` are a handful of rows each and are read
--- whole. Everything touching entries or scores goes through an index: by
--- person, by chapter, or by contest.
+-- `contests` is a handful of rows and is read whole. Everything touching
+-- entries or ballots goes through an index: by person, by chapter, by
+-- contest, or by ballot.
 
 -- name: contests.all
 -- Six rows, joined to the catalog for the name and to skip anything a chair
@@ -10,29 +10,17 @@
 SELECT c.item_id, c.key, i.name, c.entry_kind, c.entered_by, c.divisions,
        c.accepted_types, c.needs_title, c.min_words, c.max_words,
        c.words_penalty, c.max_chars, c.needs_translation, c.must_attend,
-       c.facets, c.rules_md, c.sort_order
+       c.facets, c.rules_md, c.places, c.sort_order
 FROM contests c
 JOIN catalog_items i ON i.id = c.item_id
 WHERE i.active = 1
 ORDER BY c.sort_order, i.name;
 
--- name: contests.criteria_all
-SELECT id, item_id, label, max_points, sort_order
-FROM contest_criteria
-ORDER BY item_id, sort_order, id;
-
 -- name: contests.update_rules
 UPDATE contests SET rules_md = ? WHERE item_id = ?;
 
--- name: contests.criteria_delete
-DELETE FROM contest_criteria WHERE item_id = ?;
-
--- name: contests.criteria_create
-INSERT INTO contest_criteria (item_id, label, max_points, sort_order)
-VALUES (?, ?, ?, ?);
-
--- name: contests.criteria_update
-UPDATE contest_criteria SET label = ? WHERE id = ? AND item_id = ?;
+-- name: contests.update_places
+UPDATE contests SET places = ? WHERE item_id = ?;
 
 -- name: contests.entries_for_person
 -- A delegate's own entries: idx_contest_entries_person.
@@ -76,8 +64,8 @@ INSERT INTO contest_entries (
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: contests.entry_replace
--- Replacing keeps the entry's id, and so its number with the judges. Its
--- scores are deleted separately: they were for the work being replaced.
+-- Replacing keeps the entry's id, and so its number with the judges. It is
+-- taken off judges' ballots separately: they ranked the work being replaced.
 UPDATE contest_entries
 SET division = ?, title = ?, body_text = ?, translation = ?, link_url = ?,
     facets = ?, word_count = ?, word_count_source = ?, drive_file_id = ?,
@@ -88,79 +76,87 @@ WHERE id = ?;
 -- name: contests.entry_delete
 DELETE FROM contest_entries WHERE id = ?;
 
--- name: contests.scores_delete_for_entry
-DELETE FROM contest_scores WHERE entry_id = ?;
+-- name: contests.ballots_reopen_for_entry
+-- Every ballot this entry is on goes back to draft, before the entry is
+-- taken off them: the judge's list now has a gap to fill.
+-- idx_contest_ballot_places_entry, then primary-key updates.
+UPDATE contest_ballots SET status = 'draft', updated_at = ?
+WHERE id IN (SELECT ballot_id FROM contest_ballot_places WHERE entry_id = ?);
+
+-- name: contests.ballot_places_delete_for_entry
+DELETE FROM contest_ballot_places WHERE entry_id = ?;
 
 -- name: contests.entries_for_judging
 -- WHAT A JUDGE SEES, AND NOTHING MORE: no person, no chapter, no file name.
 -- Chapter entries (Publicity) are not anonymous -- a portfolio names its
 -- school on every page -- but the chapter still is not sent from here.
---
--- idx_contest_entries_item, then this judge's own scores through the
--- (entry_id, judge_person_id, facet) unique index.
+-- idx_contest_entries_item.
 SELECT e.id, e.division, e.title, e.body_text, e.translation, e.link_url,
        e.facets, e.word_count, e.word_count_source, e.mime_type,
-       e.size_bytes, e.drive_file_id IS NOT NULL AS has_file,
-       s.facet AS score_facet, s.points_json, s.penalty, s.total,
-       s.comment, s.status AS score_status
+       e.size_bytes, e.drive_file_id IS NOT NULL AS has_file
 FROM contest_entries e
-LEFT JOIN contest_scores s
-       ON s.entry_id = e.id AND s.judge_person_id = ?
 WHERE e.item_id = ?
 ORDER BY e.division, e.id;
 
+-- name: contests.entry_groups
+-- Which divisions (and Publicity categories) a contest has entries in, for
+-- counting the ballots a judge owes. idx_contest_entries_item.
+SELECT division, facets FROM contest_entries WHERE item_id = ?;
+
+-- name: contests.ballots_for_judge
+-- One judge's ballots in one contest, with their places in order. The
+-- (item_id, judge_person_id, division, facet) unique index, then each
+-- ballot's places by primary key.
+SELECT b.id, b.division, b.facet, b.comment, b.status, b.updated_at,
+       p.place, p.entry_id
+FROM contest_ballots b
+LEFT JOIN contest_ballot_places p ON p.ballot_id = b.id
+WHERE b.item_id = ? AND b.judge_person_id = ?
+ORDER BY b.id, p.place;
+
 -- name: contests.judge_progress
--- The judge's front page: how many entries each contest has, and how many
--- this judge has handed in. Driven from the six contests, one indexed count
--- per contest -- never a scan of every entry.
+-- The judge's front page: how many ballots this judge has handed in, per
+-- contest. Driven from the six contests, one indexed count per contest.
 SELECT c.item_id,
        (SELECT COUNT(*) FROM contest_entries e
          WHERE e.item_id = c.item_id)                         AS entries,
-       (SELECT COUNT(DISTINCT s.entry_id)
-          FROM contest_scores s
-          JOIN contest_entries e ON e.id = s.entry_id
-         WHERE s.judge_person_id = ? AND s.status = 'submitted'
-           AND e.item_id = c.item_id)                         AS scored
+       (SELECT COUNT(*) FROM contest_ballots b
+         WHERE b.item_id = c.item_id AND b.judge_person_id = ?
+           AND b.status = 'submitted')                        AS handed_in
 FROM contests c;
 
--- name: contests.score_upsert
--- One row per judge, entry and facet, so saving twice updates rather than
--- adding a second score that would count double in the average.
-INSERT INTO contest_scores (entry_id, judge_person_id, facet, points_json,
-                            penalty, total, comment, status, created_at,
-                            updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT (entry_id, judge_person_id, facet) DO UPDATE SET
-  points_json = excluded.points_json,
-  penalty     = excluded.penalty,
-  total       = excluded.total,
-  comment     = excluded.comment,
-  status      = excluded.status,
-  updated_at  = excluded.updated_at;
+-- name: contests.ballot_upsert
+-- One ballot per judge, contest, division and category, so saving twice
+-- updates rather than adding a second list that would count double.
+INSERT INTO contest_ballots (item_id, division, facet, judge_person_id,
+                             comment, status, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT (item_id, judge_person_id, division, facet) DO UPDATE SET
+  comment    = excluded.comment,
+  status     = excluded.status,
+  updated_at = excluded.updated_at;
 
--- name: contests.scored_count
--- Whether a rubric can still change. Driven from this contest's entries, then
--- the unique index on contest_scores for each.
-SELECT COUNT(*) AS n
-FROM contest_entries e
-JOIN contest_scores s ON s.entry_id = e.id
-WHERE e.item_id = ?;
+-- name: contests.ballot_get
+SELECT id FROM contest_ballots
+WHERE item_id = ? AND judge_person_id = ? AND division = ? AND facet = ?;
+
+-- name: contests.ballot_places_delete
+DELETE FROM contest_ballot_places WHERE ballot_id = ?;
+
+-- name: contests.ballot_place_create
+INSERT INTO contest_ballot_places (ballot_id, place, entry_id) VALUES (?, ?, ?);
 
 -- name: contests.results_overview
 -- The chairs' front page. Driven from the six contests, one indexed count
--- per contest: entries through idx_contest_entries_item, then each entry's
--- handed-in scores through the unique index on contest_scores.
+-- per contest: entries through idx_contest_entries_item, ballots through
+-- idx_contest_ballots_item.
 SELECT c.item_id,
        (SELECT COUNT(*) FROM contest_entries e
          WHERE e.item_id = c.item_id)                         AS entries,
-       (SELECT COUNT(DISTINCT s.entry_id)
-          FROM contest_entries e
-          JOIN contest_scores s ON s.entry_id = e.id
-         WHERE e.item_id = c.item_id AND s.status = 'submitted') AS judged,
-       (SELECT COUNT(*)
-          FROM contest_entries e
-          JOIN contest_scores s ON s.entry_id = e.id
-         WHERE e.item_id = c.item_id AND s.status = 'submitted') AS scores
+       (SELECT COUNT(*) FROM contest_ballots b
+         WHERE b.item_id = c.item_id AND b.status = 'submitted') AS ballots,
+       (SELECT COUNT(DISTINCT b.judge_person_id) FROM contest_ballots b
+         WHERE b.item_id = c.item_id AND b.status = 'submitted') AS judges
 FROM contests c;
 
 -- name: contests.results_entries
@@ -196,13 +192,15 @@ LEFT JOIN people p ON p.id = e.person_id
 WHERE e.item_id = ?
 ORDER BY sc.number, sc.name, p.last_name, p.first_name;
 
--- name: contests.results_scores
--- Every submitted score in one contest, with the judge's name so a chair can
--- chase a missing one. Entries by idx_contest_entries_item, then each entry's
--- scores through the unique index.
-SELECT s.entry_id, s.facet, s.total, s.penalty, s.comment, s.status,
-       s.judge_person_id, j.first_name AS judge_first, j.last_name AS judge_last
-FROM contest_entries e
-JOIN contest_scores s ON s.entry_id = e.id
-JOIN people j ON j.id = s.judge_person_id
-WHERE e.item_id = ? AND s.status = 'submitted';
+-- name: contests.results_ballots
+-- Every handed-in ballot in one contest, with its places and the judge's
+-- name so a chair can chase a missing one. idx_contest_ballots_item, then
+-- each ballot's places by primary key.
+SELECT b.id, b.division, b.facet, b.comment, b.judge_person_id,
+       j.first_name AS judge_first, j.last_name AS judge_last,
+       p.place, p.entry_id
+FROM contest_ballots b
+JOIN people j ON j.id = b.judge_person_id
+LEFT JOIN contest_ballot_places p ON p.ballot_id = b.id
+WHERE b.item_id = ? AND b.status = 'submitted'
+ORDER BY b.id, p.place;

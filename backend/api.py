@@ -990,10 +990,10 @@ def _self(tx, principal: auth.Principal) -> dict:
 # THREE AUDIENCES, THREE SETS OF ENDPOINTS.
 #   /me/contests        a delegate's own entries
 #   /sponsor/contests   a chapter's Publicity portfolio, and its delegates' entries
-#   /judge/...          entries WITHOUT names, and the judge's own scores.
+#   /judge/...          entries WITHOUT names, and the judge's own rankings.
 #                       Scope `judge` ONLY: the chairs who read the results
-#                       with names attached do not also score the entries.
-#   /admin/contests     results WITH names, and the rubric, for the chairs
+#                       with names attached do not also rank the entries.
+#   /admin/contests     results WITH names, the rules and N, for the chairs
 #
 # A file entry is two steps that cannot share a transaction: Drive first, then
 # the row. Drive is slow, and holding the single write lock across a 20 MB
@@ -1150,8 +1150,8 @@ def _write_entry(request: Request, principal: auth.Principal, contest: dict,
             else:
                 entry_id = existing["id"]
                 tx.run("contests.entry_replace", (*columns, now, entry_id))
-                # Scores were for the work that was there before.
-                tx.run("contests.scores_delete_for_entry", (entry_id,))
+                # Judges ranked the work that was there before.
+                _unrank(tx, entry_id, now)
                 if existing["drive_file_id"] and \
                         existing["drive_file_id"] != fields["drive_file_id"]:
                     replaced_file = existing["drive_file_id"]
@@ -1191,6 +1191,13 @@ def _trash_quietly(file_id: str | None) -> None:
         pass
 
 
+def _unrank(tx, entry_id: int, now: str) -> None:
+    """Take an entry off every judge's ballot, and put those ballots back to
+    draft so the judge sees the gap and hands the list in again."""
+    tx.run("contests.ballots_reopen_for_entry", (now, entry_id))
+    tx.run("contests.ballot_places_delete_for_entry", (entry_id,))
+
+
 def _withdraw_entry(request: Request, principal: auth.Principal, contest: dict,
                     school: dict, person: dict | None) -> dict:
     with database().tx(request_id=request_id(request)) as tx:
@@ -1200,7 +1207,7 @@ def _withdraw_entry(request: Request, principal: auth.Principal, contest: dict,
                     tx.one("contests.entry_for_chapter", (school["id"], contest["item_id"])))
         if existing is None:
             raise _contest_error("There is no entry to withdraw.")
-        tx.run("contests.scores_delete_for_entry", (existing["id"],))
+        _unrank(tx, existing["id"], clock.now_iso())
         tx.run("contests.entry_delete", (existing["id"],))
         tx.audit("contest.withdraw",
                  f"{principal.display_name} withdrew "
@@ -1462,12 +1469,16 @@ def judge_contests(principal: auth.Principal = guard("judge.contests", "judge",
         listed = []
         for contest in contests.load(tx):
             counts = progress.get(contest["item_id"], {})
+            groups = contests.groups_of(
+                contest, tx.all("contests.entry_groups", (contest["item_id"],)))
             listed.append({"item_id": contest["item_id"], "name": contest["name"],
                            "entered_by": contest["entered_by"],
                            "division_label": contest["division_label"],
                            "facet_count": len(contest["facet_list"]),
+                           "places": contest["places"],
                            "entries": counts.get("entries", 0),
-                           "scored": counts.get("scored", 0)})
+                           "groups": len(groups),
+                           "handed_in": counts.get("handed_in", 0)})
         return {**_deadline_view(tx), "contests": listed}
 
 
@@ -1478,10 +1489,47 @@ def judge_contest(item_id: int,
     _judge_only(principal)
     with database().read() as tx:
         contest = contests.by_item(tx, item_id)
-        rows = tx.all("contests.entries_for_judging", (principal.person_id, item_id))
+        rows = tx.all("contests.entries_for_judging", (item_id,))
+        ballots = tx.all("contests.ballots_for_judge", (item_id, principal.person_id))
         return {**_deadline_view(tx),
                 "contest": contests.public_view(contest),
-                "entries": contests.judge_view(contest, rows)}
+                **contests.judge_view(contest, rows, ballots)}
+
+
+@app.put("/judge/contests/{item_id}/ballot")
+def judge_ballot(item_id: int, request: Request, payload: dict = Body(...),
+                 principal: auth.Principal = guard("judge.contests.ballot", "judge",
+                                                   school_rule="any", writes=True)):
+    """One judge's top N for one division (and Publicity category).
+
+    `{division, facet, places: {entry_id: place}, comment, submit}`. Saving
+    replaces the whole list, so a place left empty is cleared.
+    """
+    _judge_only(principal)
+    now = clock.now_iso()
+    with database().tx(request_id=request_id(request)) as tx:
+        contest = contests.by_item(tx, item_id)
+        rows = tx.all("contests.entries_for_judging", (item_id,))
+        ballot = contests.check_ballot(contest, rows, payload)
+        tx.run("contests.ballot_upsert", (
+            item_id, ballot["division"], ballot["facet"], principal.person_id,
+            ballot["comment"], ballot["status"], now, now))
+        ballot_id = tx.value("contests.ballot_get", (
+            item_id, principal.person_id, ballot["division"], ballot["facet"]))
+        tx.run("contests.ballot_places_delete", (ballot_id,))
+        for place, entry_id in ballot["places"]:
+            tx.run("contests.ballot_place_create", (ballot_id, place, entry_id))
+        where = ballot["division"] + (f", {ballot['facet']}" if ballot["facet"] else "")
+        tx.audit("contest.rank",
+                 f"{principal.display_name} "
+                 + ("handed in" if ballot["status"] == "submitted" else "saved a draft of")
+                 + f" a ranking for {contest['name']} ({where}).",
+                 actor_person_id=principal.person_id,
+                 impersonator_person_id=principal.impersonator_person_id,
+                 entity_type="contest", entity_id=item_id,
+                 changed_fields=["places", "comment", "status"])
+    return {"ok": True, "status": ballot["status"],
+            "places": {str(e): p for p, e in ballot["places"]}}
 
 
 @app.get("/judge/entries/{entry_id}/file")
@@ -1495,35 +1543,6 @@ def judge_entry_file(entry_id: int,
         raise auth.ForbiddenError("no such entry")
     extension = contests.extension_of(row["original_name"] or "")
     return _file_response(row, contests.anonymous_name(row, extension))
-
-
-@app.put("/judge/entries/{entry_id}/score")
-def judge_score(entry_id: int, request: Request, payload: dict = Body(...),
-                principal: auth.Principal = guard("judge.entries.score", "judge",
-                                                  school_rule="any", writes=True)):
-    _judge_only(principal)
-    now = clock.now_iso()
-    with database().tx(request_id=request_id(request)) as tx:
-        entry = tx.one("contests.entry_get", (entry_id,))
-        if entry is None:
-            raise auth.ForbiddenError("no such entry")
-        contest = contests.by_item(tx, entry["item_id"])
-        score = contests.check_score(contest, entry, payload)
-        tx.run("contests.score_upsert", (
-            entry_id, principal.person_id, score["facet"], score["points_json"],
-            score["penalty"], score["total"], score["comment"], score["status"],
-            now, now))
-        facet = f" ({score['facet']})" if score["facet"] else ""
-        tx.audit("contest.score",
-                 f"{principal.display_name} "
-                 + ("handed in" if score["status"] == "submitted" else "saved a draft of")
-                 + f" a score for {contest['name']} entry {entry_id}{facet}.",
-                 actor_person_id=principal.person_id,
-                 impersonator_person_id=principal.impersonator_person_id,
-                 entity_type="contest_entry", entity_id=entry_id,
-                 changed_fields=["points", "comment", "status"])
-    return {"ok": True, "total": score["total"], "penalty": score["penalty"],
-            "status": score["status"]}
 
 
 # -- the chairs --------------------------------------------------------------
@@ -1542,9 +1561,10 @@ def contests_overview(principal: auth.Principal = guard("admin.contests.list",
                            "entered_by": contest["entered_by"],
                            "division_label": contest["division_label"],
                            "facet_count": len(contest["facet_list"]),
+                           "places": contest["places"],
                            "entries": row.get("entries", 0),
-                           "judged": row.get("judged", 0),
-                           "scores": row.get("scores", 0)})
+                           "ballots": row.get("ballots", 0),
+                           "judges": row.get("judges", 0)})
         return {**_deadline_view(tx), "contests": listed,
                 "can_edit": principal.has_scope("academics")}
 
@@ -1610,13 +1630,11 @@ def contest_results(item_id: int,
     with database().read() as tx:
         contest = contests.by_item(tx, item_id)
         entries = [dict(r) for r in tx.all("contests.results_entries", (item_id,))]
-        scores = [dict(r) for r in tx.all("contests.results_scores", (item_id,))]
-        scored = tx.value("contests.scored_count", (item_id,), 0)
+        ballots = [dict(r) for r in tx.all("contests.results_ballots", (item_id,))]
         return {**_deadline_view(tx),
                 "contest": contests.public_view(contest),
-                "groups": contests.rank(contest, entries, scores),
+                "groups": contests.rank(contest, entries, ballots),
                 "entry_count": len(entries),
-                "rubric_locked": scored > 0,
                 "can_edit": principal.has_scope("academics")}
 
 
@@ -1625,12 +1643,12 @@ def update_contest(item_id: int, request: Request, payload: dict = Body(...),
                    principal: auth.Principal = guard("admin.contests.update",
                                                      "academics", school_rule="any",
                                                      writes=True)):
-    """The rules text and the rubric.
+    """The rules text, and N: how many places the contest awards and so how
+    many entries each judge ranks.
 
-    ONCE ANYBODY HAS SCORED, THE RUBRIC'S SHAPE IS FIXED. A score is stored as
-    points per criterion, so adding, removing or re-weighting a criterion would
-    leave every score already handed in meaning something different. Labels
-    may still be reworded.
+    N MAY CHANGE AFTER JUDGING. The results read it fresh: a ballot longer
+    than N counts only its first N places, and one shorter is counted as it
+    stands and shown to its judge as needing more.
 
     Divisions are NOT editable here. They are the Convention Book's rule, and
     each entry's division is worked out when it arrives -- see contests.divisions
@@ -1645,39 +1663,16 @@ def update_contest(item_id: int, request: Request, payload: dict = Body(...),
             tx.run("contests.update_rules", (rules or None, item_id))
             changed.append("rules_md")
 
-        criteria = payload.get("criteria")
-        if criteria is not None:
-            rows = []
-            for index, item in enumerate(criteria):
-                label = " ".join(str(item.get("label") or "").split())[:120]
-                try:
-                    points = int(item.get("max_points"))
-                except (TypeError, ValueError):
-                    points = 0
-                if not label or points <= 0 or points > 1000:
-                    raise _contest_error(
-                        f"Line {index + 1} of the rubric needs a name and a whole "
-                        f"number of points above zero.")
-                rows.append((item.get("id"), label, points))
-            if not rows:
-                raise _contest_error("A rubric needs at least one line.")
-
-            current = [(c["id"], c["label"], c["max_points"]) for c in contest["criteria"]]
-            same_shape = ([(r[0], r[2]) for r in rows]
-                          == [(c[0], c[2]) for c in current])
-            if tx.value("contests.scored_count", (item_id,), 0):
-                if not same_shape:
-                    raise _contest_error(
-                        "Judges have already scored this contest, so its rubric "
-                        "can only be reworded, not changed.")
-                for criterion_id, label, _ in rows:
-                    tx.run("contests.criteria_update", (label, criterion_id, item_id))
-            else:
-                tx.run("contests.criteria_delete", (item_id,))
-                for index, (_, label, points) in enumerate(rows):
-                    tx.run("contests.criteria_create",
-                           (item_id, label, points, (index + 1) * 10))
-            changed.append("criteria")
+        if "places" in payload:
+            try:
+                places = int(payload.get("places"))
+            except (TypeError, ValueError):
+                places = 0
+            if not 1 <= places <= 20:
+                raise _contest_error("Places must be a whole number from 1 to 20.")
+            if places != contest["places"]:
+                tx.run("contests.update_places", (places, item_id))
+                changed.append("places")
 
         if changed:
             tx.audit("contest.update",

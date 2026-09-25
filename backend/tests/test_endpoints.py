@@ -185,13 +185,13 @@ ROUTES = [
     ("judge.contests", "GET", "/judge/contests", None),
     ("judge.contest", "GET", "/judge/contests/1", None),
     ("judge.entries.file", "GET", "/judge/entries/{entry}/file", None),
-    ("judge.entries.score", "PUT", "/judge/entries/{entry}/score",
-     {"points": {}, "submit": True}),
+    ("judge.contests.ballot", "PUT", "/judge/contests/1/ballot",
+     {"division": "Open", "places": {}, "submit": True}),
     ("admin.contests.list", "GET", "/admin/contests", None),
     ("admin.contests.file", "GET", "/admin/contests/entries/{entry}/file", None),
     ("admin.contests.submissions", "GET", "/admin/contests/submissions", None),
     ("admin.contests.results", "GET", "/admin/contests/1/results", None),
-    ("admin.contests.update", "PUT", "/admin/contests/1", {"rules_md": "x"}),
+    ("admin.contests.update", "PUT", "/admin/contests/1", {"rules_md": "x", "places": 3}),
 ]
 
 

@@ -17,13 +17,21 @@ rules), then `docs/design.md` for the visual rules.
   `ROUTES`; every named query needs a Python caller; a new migration needs
   `python scripts/checksum_migrations.py`; a new table needs a block in
   `docs/schema.md` and a size entry in `scripts/check_query_plans.py`.
-- Pre-convention contests (migration 008): `lib/contests.py` (rules, divisions,
-  word counts, scoring, ranking), `lib/drive.py` (Apps Script puppet client, or
+- Pre-convention contests (migrations 008, 009): `lib/contests.py` (rules, divisions,
+  word counts, ballots, ranking), `lib/drive.py` (Apps Script puppet client, or
   `DRIVE_LOCAL_DIR` folder stand-in locally/tests), `queries/contests.sql`,
   endpoints under `/me/contests`, `/sponsor/contests`, `/judge/...`,
   `/admin/contests/...`. Pages: `js/pages/contests.js` (`#/contests`,
   `#/chapter-contests`, `#/contest-submissions`) and `js/pages/judging.js` (`#/judging[/id]` for
-  judges, `#/contest-results[/id[/rubric]]` for Academics/Awards chairs).
+  judges, `#/contest-results[/id[/rules]]` for Academics/Awards chairs, nav
+  "Results"). No rubric (dropped in 009): per division (and Publicity
+  category) each judge hands in a ballot ranking their top N
+  (`contest_ballots` + `contest_ballot_places`, `PUT /judge/contests/{id}/ballot`);
+  N is `contests.places` (default 3), set on the "Rules and places" tab and
+  changeable any time. `contests.rank` scores a judge's 1st as N points down to
+  1 for Nth, sums across submitted ballots, breaks ties on count of 1sts, then
+  2nds, …, and shares a place if still level. Replacing/withdrawing an entry
+  removes it from ballots and reopens them as drafts (`api._unrank`).
   `#/contest-submissions` (nav "Submissions" for registration chairs) lists
   every entry with names and chapters, no scores, from
   `GET /admin/contests/submissions`. Sponsors see their delegates' entries on

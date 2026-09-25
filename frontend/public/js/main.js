@@ -84,7 +84,7 @@ const ROUTES = [
   // Pre-convention contests. A delegate enters their own; a chapter enters
   // Publicity, and a chair can open any chapter's page the way they open its
   // roster. Judging is for judges ONLY; the chairs read the results, with
-  // names, and set the rubric, but do not score.
+  // names, and set the rules and how many places, but do not rank.
   [/^\/contests$/,               contestsPage,      { scope: "delegate" }],
   [/^\/chapter-contests$/,       chapterContestsPage, { scope: ["chapter", "registration", "academics"] }],
   [/^\/chapter-contests\/(\d+)$/, chapterContestsPage, { scope: ["registration", "academics"] }],
@@ -92,7 +92,7 @@ const ROUTES = [
   [/^\/judging\/(\d+)$/,         judgingPage,       { scope: "judge" }],
   [/^\/contest-submissions$/,    contestSubmissionsPage, { scope: ["registration", "academics", "awards"] }],
   [/^\/contest-results$/,        contestResultsPage, { scope: ["academics", "awards"] }],
-  [/^\/contest-results\/(\d+)(?:\/(rubric))?$/, contestResultsPage, { scope: ["academics", "awards"] }],
+  [/^\/contest-results\/(\d+)(?:\/(rules))?$/, contestResultsPage, { scope: ["academics", "awards"] }],
   [/^\/admin$/,                  adminPage,         { scope: "*" }],
   [/^\/audit$/,                  auditPage,         { scope: "*" }],
 ];
@@ -530,7 +530,7 @@ function renderNav() {
     }
     if (hasScope("academics") || hasScope("awards")) {
       administrative.push(["#/entries", "Entries"],
-                          ["#/contest-results", "Contest results"]);
+                          ["#/contest-results", "Results"]);
     }
     // By ROLE, not scope: `*` holds every scope, and an administrator is not
     // thereby a judge. The Contest Judge role is what makes somebody one.

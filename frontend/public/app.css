@@ -964,7 +964,7 @@ th[aria-sort] { color: var(--text); }
  *
  * A judge reads a myth in the page, so its text keeps the student's line
  * breaks -- a poem without them is not the poem. Long entries scroll inside
- * their own box so the score sheet beside them stays in view. */
+ * their own box so the place picker beside them stays in view. */
 .entry-text {
   white-space: pre-wrap; font-family: var(--font-serif);
   line-height: var(--leading-body);
@@ -978,15 +978,10 @@ th[aria-sort] { color: var(--text); }
 }
 .entry-preview--document { width: 100%; height: 70vh; }
 
-/* One rubric line: its name takes the room, its points stay narrow. */
-.rubric {
-  display: grid; grid-template-columns: 1fr 7rem auto;
-  gap: var(--space-3); align-items: end;
-}
-.rubric__points { max-width: 7rem; font-variant-numeric: tabular-nums; }
-@media (max-width: 40rem) {
-  .rubric { grid-template-columns: 1fr 5rem; }
-}
+/* A judge's place picker sits in a table column and only ever says "12th";
+ * N itself is a number of the same size. */
+.place-picker { width: auto; min-width: 6rem; }
+.places-input { max-width: 7rem; font-variant-numeric: tabular-nums; }
 
 details > summary {
   cursor: pointer; font-family: var(--font-sans); font-size: var(--size-sm);

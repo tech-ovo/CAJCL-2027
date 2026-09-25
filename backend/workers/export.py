@@ -61,8 +61,8 @@ REDACT = {
     # often their name. The Drive pointers lead straight to the work.
     "contest_entries": ["title", "body_text", "translation", "link_url",
                         "original_name", "drive_file_id", "drive_folder_id"],
-    # A judge's comment is free text about a student's work.
-    "contest_scores": ["comment"],
+    # A judge's notes are free text about students' work.
+    "contest_ballots": ["comment"],
 }
 
 # Never exported at all, in either version. A session token is a live

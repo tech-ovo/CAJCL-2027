@@ -40,15 +40,14 @@ function deadlineLine(data) {
 }
 
 function rulesBlock(contest) {
-  const rubric = contest.criteria.length
-    ? el("ul", {}, ...contest.criteria.map((c) =>
-        el("li", {}, `${c.label} — ${c.max_points} points`)))
-    : null;
   return el("details", {},
     el("summary", {}, "Rules and judging"),
     renderMarkdown(contest.rules_md || ""),
-    rubric ? el("p", {}, el("strong", {}, `Judged out of ${contest.max_points}:`)) : null,
-    rubric);
+    el("p", {}, el("strong", {}, "Judging: "),
+      `judges read every entry in a division without knowing whose it is, and `
+      + `each picks their top ${contest.places}. `
+      + `${contest.places === 1 ? "One place is" : `${contest.places} places are`} `
+      + "awarded in each division."));
 }
 
 function statusPill(entry) {
@@ -536,7 +535,7 @@ export async function chapterContestsPage(host, params = []) {
 
 /* WHO HAS SENT WHAT. The question a registration chair is asked is "did my
  * student's poster arrive?", so this is a list with names and chapters and
- * the files themselves -- and no scores, which belong to Contest results.
+ * the files themselves -- and no scores, which belong to Results.
  *
  * Filtering is local: everything is already here. Only the list under the
  * filters is redrawn, so the search box keeps its focus while typing. */
@@ -565,7 +564,7 @@ export async function contestSubmissionsPage(host) {
     el("h1", {}, "Contest submissions"),
     el("p", { class: "lede" },
       "Every pre-convention entry from every chapter, with who sent it. "
-      + "Scores are on Contest results."),
+      + "Placings are on Results."),
     deadlineLine(data),
     headline(),
     filters(),

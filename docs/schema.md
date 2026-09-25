@@ -571,7 +571,7 @@ CREATE TABLE documents (
 
 ## Pre-convention contests
 
-Delegates submit Digital Art/Poster, Modern Myth, Original Poetry, Original Slogan (English) and Original Slogan (Latin); a chapter submits its Publicity portfolio. Judges score them on the site, without seeing names or chapters, and the Academics chairs read the results. Created in `008_contests.sql`, which replaced the unused `contest_submissions` placeholder from 004.
+Delegates submit Digital Art/Poster, Modern Myth, Original Poetry, Original Slogan (English) and Original Slogan (Latin); a chapter submits its Publicity portfolio. Judges rank their top N in each division on the site, without seeing names or chapters, and the Academics chairs read the results. Created in `008_contests.sql`, which replaced the unused `contest_submissions` placeholder from 004; `009_contest_rankings.sql` replaced 008's rubric scoring with ranked ballots.
 
 Each contest is a `catalog_items` row in the `preconvention` category — which stays **inactive**, because these are not choices on the activity sheet — plus one row here saying how it is entered.
 
@@ -593,20 +593,13 @@ CREATE TABLE contests (
   must_attend       INTEGER NOT NULL DEFAULT 1,   -- 0 for Publicity only
   facets            TEXT,             -- newline-separated; Publicity's eight categories
   rules_md          TEXT,
-  sort_order        INTEGER NOT NULL DEFAULT 0
+  sort_order        INTEGER NOT NULL DEFAULT 0,
+  places            INTEGER NOT NULL DEFAULT 3    -- N: places awarded, entries each judge ranks (009)
+                      CHECK (places BETWEEN 1 AND 20)
 );
-
-CREATE TABLE contest_criteria (
-  id          INTEGER PRIMARY KEY,
-  item_id     INTEGER NOT NULL REFERENCES contests(item_id),
-  label       TEXT NOT NULL,
-  max_points  INTEGER NOT NULL CHECK (max_points > 0),
-  sort_order  INTEGER NOT NULL DEFAULT 0
-);
-CREATE INDEX idx_contest_criteria_item ON contest_criteria (item_id, sort_order);
 ```
 
-`divisions`: `none` → `Open`; `level` → `MS`/`HS` from the chapter (Publicity); `level_grade` → `MS`, `HS 9–10`, `HS 11–12` (Myth, Poetry, slogans); `latin_level` → exactly `MS-I`, `MS-II`, `MS-III`, `HS-I`, `HS-II`, `HS-III`, `HS-Advanced` from the delegate's Latin level (Digital Art/Poster). The division is computed when an entry is submitted and **stored on it**. Divisions are the Convention Book's rule and have no editing screen. The rubric (Myth 4×25, Poetry 20/20/15/15/10/20, Publicity five criteria) comes from the Convention Book; Digital Art and the slogans have no published rubric and start with one 100-point line for the chairs to replace. Once any score exists a rubric may be reworded but not reshaped.
+`divisions`: `none` → `Open`; `level` → `MS`/`HS` from the chapter (Publicity); `level_grade` → `MS`, `HS 9–10`, `HS 11–12` (Myth, Poetry, slogans); `latin_level` → exactly `MS-I`, `MS-II`, `MS-III`, `HS-I`, `HS-II`, `HS-III`, `HS-Advanced` from the delegate's Latin level (Digital Art/Poster). The division is computed when an entry is submitted and **stored on it**. Divisions are the Convention Book's rule and have no editing screen. `places` is the one number the Academics chairs set per contest (with `rules_md`); it may change after judges have handed in, and everything that reads it reads it fresh. There is no rubric: 008 had one (`contest_criteria`, with per-entry `contest_scores`), and 009 dropped both without carrying scores over.
 
 ```sql
 CREATE TABLE contest_entries (
@@ -638,24 +631,35 @@ CREATE UNIQUE INDEX idx_contest_entries_chapter
 CREATE INDEX idx_contest_entries_item   ON contest_entries (item_id, division);
 CREATE INDEX idx_contest_entries_school ON contest_entries (school_id, item_id);
 
-CREATE TABLE contest_scores (
+-- One judge's ranking of one division (and, for Publicity, one category).
+CREATE TABLE contest_ballots (
   id               INTEGER PRIMARY KEY,
-  entry_id         INTEGER NOT NULL REFERENCES contest_entries(id) ON DELETE CASCADE,
+  item_id          INTEGER NOT NULL REFERENCES contests(item_id),
+  division         TEXT NOT NULL,
+  facet            TEXT NOT NULL DEFAULT '',   -- '' except for Publicity
   judge_person_id  INTEGER NOT NULL REFERENCES people(id),
-  facet            TEXT NOT NULL DEFAULT '',
-  points_json      TEXT NOT NULL,     -- criterion id -> points
-  penalty          INTEGER NOT NULL DEFAULT 0,
-  total            REAL NOT NULL,     -- sum of points minus penalty, never below 0
   comment          TEXT,
   status           TEXT NOT NULL CHECK (status IN ('draft','submitted')),
   created_at       TEXT NOT NULL,
   updated_at       TEXT NOT NULL,
-  UNIQUE (entry_id, judge_person_id, facet)
+  UNIQUE (item_id, judge_person_id, division, facet)
 );
-CREATE INDEX idx_contest_scores_judge ON contest_scores (judge_person_id);
+CREATE INDEX idx_contest_ballots_item ON contest_ballots (item_id, status);
+
+-- The entries on a ballot, in order: place 1 is the judge's best.
+CREATE TABLE contest_ballot_places (
+  ballot_id  INTEGER NOT NULL REFERENCES contest_ballots(id) ON DELETE CASCADE,
+  place      INTEGER NOT NULL CHECK (place > 0),
+  entry_id   INTEGER NOT NULL REFERENCES contest_entries(id) ON DELETE CASCADE,
+  PRIMARY KEY (ballot_id, place),
+  UNIQUE (ballot_id, entry_id)
+);
+CREATE INDEX idx_contest_ballot_places_entry ON contest_ballot_places (entry_id);
 ```
 
-**No file bytes are ever stored in the database.** A file entry goes browser → Modal → the Apps Script puppet, which files it under the **automated Drive root** (setting `drive.contests_root`), one folder per contest and then per chapter, and returns the Drive file ID. Judges never get the folder: they read a file back through `GET /judge/entries/{id}/file`, which names it `Entry 14.pdf`. Replacing an entry keeps its id, deletes its scores and trashes the old file; withdrawing deletes the row and trashes the file. Drafts are left out of the results. An entry's score is the mean of its judges' submitted totals; ties share a place; an entry whose creator is no longer attending is listed but not placed (except Publicity). The deadline is the setting `deadline.contests`.
+A judge owes one ballot per (division, facet) that has entries. A draft may be partial; a ballot handed in ranks exactly places 1..k, where k is N or the number of entries in the group if fewer. Saving replaces the ballot's whole list. If N is raised after a ballot was handed in, it counts as it stands and the judge's page shows it as incomplete; if N is lowered, places beyond N count for nothing but still show.
+
+**No file bytes are ever stored in the database.** A file entry goes browser → Modal → the Apps Script puppet, which files it under the **automated Drive root** (setting `drive.contests_root`), one folder per contest and then per chapter, and returns the Drive file ID. Judges never get the folder: they read a file back through `GET /judge/entries/{id}/file`, which names it `Entry 14.pdf`. Replacing an entry keeps its id, takes it off every ballot and puts those ballots back to draft (the judge ranked different work and now has a gap to fill), and trashes the old file; withdrawing does the same to the ballots, deletes the row and trashes the file. Drafts are left out of the results. **Points:** a judge's 1st is worth N, their 2nd N−1, … their Nth 1; an entry's points are the sum over submitted ballots, so one judge's list comes out exactly as ranked. Equal points are broken by more 1sts, then more 2nds, down to Nth; entries still level share a place and the next is skipped (1, 2, 2, 4). Places 1..N are awarded. An entry whose creator is no longer attending is listed but not placed (except Publicity), and those below move up. The deadline is the setting `deadline.contests`.
 
 This root is entirely separate from the per-school packet folders holding medical forms and waivers, which no code touches — see `structure.md`.
 
@@ -749,19 +753,19 @@ All endpoints are under one Modal FastAPI app. Every endpoint declares a require
 | PUT | `/me/activity-sheet` | `delegate` | Whole-form replace in one transaction; rejects if locked |
 | GET | `/me/adult-sheet` | any adult | |
 | PUT | `/me/adult-sheet` | any adult | |
-| GET | `/me/contests` | `delegate` | Contests, rules, rubric, the caller's division and entries |
+| GET | `/me/contests` | `delegate` | Contests, rules, places awarded, the caller's division and entries |
 | POST/DELETE | `/me/contests/{item_id}` | `delegate` | Enter, replace or withdraw; a file travels base64 in the JSON body (20 MB cap, the one exception to the 1 MB body limit). Delegates only, not chaperones. |
 | GET | `/me/contests/{item_id}/file` | `delegate` | The caller's own uploaded file |
 
 ### Judging
-Scope `judge` only, and refused to anybody who also holds `academics`: the chairs read results with names and do not score.
+Scope `judge` only, and refused to anybody who also holds `academics`: the chairs read results with names and do not rank.
 
 | Method | Path | Scope | Notes |
 |---|---|---|---|
-| GET | `/judge/contests` | `judge` | Entry counts and the caller's own progress |
-| GET | `/judge/contests/{item_id}` | `judge` | Entries **without** names, chapters or file names, with the caller's scores |
+| GET | `/judge/contests` | `judge` | Per contest: places (N), entries, groups (divisions × categories) and how many ballots the caller has handed in |
+| GET | `/judge/contests/{item_id}` | `judge` | Entries **without** names, chapters or file names, and one group per division (and category): its entry ids, places needed, the caller's own ballot and whether it is complete |
 | GET | `/judge/entries/{id}/file` | `judge` | The file, as `Entry {id}.ext`, fetched through the puppet |
-| PUT | `/judge/entries/{id}/score` | `judge` | `{facet, points, comment, submit}`; a draft may be partial |
+| PUT | `/judge/contests/{item_id}/ballot` | `judge` | `{division, facet, places: {entry_id: place}, comment, submit}`; replaces the caller's list for that group. A draft may be partial; handing in needs exactly places 1..min(N, entries). Duplicate places, places outside 1..N and entries from another group are 422 |
 
 ### Admin
 | Method | Path | Scope | Notes |
@@ -781,11 +785,11 @@ Scope `judge` only, and refused to anybody who also holds `academics`: the chair
 | GET/POST | `/admin/roles` | `*` | |
 | POST | `/admin/people/{id}/roles` | `*` | |
 | GET | `/admin/usage` | `*` | Turso rows read/written/storage |
-| GET | `/admin/contests` | `academics` or `awards` | Every contest with entry and score counts |
-| GET | `/admin/contests/{item_id}/results` | `academics` or `awards` | Standings per division and category, with names and each judge's total |
+| GET | `/admin/contests` | `academics` or `awards` | Every contest with places, entries, handed-in ballots and judges who handed any in |
+| GET | `/admin/contests/{item_id}/results` | `academics` or `awards` | Standings per division and category, with names, points, each judge's place for the entry, whether the tie-break decided it, and judges' comments |
 | GET | `/admin/contests/submissions` | `registration`, `academics` or `awards` | Every entry from every chapter, with names and chapters, no scores |
 | GET | `/admin/contests/entries/{id}/file` | `registration`, `academics` or `awards` | An entry's file, for the chairs |
-| PUT | `/admin/contests/{item_id}` | `academics` | Rules text and rubric |
+| PUT | `/admin/contests/{item_id}` | `academics` | `{rules_md, places}`; places a whole number 1–20, else 422. Divisions are not editable |
 
 ### Internal
 | Method | Path | Notes |

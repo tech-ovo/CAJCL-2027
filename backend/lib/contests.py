@@ -1,4 +1,4 @@
-"""Pre-convention contests: what an entry must be, and what its scores add up to.
+"""Pre-convention contests: what an entry must be, and who the judges placed.
 
 The endpoints in api.py do the authorization and the Drive round trip. This
 module holds the rules, so the tests can reach them without HTTP:
@@ -7,7 +7,7 @@ module holds the rules, so the tests can reach them without HTTP:
     whether a file is what it claims       check_file
     how long a piece of writing is         read_text, count_words
     what a length rule costs               penalty_for
-    whether a judge's score is complete    check_score
+    whether a judge's ranking is complete  check_ballot
     who is winning                         rank
 
 BLIND JUDGING IS A RULE, NOT A COURTESY. Nothing a judge is sent carries a name,
@@ -18,7 +18,6 @@ a chapter, or the file name the student uploaded ("Jane Doe myth FINAL.docx").
 from __future__ import annotations
 
 import io
-import json
 import math
 import re
 import zipfile
@@ -69,18 +68,12 @@ MAX_TEXT_KEPT = 200_000        # characters of extracted writing kept for judges
 # ---------------------------------------------------------------------------
 
 def load(tx) -> list[dict]:
-    """Every active contest with its rubric attached. About thirty rows in all."""
-    criteria: dict[int, list[dict]] = {}
-    for row in tx.all("contests.criteria_all"):
-        criteria.setdefault(row["item_id"], []).append(dict(row))
-
+    """Every active contest. Six rows."""
     contests = []
     for row in tx.all("contests.all"):
         contest = dict(row)
-        contest["criteria"] = criteria.get(contest["item_id"], [])
         contest["facet_list"] = split_lines(contest["facets"])
         contest["accepted"] = [t for t in (contest["accepted_types"] or "").split(",") if t]
-        contest["max_points"] = sum(c["max_points"] for c in contest["criteria"])
         contest["division_label"] = DIVISION_LABELS[contest["divisions"]]
         contests.append(contest)
     return contests
@@ -102,7 +95,7 @@ def public_view(contest: dict) -> dict:
     keep = ("item_id", "key", "name", "entry_kind", "entered_by", "divisions",
             "division_label", "accepted", "needs_title", "min_words",
             "max_words", "words_penalty", "max_chars", "needs_translation",
-            "must_attend", "facet_list", "rules_md", "criteria", "max_points")
+            "must_attend", "facet_list", "rules_md", "places")
     return {k: contest[k] for k in keep}
 
 
@@ -352,107 +345,182 @@ def declared_words(payload: dict) -> int:
 # Judging
 # ---------------------------------------------------------------------------
 
-def judge_view(contest: dict, rows: list) -> list[dict]:
-    """Entries as a judge sees them: numbered, never named.
+def facets_of(contest: dict, row) -> list[str]:
+    """The categories an entry is judged in: its Publicity facets, or [""]."""
+    return split_lines(row["facets"]) if contest["facet_list"] else [""]
 
-    `rows` is contests.entries_for_judging, one row per entry per score this
-    judge has saved, so an entry judged in three facets arrives three times.
+
+def groups_of(contest: dict, rows) -> list[tuple[str, str]]:
+    """Every (division, facet) the entries fall into, in display order. Each is
+    judged separately, and each judge hands in one ballot for each."""
+    facet_order = {f: i for i, f in enumerate(contest["facet_list"])}
+    seen = {(row["division"], facet) for row in rows for facet in facets_of(contest, row)}
+    return sorted(seen, key=lambda g: (DIVISION_ORDER.get(g[0], 99), g[0],
+                                       facet_order.get(g[1], 0)))
+
+
+def places_needed(contest: dict, group_size: int) -> int:
+    """How many entries a complete ballot ranks: N, or every entry if fewer."""
+    return min(contest["places"], group_size)
+
+
+def judge_view(contest: dict, rows: list, ballot_rows: list) -> dict:
+    """Entries as a judge sees them, numbered and never named, and the judge's
+    own ballots, one per division (and Publicity category).
+
+    `ballot_rows` is contests.ballots_for_judge: one row per place, or one row
+    with no place for an empty draft.
     """
-    entries: dict[int, dict] = {}
-    for row in rows:
-        entry = entries.get(row["id"])
-        if entry is None:
-            entry = {
-                "id": row["id"],
-                "division": row["division"],
-                "title": row["title"],
-                "text": row["body_text"],
-                "translation": row["translation"],
-                "link_url": row["link_url"],
-                "facets": split_lines(row["facets"]) if contest["facet_list"] else [""],
-                "word_count": row["word_count"],
-                "word_count_source": row["word_count_source"],
-                "penalty": penalty_for(contest, row["word_count"]),
-                "has_file": bool(row["has_file"]),
-                "mime_type": row["mime_type"],
-                "size_bytes": row["size_bytes"],
-                "scores": {},
-            }
-            entries[row["id"]] = entry
-        if row["score_status"] is not None:
-            entry["scores"][row["score_facet"]] = {
-                "points": json.loads(row["points_json"]),
-                "penalty": row["penalty"],
-                "total": row["total"],
-                "comment": row["comment"],
-                "status": row["score_status"],
-            }
-    return sorted(entries.values(),
-                  key=lambda e: (DIVISION_ORDER.get(e["division"], 99), e["id"]))
+    entries = [{
+        "id": row["id"],
+        "division": row["division"],
+        "title": row["title"],
+        "text": row["body_text"],
+        "translation": row["translation"],
+        "link_url": row["link_url"],
+        "facets": facets_of(contest, row),
+        "word_count": row["word_count"],
+        "word_count_source": row["word_count_source"],
+        "penalty": penalty_for(contest, row["word_count"]),
+        "has_file": bool(row["has_file"]),
+        "mime_type": row["mime_type"],
+        "size_bytes": row["size_bytes"],
+    } for row in rows]
+    entries.sort(key=lambda e: (DIVISION_ORDER.get(e["division"], 99), e["id"]))
+
+    ballots: dict[tuple[str, str], dict] = {}
+    for row in ballot_rows:
+        ballot = ballots.setdefault((row["division"], row["facet"]), {
+            "status": row["status"], "comment": row["comment"],
+            "updated_at": row["updated_at"], "places": {}})
+        if row["place"] is not None:
+            ballot["places"][str(row["entry_id"])] = row["place"]
+
+    groups = []
+    for division, facet in groups_of(contest, rows):
+        ids = [e["id"] for e in entries
+               if e["division"] == division and facet in e["facets"]]
+        ballot = ballots.get((division, facet))
+        needed = places_needed(contest, len(ids))
+        groups.append({
+            "division": division, "facet": facet, "entry_ids": ids,
+            "needed": needed, "ballot": ballot,
+            # Handed in, and still as long as N asks for -- N may have been
+            # raised since.
+            "complete": bool(ballot and ballot["status"] == "submitted"
+                             and len(ballot["places"]) >= needed),
+        })
+    return {"entries": entries, "groups": groups}
 
 
-def check_score(contest: dict, entry: dict, payload: dict) -> dict:
-    """A judge's score, validated against the rubric. Returns what to store."""
+def check_ballot(contest: dict, rows: list, payload: dict) -> dict:
+    """A judge's ranking of one division, validated. Returns what to store.
+
+    `places` maps entry id to place. A draft may leave places empty; a ballot
+    handed in ranks exactly places 1..k, where k is N or the number of
+    entries in the division if that is fewer.
+    """
+    division = str(payload.get("division") or "")
     facet = str(payload.get("facet") or "")
-    allowed = split_lines(entry["facets"]) if contest["facet_list"] else [""]
-    if facet not in allowed:
-        raise ValidationError(["That entry is not judged in that category."])
+    if (division, facet) not in groups_of(contest, rows):
+        raise ValidationError(["There are no entries to rank there."])
+    in_group = {row["id"] for row in rows
+                if row["division"] == division and facet in facets_of(contest, row)}
 
-    submit = bool(payload.get("submit"))
-    given = payload.get("points") or {}
+    given = payload.get("places") or {}
     if not isinstance(given, dict):
-        raise ValidationError(["Scores arrived in a shape this cannot read."])
+        raise ValidationError(["The ranking arrived in a shape this cannot read."])
 
-    points: dict[str, float] = {}
+    limit = contest["places"]
+    by_place: dict[int, int] = {}
+    seen: set[int] = set()
     errors = []
-    for criterion in contest["criteria"]:
-        raw = given.get(str(criterion["id"]))
+    for key, raw in given.items():
         if raw in (None, ""):
-            if submit:
-                errors.append(f"Score {criterion['label']} before handing this in.")
             continue
         try:
-            value = float(raw)
+            entry_id = int(key)
+            place = int(raw)
         except (TypeError, ValueError):
-            errors.append(f"{criterion['label']} needs a number.")
+            errors.append("Every place must be a whole number.")
             continue
-        if not math.isfinite(value) or value < 0 or value > criterion["max_points"]:
-            errors.append(
-                f"{criterion['label']} is out of {criterion['max_points']}; "
-                f"{raw} is not between 0 and {criterion['max_points']}.")
-            continue
-        points[str(criterion["id"])] = round(value, 2)
-    if not contest["criteria"]:
-        errors.append("This contest has no rubric yet. Ask the Academics chairs.")
+        if entry_id in seen:
+            errors.append(f"Entry {entry_id} is listed twice.")
+        elif entry_id not in in_group:
+            errors.append(f"Entry {key} is not in {division}"
+                          + (f", {facet}" if facet else "") + ".")
+        elif not 1 <= place <= limit:
+            errors.append(f"Entry {entry_id}: places run from 1 to {limit}.")
+        elif place in by_place:
+            errors.append(f"Entries {by_place[place]} and {entry_id} are both "
+                          f"placed {ordinal(place)}. Give each place to one entry.")
+        else:
+            by_place[place] = entry_id
+        seen.add(entry_id)
     if errors:
         raise ValidationError(errors)
 
+    submit = bool(payload.get("submit"))
+    needed = places_needed(contest, len(in_group))
+    if submit:
+        missing = [p for p in range(1, needed + 1) if p not in by_place]
+        if missing:
+            raise ValidationError([
+                "Before handing this in, choose an entry for "
+                + ", ".join(ordinal(p) for p in missing) + " place."])
+
     comment = str(payload.get("comment") or "").strip()[:2000] or None
-    penalty = penalty_for(contest, entry["word_count"])
-    total = max(0.0, round(sum(points.values()) - penalty, 2))
-    return {"facet": facet, "points_json": json.dumps(points, sort_keys=True),
-            "penalty": penalty, "total": total, "comment": comment,
+    return {"division": division, "facet": facet, "comment": comment,
+            "places": sorted(by_place.items()),
             "status": "submitted" if submit else "draft"}
 
 
-def rank(contest: dict, entries: list, scores: list) -> list[dict]:
-    """Standings per division and facet, from submitted scores only.
+def ordinal(n: int) -> str:
+    if 10 <= n % 100 <= 20:
+        return f"{n}th"
+    return f"{n}" + {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
 
-    An entry's score is the mean of its judges' totals. Ties share a place
-    (1, 2, 2, 4). An entry whose creator is no longer attending is listed but
-    not placed when the contest requires attendance -- the Convention Book's
-    rule, applied here so nobody has to remember it at the awards table.
+
+def rank(contest: dict, entries: list, ballots: list) -> list[dict]:
+    """Standings per division and facet, from handed-in ballots only.
+
+    HOW JUDGES' LISTS COMBINE. With N places, a judge's 1st is worth N points,
+    their 2nd N-1, and so on down to 1 for their Nth; places beyond N (from a
+    ballot handed in before N was lowered) are worth nothing. An entry's
+    points are the sum over judges. One judge's list therefore comes out
+    exactly as they ranked it.
+
+    TIES. Equal points are broken by who has more 1st places, then more 2nds,
+    and so on down to Nth. Entries still level after that share a place and
+    the next place is skipped (1, 2, 2, 4).
+
+    An entry whose creator is no longer attending is listed but not placed
+    when the contest requires attendance -- the Convention Book's rule,
+    applied here so nobody has to remember it at the awards table. Entries
+    below move up.
     """
-    by_entry: dict[tuple[int, str], list] = {}
-    for score in scores:
-        by_entry.setdefault((score["entry_id"], score["facet"]), []).append(score)
+    n = contest["places"]
+    votes: dict[tuple[int, str], list] = {}
+    comments: dict[tuple[str, str], list] = {}
+    counted: dict[tuple[str, str], set] = {}
+    for row in ballots:
+        key = (row["division"], row["facet"])
+        name = f"{row['judge_first']} {row['judge_last']}".strip()
+        if row["id"] not in counted.setdefault(key, set()):
+            counted[key].add(row["id"])
+            if row["comment"]:
+                comments.setdefault(key, []).append({"name": name,
+                                                     "comment": row["comment"]})
+        if row["place"] is not None:
+            votes.setdefault((row["entry_id"], row["facet"]), []).append(
+                {"name": name, "place": row["place"]})
 
     groups: dict[tuple[str, str], list] = {}
     for row in entries:
-        facets = split_lines(row["facets"]) if contest["facet_list"] else [""]
-        for facet in facets:
-            judged = by_entry.get((row["id"], facet), [])
-            totals = [s["total"] for s in judged]
+        for facet in facets_of(contest, row):
+            judged = sorted(votes.get((row["id"], facet), []),
+                            key=lambda v: (v["place"], v["name"]))
+            counts = [sum(1 for v in judged if v["place"] == p) for p in range(1, n + 1)]
             eligible = not (contest["must_attend"] and row["person_id"]
                             and row["person_status"] != "active")
             groups.setdefault((row["division"], facet), []).append({
@@ -471,30 +539,37 @@ def rank(contest: dict, entries: list, scores: list) -> list[dict]:
                 "school_number": row["school_number"],
                 "school_seq": row["school_seq"],
                 "eligible": eligible,
-                "judges": [{"name": f"{s['judge_first']} {s['judge_last']}".strip(),
-                            "total": s["total"], "comment": s["comment"]}
-                           for s in judged],
-                "average": round(sum(totals) / len(totals), 2) if totals else None,
+                "votes": judged,
+                "points": sum(max(0, n + 1 - v["place"]) for v in judged),
+                "_counts": counts,
                 "place": None,
+                "awarded": False,
+                "tie_broken": False,
             })
 
-    facet_order = {f: i for i, f in enumerate(contest["facet_list"])}
-
-    def order(key):
-        division, facet = key
-        return (DIVISION_ORDER.get(division, 99), division, facet_order.get(facet, 0))
-
     out = []
-    for (division, facet) in sorted(groups, key=order):
-        rows = groups[(division, facet)]
-        placed = sorted((r for r in rows if r["eligible"] and r["average"] is not None),
-                        key=lambda r: -r["average"])
+    for key in groups_of(contest, entries):
+        rows = groups[key]
+        order = lambda r: (-r["points"], [-c for c in r["_counts"]])
+        placed = sorted((r for r in rows if r["eligible"] and r["points"] > 0), key=order)
         previous, place = None, 0
         for index, row in enumerate(placed, 1):
-            if row["average"] != previous:
-                place, previous = index, row["average"]
+            if order(row) != previous:
+                place, previous = index, order(row)
             row["place"] = place
-        rest = [r for r in rows if r["place"] is None]
+            row["awarded"] = place <= n
+        # Placed and level on points only because of the tie-break: say so,
+        # so the chairs can explain it at the awards table.
+        for row in placed:
+            row["tie_broken"] = any(o is not row and o["points"] == row["points"]
+                                    and o["place"] != row["place"] for o in placed)
+        rest = sorted((r for r in rows if r["place"] is None),
+                      key=lambda r: (not r["eligible"], -r["points"], r["entry_id"]))
+        for row in rows:
+            del row["_counts"]
+        division, facet = key
         out.append({"division": division, "facet": facet,
+                    "ballots": len(counted.get(key, ())),
+                    "comments": comments.get(key, []),
                     "entries": placed + rest})
     return out

@@ -56,8 +56,8 @@ Registration is running by now. These make the months in between bearable.
 | --- | --- | --- | --- | --- |
 | NEEDS YOU | Deploy the Drive puppet | 2 | you | **Contest file uploads are built and wait on this.** Needs the Workspace account and its Drive root. Deploy `apps-script/Code.gs` (it now has a `fetch` op and signs `fileId`), set `APPS_SCRIPT_URL` and `APPS_SCRIPT_KEY` in the Modal secret `apps-script`, and paste the contest root folder's ID into Settings → *Drive folder ID for contest entries*. Until then slogans and Publicity work and file entries answer "not switched on yet". Exports still download to the browser. |
 | NEEDS YOU | The pre-convention deadline | 0.1 | you | Settings → *Pre-convention contests due*. It starts at the forms deadline; the Convention Book has the real date. |
-| ask | Rubrics for Digital Art/Poster and the slogans | 0.5 | ask | The Convention Book gives none, so each has one 100-point line. The Academics chairs set them on Contest results → a contest → *Rules and rubric*, **before anyone scores** — after that a rubric can only be reworded. |
-| ask | Should judges be limited to particular contests? | 3 | ask | Today anyone with the Contest Judge role can score every contest. Limiting it means a role per contest (`judge` scope stays; the endpoints check which). |
+| ask | How many places each contest awards | 0.1 | ask | Judges rank their top N per division (per category for Publicity), and N is also how many places are awarded. Every contest starts at 3. The Academics chairs change it on Results → a contest → *Rules and places*; it can change after judging without losing anything handed in. |
+| ask | Should judges be limited to particular contests? | 3 | ask | Today anyone with the Contest Judge role can rank every contest. Limiting it means a role per contest (`judge` scope stays; the endpoints check which). |
 
 ---
 
