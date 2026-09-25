@@ -1,6 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useCertamen } from '../context/CertamenContext';
 
+// The guest profile's chapter; not a real one, so the field starts empty.
+const GUEST_CHAPTER = 'Roma Antiqua Academy';
+
 interface UserLoginModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -14,7 +17,7 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({ isOpen, onClose 
 
   const [username, setUsername] = useState<string>(user.username);
   const [pin, setPin] = useState<string>(user.pin);
-  const [school, setSchool] = useState<string>(user.school || 'University High School');
+  const [school, setSchool] = useState<string>(user.school === GUEST_CHAPTER ? '' : user.school || '');
   const [message, setMessage] = useState<string>('');
 
   useEffect(() => {
@@ -45,7 +48,7 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({ isOpen, onClose 
     logoutUser();
     setUsername('Discipulus');
     setPin('1234');
-    setSchool('University High School');
+    setSchool('');
     setMessage('Signed out. You are playing as a guest.');
   };
 
@@ -74,7 +77,7 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({ isOpen, onClose 
         <p className="label">Playing as</p>
         <p className="tabula__name">{user.username}</p>
         <div className="tabula__row">
-          <span className="small muted">{user.school || 'University High School'}</span>
+          <span className="small muted">{user.school === GUEST_CHAPTER ? 'No chapter' : user.school}</span>
           <span className="tabula__code">{user.stats.totalPoints} pts</span>
         </div>
       </div>
@@ -82,7 +85,7 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({ isOpen, onClose 
       <form onSubmit={handleLoginSubmit}>
         <div className="field">
           <label htmlFor="profile-name">Name</label>
-          <p className="field__help">Shown on the leaderboard.</p>
+          <p className="field__help">Only for signing in; the leaderboard ranks chapters, not players.</p>
           <input
             id="profile-name"
             type="text"
@@ -110,12 +113,14 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({ isOpen, onClose 
 
         <div className="field">
           <label htmlFor="profile-school">Chapter</label>
+          <p className="field__help">Your XP counts toward this chapter on the leaderboard. Spell it the way your chapter-mates do.</p>
           <input
             id="profile-school"
             type="text"
             value={school}
             onChange={(e) => setSchool(e.target.value)}
             placeholder="University High School"
+            required
           />
         </div>
 

@@ -48,7 +48,12 @@ rules), then `docs/design.md` for the visual rules.
   serves them from `frontend/public`. Components reuse site classes; `src/index.css` has
   only arena-specific rules, token-only. Sections are hash routes
   (`#/arena`, `#/stats`, `#/leaderboard`, `#/bank`, `#/settings`); the
-  profile editor is a native `<dialog>`.
+  profile editor is a native `<dialog>`. The leaderboard ranks chapters only
+  (no individual scoreboard): `certamen_db.get_leaderboard` and the direct-Turso
+  path in `tursoService.ts` both `GROUP BY LOWER(TRIM(school))`, sum XP, and
+  never return usernames; placeholder chapters (`PLACEHOLDER_CHAPTERS`: guest
+  "Roma Antiqua Academy", "Independent") are left out. Chapter is free text,
+  required in the profile dialog.
 - `apps-script/`, `scripts/`, `docs/`. Bulk question import: `python scripts/import_certamen_questions.py --file <path.json|path.csv>`.
 
 ## Checks

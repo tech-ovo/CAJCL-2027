@@ -272,53 +272,78 @@ def get_questions(
     return result
 
 
+# Chapter names players have not chosen themselves: the arena's guest
+# profile and the fallback for a blank field. They are not chapters, so their
+# points count toward no one.
+PLACEHOLDER_CHAPTERS = ("independent", "roma antiqua academy")
+
+LEADERBOARD_COLUMNS = {
+    "all": "total_points",
+    "grammar": "grammar_pts",
+    "mythology": "mythology_pts",
+    "history": "history_pts",
+    "culture": "culture_pts",
+    "literature": "literature_pts",
+}
+
+
 def get_leaderboard(
     category: str = "all",
     level: str = "all",
     limit: int = 100,
 ) -> list[dict[str, Any]]:
+    """Chapters ranked by the XP their players have earned, summed.
+
+    There is no individual leaderboard: nothing here names a player. Chapter
+    names are free text, so they are matched without regard to case or
+    surrounding spaces.
+    """
     init_schema()
-    conditions: list[str] = []
-    args: list[Any] = []
+    placeholders = ", ".join("?" for _ in PLACEHOLDER_CHAPTERS)
+    conditions = [
+        "TRIM(COALESCE(school, '')) <> ''",
+        f"LOWER(TRIM(school)) NOT IN ({placeholders})",
+    ]
+    args: list[Any] = list(PLACEHOLDER_CHAPTERS)
 
     if level and level != "all":
         conditions.append("level = ?")
         args.append(level)
 
-    sort_col = "total_points"
-    cat_map = {
-        "grammar": "grammar_pts",
-        "mythology": "mythology_pts",
-        "history": "history_pts",
-        "culture": "culture_pts",
-        "literature": "literature_pts",
-    }
-    if category in cat_map:
-        sort_col = cat_map[category]
-
-    where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-    sql = f"""SELECT username, school, level, total_points, grammar_pts, mythology_pts,
-                     history_pts, culture_pts, literature_pts, accuracy, total_answered, last_active
-              FROM certamen_users {where_clause}
-              ORDER BY {sort_col} DESC LIMIT {int(limit)};"""
+    sort_col = LEADERBOARD_COLUMNS.get(category, "total_points")
+    sql = f"""SELECT MAX(TRIM(school)) AS school,
+                     COUNT(*) AS players,
+                     SUM(total_points) AS total_points,
+                     SUM(grammar_pts) AS grammar_pts,
+                     SUM(mythology_pts) AS mythology_pts,
+                     SUM(history_pts) AS history_pts,
+                     SUM(culture_pts) AS culture_pts,
+                     SUM(literature_pts) AS literature_pts,
+                     SUM(total_answered) AS total_answered,
+                     SUM(total_correct) AS total_correct
+              FROM certamen_users
+              WHERE {' AND '.join(conditions)}
+              GROUP BY LOWER(TRIM(school))
+              ORDER BY SUM({sort_col}) DESC, school
+              LIMIT {int(limit)};"""
 
     rows = query(sql, tuple(args))
     leaderboard = []
     for idx, r in enumerate(rows):
+        answered = r.get("total_answered") or 0
+        correct = r.get("total_correct") or 0
         leaderboard.append({
             "rank": idx + 1,
-            "username": r["username"],
-            "school": r.get("school") or "Independent",
-            "level": r.get("level") or "novice",
+            "school": r["school"],
+            "players": r.get("players") or 0,
             "totalPoints": r.get("total_points") or 0,
             "grammarPoints": r.get("grammar_pts") or 0,
             "mythologyPoints": r.get("mythology_pts") or 0,
             "historyPoints": r.get("history_pts") or 0,
             "culturePoints": r.get("culture_pts") or 0,
             "literaturePoints": r.get("literature_pts") or 0,
-            "accuracy": r.get("accuracy") or 0,
-            "totalAnswered": r.get("total_answered") or 0,
-            "lastActive": r.get("last_active") or "",
+            "accuracy": round(correct * 100 / answered) if answered else 0,
+            "totalAnswered": answered,
         })
     return leaderboard
 

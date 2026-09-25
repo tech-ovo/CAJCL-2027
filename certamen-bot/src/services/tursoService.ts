@@ -1,6 +1,6 @@
 import { createClient, Client } from '@libsql/client/web';
 import {
-  LeaderboardEntry,
+  ChapterStanding,
   UserProfile,
   QuestionAttemptLog,
   Category,
@@ -9,84 +9,46 @@ import {
 } from '../types/certamen';
 import { INITIAL_QUESTION_BANK, flattenQuestions } from '../data/questionBank';
 
-// Fallback seed leaderboard data to display when no Turso DB is connected
-export const MOCK_LEADERBOARD: LeaderboardEntry[] = [
-  {
-    rank: 1,
-    username: 'MarcusTullius',
-    school: 'Boston Latin School',
-    level: 'advanced',
-    totalPoints: 1420,
-    grammarPoints: 380,
-    mythologyPoints: 290,
-    historyPoints: 340,
-    culturePoints: 210,
-    literaturePoints: 200,
-    accuracy: 91,
-    totalAnswered: 156,
-    lastActive: new Date(Date.now() - 3600000 * 4).toISOString(),
-  },
-  {
-    rank: 2,
-    username: 'Julia_Augusta',
-    school: 'St. Albans Classics',
-    level: 'intermediate',
-    totalPoints: 1190,
-    grammarPoints: 260,
-    mythologyPoints: 350,
-    historyPoints: 280,
-    culturePoints: 190,
-    literaturePoints: 110,
-    accuracy: 88,
-    totalAnswered: 135,
-    lastActive: new Date(Date.now() - 3600000 * 12).toISOString(),
-  },
-  {
-    rank: 3,
-    username: 'Publius_Scipio',
-    school: 'Roxbury Latin',
-    level: 'advanced',
-    totalPoints: 980,
-    grammarPoints: 210,
-    mythologyPoints: 220,
-    historyPoints: 310,
-    culturePoints: 130,
-    literaturePoints: 110,
-    accuracy: 84,
-    totalAnswered: 116,
-    lastActive: new Date(Date.now() - 3600000 * 24).toISOString(),
-  },
-  {
-    rank: 4,
-    username: 'LucretiaV',
-    school: 'Phillips Academy',
-    level: 'intermediate',
-    totalPoints: 780,
-    grammarPoints: 190,
-    mythologyPoints: 210,
-    historyPoints: 160,
-    culturePoints: 120,
-    literaturePoints: 100,
-    accuracy: 79,
-    totalAnswered: 98,
-    lastActive: new Date(Date.now() - 3600000 * 48).toISOString(),
-  },
-  {
-    rank: 5,
-    username: 'NoviceGladiator',
-    school: 'Westminster Classical',
-    level: 'novice',
-    totalPoints: 540,
-    grammarPoints: 150,
-    mythologyPoints: 140,
-    historyPoints: 120,
-    culturePoints: 80,
-    literaturePoints: 50,
-    accuracy: 75,
-    totalAnswered: 72,
-    lastActive: new Date(Date.now() - 3600000 * 72).toISOString(),
-  },
+// Sample players, pooled into chapter standings, for when no database answers.
+type SamplePlayer = Omit<ChapterStanding, 'rank' | 'players' | 'accuracy'> & {
+  level: DifficultyLevel;
+  totalCorrect: number;
+};
+
+const SAMPLE_PLAYERS: SamplePlayer[] = [
+  { school: 'Boston Latin School', level: 'advanced', totalPoints: 1420, grammarPoints: 380, mythologyPoints: 290, historyPoints: 340, culturePoints: 210, literaturePoints: 200, totalAnswered: 156, totalCorrect: 142 },
+  { school: 'Boston Latin School', level: 'novice', totalPoints: 310, grammarPoints: 90, mythologyPoints: 80, historyPoints: 60, culturePoints: 50, literaturePoints: 30, totalAnswered: 48, totalCorrect: 34 },
+  { school: 'St. Albans Classics', level: 'intermediate', totalPoints: 1190, grammarPoints: 260, mythologyPoints: 350, historyPoints: 280, culturePoints: 190, literaturePoints: 110, totalAnswered: 135, totalCorrect: 119 },
+  { school: 'Roxbury Latin', level: 'advanced', totalPoints: 980, grammarPoints: 210, mythologyPoints: 220, historyPoints: 310, culturePoints: 130, literaturePoints: 110, totalAnswered: 116, totalCorrect: 97 },
+  { school: 'Roxbury Latin', level: 'intermediate', totalPoints: 620, grammarPoints: 170, mythologyPoints: 150, historyPoints: 140, culturePoints: 90, literaturePoints: 70, totalAnswered: 84, totalCorrect: 66 },
+  { school: 'Phillips Academy', level: 'intermediate', totalPoints: 780, grammarPoints: 190, mythologyPoints: 210, historyPoints: 160, culturePoints: 120, literaturePoints: 100, totalAnswered: 98, totalCorrect: 77 },
+  { school: 'Westminster Classical', level: 'novice', totalPoints: 540, grammarPoints: 150, mythologyPoints: 140, historyPoints: 120, culturePoints: 80, literaturePoints: 50, totalAnswered: 72, totalCorrect: 54 },
 ];
+
+// Names nobody chose: the guest profile's and the blank-field fallback. They
+// are not chapters, so their XP counts toward no one. Mirrors
+// PLACEHOLDER_CHAPTERS in backend/lib/certamen_db.py.
+const PLACEHOLDER_CHAPTERS = ['independent', 'roma antiqua academy'];
+
+const SORT_COLUMNS: Record<Category | 'all', string> = {
+  all: 'total_points',
+  grammar: 'grammar_pts',
+  mythology: 'mythology_pts',
+  history: 'history_pts',
+  culture: 'culture_pts',
+  literature: 'literature_pts',
+};
+
+export function subjectPoints(entry: ChapterStanding, category: Category | 'all'): number {
+  switch (category) {
+    case 'grammar': return entry.grammarPoints;
+    case 'mythology': return entry.mythologyPoints;
+    case 'history': return entry.historyPoints;
+    case 'culture': return entry.culturePoints;
+    case 'literature': return entry.literaturePoints;
+    default: return entry.totalPoints;
+  }
+}
 
 let cachedClient: Client | null = null;
 let cachedKey = '';
@@ -394,7 +356,7 @@ export async function fetchLeaderboardFromTurso(
   authToken?: string,
   category: Category | 'all' = 'all',
   level: DifficultyLevel | 'all' = 'all'
-): Promise<LeaderboardEntry[]> {
+): Promise<ChapterStanding[]> {
   const hasDirectUrl = url && url.trim() && !url.includes('modal.run') && !url.includes('127.0.0.1') && !url.includes('localhost');
 
   if (hasDirectUrl) {
@@ -402,44 +364,47 @@ export async function fetchLeaderboardFromTurso(
     if (client) {
       try {
         await initTursoSchema(client);
-        const conditions: string[] = [];
-        const args: any[] = [];
+        const conditions = [
+          "TRIM(COALESCE(school, '')) <> ''",
+          `LOWER(TRIM(school)) NOT IN (${PLACEHOLDER_CHAPTERS.map(() => '?').join(', ')})`,
+        ];
+        const args: any[] = [...PLACEHOLDER_CHAPTERS];
 
         if (level !== 'all') {
           conditions.push('level = ?');
           args.push(level);
         }
 
-        let sortCol = 'total_points';
-        if (category === 'grammar') sortCol = 'grammar_pts';
-        else if (category === 'mythology') sortCol = 'mythology_pts';
-        else if (category === 'history') sortCol = 'history_pts';
-        else if (category === 'culture') sortCol = 'culture_pts';
-        else if (category === 'literature') sortCol = 'literature_pts';
-
-        const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-        const sql = `SELECT username, school, level, total_points, grammar_pts, mythology_pts, 
-                            history_pts, culture_pts, literature_pts, accuracy, total_answered, last_active 
-                     FROM certamen_users ${whereClause} 
-                     ORDER BY ${sortCol} DESC LIMIT 100;`;
+        const sortCol = SORT_COLUMNS[category] || 'total_points';
+        const sql = `SELECT MAX(TRIM(school)) AS school, COUNT(*) AS players,
+                            SUM(total_points) AS total_points, SUM(grammar_pts) AS grammar_pts,
+                            SUM(mythology_pts) AS mythology_pts, SUM(history_pts) AS history_pts,
+                            SUM(culture_pts) AS culture_pts, SUM(literature_pts) AS literature_pts,
+                            SUM(total_answered) AS total_answered, SUM(total_correct) AS total_correct
+                     FROM certamen_users
+                     WHERE ${conditions.join(' AND ')}
+                     GROUP BY LOWER(TRIM(school))
+                     ORDER BY SUM(${sortCol}) DESC, school
+                     LIMIT 100;`;
 
         const res = await client.execute({ sql, args });
         if (res.rows.length > 0) {
-          return res.rows.map((row, idx) => ({
-            rank: idx + 1,
-            username: String(row.username),
-            school: String(row.school || 'Independent'),
-            level: row.level as DifficultyLevel,
-            totalPoints: Number(row.total_points || 0),
-            grammarPoints: Number(row.grammar_pts || 0),
-            mythologyPoints: Number(row.mythology_pts || 0),
-            historyPoints: Number(row.history_pts || 0),
-            culturePoints: Number(row.culture_pts || 0),
-            literaturePoints: Number(row.literature_pts || 0),
-            accuracy: Number(row.accuracy || 0),
-            totalAnswered: Number(row.total_answered || 0),
-            lastActive: String(row.last_active || new Date().toISOString()),
-          }));
+          return res.rows.map((row, idx) => {
+            const answered = Number(row.total_answered || 0);
+            return {
+              rank: idx + 1,
+              school: String(row.school),
+              players: Number(row.players || 0),
+              totalPoints: Number(row.total_points || 0),
+              grammarPoints: Number(row.grammar_pts || 0),
+              mythologyPoints: Number(row.mythology_pts || 0),
+              historyPoints: Number(row.history_pts || 0),
+              culturePoints: Number(row.culture_pts || 0),
+              literaturePoints: Number(row.literature_pts || 0),
+              accuracy: answered > 0 ? Math.round((Number(row.total_correct || 0) * 100) / answered) : 0,
+              totalAnswered: answered,
+            };
+          });
         }
       } catch (err) {
         console.warn('Direct leaderboard query failed, trying Modal proxy:', err);
@@ -765,26 +730,31 @@ export async function uploadQuestionsBatchToTurso(
 function getFilteredMockLeaderboard(
   category: Category | 'all',
   level: DifficultyLevel | 'all'
-): LeaderboardEntry[] {
-  let list = [...MOCK_LEADERBOARD];
-
-  if (level !== 'all') {
-    list = list.filter((e) => e.level === level);
+): ChapterStanding[] {
+  const byChapter = new Map<string, ChapterStanding & { totalCorrect: number }>();
+  for (const p of SAMPLE_PLAYERS) {
+    if (level !== 'all' && p.level !== level) continue;
+    const c = byChapter.get(p.school) || {
+      rank: 0, school: p.school, players: 0, totalPoints: 0, grammarPoints: 0, mythologyPoints: 0,
+      historyPoints: 0, culturePoints: 0, literaturePoints: 0, accuracy: 0, totalAnswered: 0, totalCorrect: 0,
+    };
+    c.players += 1;
+    c.totalPoints += p.totalPoints;
+    c.grammarPoints += p.grammarPoints;
+    c.mythologyPoints += p.mythologyPoints;
+    c.historyPoints += p.historyPoints;
+    c.culturePoints += p.culturePoints;
+    c.literaturePoints += p.literaturePoints;
+    c.totalAnswered += p.totalAnswered;
+    c.totalCorrect += p.totalCorrect;
+    byChapter.set(p.school, c);
   }
 
-  if (category === 'grammar') {
-    list.sort((a, b) => b.grammarPoints - a.grammarPoints);
-  } else if (category === 'mythology') {
-    list.sort((a, b) => b.mythologyPoints - a.mythologyPoints);
-  } else if (category === 'history') {
-    list.sort((a, b) => b.historyPoints - a.historyPoints);
-  } else if (category === 'culture') {
-    list.sort((a, b) => b.culturePoints - a.culturePoints);
-  } else if (category === 'literature') {
-    list.sort((a, b) => b.literaturePoints - a.literaturePoints);
-  } else {
-    list.sort((a, b) => b.totalPoints - a.totalPoints);
-  }
-
-  return list.map((e, idx) => ({ ...e, rank: idx + 1 }));
+  return Array.from(byChapter.values())
+    .sort((a, b) => subjectPoints(b, category) - subjectPoints(a, category))
+    .map(({ totalCorrect, ...c }, idx) => ({
+      ...c,
+      rank: idx + 1,
+      accuracy: c.totalAnswered > 0 ? Math.round((totalCorrect * 100) / c.totalAnswered) : 0,
+    }));
 }

@@ -1,62 +1,31 @@
 import React, { useState, useEffect } from 'react';
 import { useCertamen } from '../context/CertamenContext';
-import { Category, DifficultyLevel, LeaderboardEntry } from '../types/certamen';
-import { fetchLeaderboardFromTurso } from '../services/tursoService';
+import { Category, ChapterStanding, DifficultyLevel } from '../types/certamen';
+import { fetchLeaderboardFromTurso, subjectPoints } from '../services/tursoService';
 import { CATEGORY_NAMES } from './BuzzerArena';
 
 const LEVELS: (DifficultyLevel | 'all')[] = ['all', 'novice', 'intermediate', 'advanced'];
 const capitalise = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+const sameChapter = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
+/* Chapters ranked by the XP their players have earned together. There is
+ * deliberately no individual scoreboard. */
 export const LeaderboardView: React.FC = () => {
   const { user, settings } = useCertamen();
   const [selectedSubject, setSelectedSubject] = useState<Category | 'all'>('all');
   const [selectedLevel, setSelectedLevel] = useState<DifficultyLevel | 'all'>('all');
-  const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
+  const [entries, setEntries] = useState<ChapterStanding[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
   const loadLeaderboard = async () => {
     setIsLoading(true);
     try {
-      const data = await fetchLeaderboardFromTurso(
+      setEntries(await fetchLeaderboardFromTurso(
         settings.tursoUrl,
         settings.tursoAuthToken,
         selectedSubject,
         selectedLevel
-      );
-
-      const hasCurrentUser = data.some((e) => e.username.toLowerCase() === user.username.toLowerCase());
-      if (!hasCurrentUser && user.stats.totalPoints > 0) {
-        const myEntry: LeaderboardEntry = {
-          username: user.username,
-          school: user.school || 'University High School',
-          level: user.level,
-          totalPoints: user.stats.totalPoints,
-          grammarPoints: user.stats.byCategory.grammar?.points || 0,
-          mythologyPoints: user.stats.byCategory.mythology?.points || 0,
-          historyPoints: user.stats.byCategory.history?.points || 0,
-          culturePoints: user.stats.byCategory.culture?.points || 0,
-          literaturePoints: user.stats.byCategory.literature?.points || 0,
-          accuracy: user.stats.totalAnswered > 0
-            ? Math.round((user.stats.totalCorrect / user.stats.totalAnswered) * 100)
-            : 0,
-          totalAnswered: user.stats.totalAnswered,
-          lastActive: new Date().toISOString(),
-        };
-
-        const combined = [...data, myEntry];
-        combined.sort((a, b) => {
-          if (selectedSubject === 'grammar') return b.grammarPoints - a.grammarPoints;
-          if (selectedSubject === 'mythology') return b.mythologyPoints - a.mythologyPoints;
-          if (selectedSubject === 'history') return b.historyPoints - a.historyPoints;
-          if (selectedSubject === 'culture') return b.culturePoints - a.culturePoints;
-          if (selectedSubject === 'literature') return b.literaturePoints - a.literaturePoints;
-          return b.totalPoints - a.totalPoints;
-        });
-
-        setEntries(combined.map((item, idx) => ({ ...item, rank: idx + 1 })));
-      } else {
-        setEntries(data);
-      }
+      ));
     } catch (err) {
       console.error('Failed to load leaderboard:', err);
     } finally {
@@ -68,23 +37,6 @@ export const LeaderboardView: React.FC = () => {
     loadLeaderboard();
   }, [selectedSubject, selectedLevel, settings.tursoUrl, settings.tursoAuthToken, user.stats.totalPoints]);
 
-  const getSubjectPoints = (entry: LeaderboardEntry) => {
-    switch (selectedSubject) {
-      case 'grammar':
-        return entry.grammarPoints;
-      case 'mythology':
-        return entry.mythologyPoints;
-      case 'history':
-        return entry.historyPoints;
-      case 'culture':
-        return entry.culturePoints;
-      case 'literature':
-        return entry.literaturePoints;
-      default:
-        return entry.totalPoints;
-    }
-  };
-
   const subjects = [['all', 'All subjects'], ...Object.entries(CATEGORY_NAMES)] as [Category | 'all', string][];
 
   return (
@@ -92,7 +44,7 @@ export const LeaderboardView: React.FC = () => {
       <div className="page-head">
         <div>
           <h1>Leaderboard</h1>
-          <p className="small muted">Practice scores from everyone using the arena.</p>
+          <p className="small muted">Chapters ranked by the XP their members have earned in the arena.</p>
         </div>
         <button type="button" className="btn btn--small" onClick={loadLeaderboard} disabled={isLoading}>
           {isLoading && <span className="btn__spinner" aria-hidden="true" />}
@@ -141,7 +93,7 @@ export const LeaderboardView: React.FC = () => {
       ) : entries.length === 0 ? (
         <div className="empty">
           <h3>No scores yet</h3>
-          <p style={{ margin: '0 auto' }}>Nobody has a score in this subject and division. Answer a few questions and you will be first.</p>
+          <p style={{ margin: '0 auto' }}>No chapter has XP in this subject and division yet. Answer a few questions to put yours on the board.</p>
         </div>
       ) : (
         <div className="table-wrap">
@@ -149,27 +101,25 @@ export const LeaderboardView: React.FC = () => {
             <thead>
               <tr>
                 <th>Rank</th>
-                <th>Name</th>
                 <th>Chapter</th>
-                <th>Division</th>
+                <th className="num">Players</th>
                 <th className="num">Accuracy</th>
-                <th className="num">Points</th>
+                <th className="num">XP</th>
               </tr>
             </thead>
             <tbody>
               {entries.map((entry) => {
-                const isCurrent = entry.username.toLowerCase() === user.username.toLowerCase();
+                const isYours = !!user.school && sameChapter(entry.school, user.school);
                 return (
-                  <tr key={entry.username} className={isCurrent ? 'is-you' : undefined}>
+                  <tr key={entry.school.toLowerCase()} className={isYours ? 'is-you' : undefined}>
                     <td className="rank">{entry.rank}</td>
                     <td>
-                      {entry.username}
-                      {isCurrent && <span className="label" style={{ marginLeft: 'var(--space-2)' }}>You</span>}
+                      {entry.school}
+                      {isYours && <span className="label" style={{ marginLeft: 'var(--space-2)' }}>Yours</span>}
                     </td>
-                    <td>{entry.school || 'University High School'}</td>
-                    <td>{capitalise(entry.level || 'novice')}</td>
+                    <td className="num">{entry.players}</td>
                     <td className="num">{entry.accuracy}%</td>
-                    <td className="num">{getSubjectPoints(entry)}</td>
+                    <td className="num">{subjectPoints(entry, selectedSubject)}</td>
                   </tr>
                 );
               })}

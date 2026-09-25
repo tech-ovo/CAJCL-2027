@@ -68,11 +68,12 @@ export interface UserProfile {
   lastSyncedAt?: number;
 }
 
-export interface LeaderboardEntry {
-  rank?: number;
-  username: string;
+/* One chapter's row on the leaderboard: its players' XP, summed. There is no
+ * individual leaderboard, so no player is named. */
+export interface ChapterStanding {
+  rank: number;
   school: string;
-  level: DifficultyLevel;
+  players: number;
   totalPoints: number;
   grammarPoints: number;
   mythologyPoints: number;
@@ -81,7 +82,6 @@ export interface LeaderboardEntry {
   literaturePoints: number;
   accuracy: number;
   totalAnswered: number;
-  lastActive: string;
 }
 
 export type ReaderMode = 'visual' | 'audio';

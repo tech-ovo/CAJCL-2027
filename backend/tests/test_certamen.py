@@ -93,34 +93,43 @@ def test_certamen_sync_and_login(certamen_client):
     assert bad_login.json()["user"] is None
 
 
-def test_certamen_leaderboard(certamen_client):
-    # Seed two users
-    certamen_client.post("/certamen/sync-user", json={
+def _seed_player(client, username, school, level, points, answered, correct):
+    client.post("/certamen/sync-user", json={
         "user": {
-            "username": "Leader1",
+            "username": username,
             "pin": "1111",
-            "school": "Rome High",
-            "level": "advanced",
-            "stats": {"totalPoints": 500, "totalAnswered": 50, "totalCorrect": 45},
+            "school": school,
+            "level": level,
+            "stats": {"totalPoints": points, "totalAnswered": answered, "totalCorrect": correct},
         }
     })
-    certamen_client.post("/certamen/sync-user", json={
-        "user": {
-            "username": "Leader2",
-            "pin": "2222",
-            "school": "Athens Academy",
-            "level": "advanced",
-            "stats": {"totalPoints": 800, "totalAnswered": 80, "totalCorrect": 75},
-        }
-    })
+
+
+def test_certamen_leaderboard_ranks_chapters(certamen_client):
+    _seed_player(certamen_client, "Leader1", "Rome High", "advanced", 500, 50, 45)
+    _seed_player(certamen_client, "Leader2", "rome high ", "advanced", 400, 50, 35)
+    _seed_player(certamen_client, "Leader3", "Athens Academy", "advanced", 800, 80, 75)
+    _seed_player(certamen_client, "Novice1", "Athens Academy", "novice", 100, 10, 5)
+    _seed_player(certamen_client, "Guest", "Roma Antiqua Academy", "advanced", 9000, 10, 10)
 
     res = certamen_client.get("/certamen/leaderboard?level=advanced")
     assert res.status_code == 200
     entries = res.json()["leaderboard"]
-    assert len(entries) >= 2
-    # Leader2 should be ranked higher than Leader1
-    usernames = [e["username"] for e in entries]
-    assert usernames.index("Leader2") < usernames.index("Leader1")
+
+    # One row per chapter, whatever the case or spacing players typed.
+    assert [e["school"].lower() for e in entries] == ["rome high", "athens academy"]
+    rome, athens = entries
+    assert (rome["rank"], rome["players"], rome["totalPoints"]) == (1, 2, 900)
+    assert rome["accuracy"] == 80  # 80 of 100, not the mean of 90% and 70%
+    assert (athens["players"], athens["totalPoints"]) == (1, 800)
+
+    # No individual appears anywhere in the response.
+    assert all("username" not in e for e in entries)
+    assert "Leader" not in res.text
+
+    everyone = certamen_client.get("/certamen/leaderboard").json()["leaderboard"]
+    assert [e["totalPoints"] for e in everyone] == [900, 900]
+    assert {e["school"].lower(): e["players"] for e in everyone}["athens academy"] == 2
 
 
 def test_certamen_log_attempt(certamen_client):
