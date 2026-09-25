@@ -42,6 +42,31 @@ cheaper before that than after.
 | NEEDS YOU | Click **Save as PDF** once, on Modal | 0.2 | you | Everything either side of WeasyPrint is built and tested. WeasyPrint itself needs Pango and Cairo and cannot run on Windows, so the render has never executed. One click after the next deploy settles it. **Print is unaffected either way** — it is the same document, built by the same code, and it works. |
 | NEEDS YOU | Real chapters and sponsors | 2 | you | Chapters → Add a chapter, then Add the sponsor on each. About fifty. Nothing technical; it is the data the whole year runs on. |
 
+### Privacy, before the notice or any code goes out
+
+From [`PRIVACY.md` §8](PRIVACY.md#8-open-decisions-and-action-items), which has
+the reasoning. The notice and the school form cannot be sent until the first four
+are done.
+
+| | What | Hrs | Who | Notes |
+| --- | --- | --- | --- | --- |
+| NEEDS YOU | Move Drive + Apps Script to the `cajcl.org` Workspace | 2 | you | The medical scans sit in a personal Gmail under consumer terms, with no data-processing agreement. Find out the Workspace edition; Education is best if CAJCL is eligible. Same account unblocks two-factor. |
+| NEEDS YOU | Name the privacy officer; CAJCL's mailing address | 0.2 | you | An adult officer. Every `[PLACEHOLDER]` in `PRIVACY.md` §2, §4 and §5. |
+| NEEDS YOU | How under-13 consent is obtained | — | you | The waiver paragraph in `PRIVACY.md` §4.1, and whether sponsors hold `DEL-` sheets until it is signed, or the school form in §5. |
+| NEEDS YOU | Board resolution: CAJCL operates the site | — | you | The domain and Modal account are named for UHS JCL (`PRIVACY.md` §6.0). |
+| ask | Redact a person | 6 | ask | A deletion request cannot be honoured today: names stay in the append-only audit log. One audited operation that blanks a person everywhere, audit sentences included. Needs one decision: rewrite the sentences, or store person IDs in them and render names at read time. |
+| NOW | Stop keeping pasted roster text and delegates' own cell phones | 2 | auto | `roster_imports.raw_text` keeps emails the parser discarded; no CHECK stops `people.cell_phone` for delegates. |
+| NOW | A real backup | 2 | auto | Today there is none that outlives a container (`PRIVACY.md` §2.5). Must be destroyed with everything else on 12 April 2027. |
+| NEEDS YOU | Certamen fixes | 3 | you | Documented, not fixed, by your decision (`SECURITY.md` §8). Before the arena is promoted to students. |
+
+### Privacy, before 12 April 2027
+
+| | What | Hrs | Who | Notes |
+| --- | --- | --- | --- | --- |
+| NOW | Archive script | 3 | auto | From the anonymised export keep only person number, chapter, grade, Latin level and placements. Then `turso db destroy`, delete the pepper, empty the Drive trash. Checklist in `PRIVACY.md` §2.4. |
+| NEEDS YOU | Results to each school | 2 | ask | One Google Sheet per school, shared only with its sponsor; how CAJCL's copies are deleted. |
+| NEEDS YOU | Certamen retention | — | you | Undecided. |
+
 **"At Large" is two chapters, not one** — one MS, one HS — because every rule
 that gates Latin levels, tests and grades reads `schools.level`. Neither is
 billing-exempt; only SCL is. Make them the same way as any other chapter.
@@ -108,6 +133,8 @@ Everything above marked **you** or **ask**, gathered:
    laptop in a room with no wifi. One sentence unblocks 12 hours of work.
 4. **The real chapter list**, with sponsors' names and emails.
 5. **Whether "At Large" exists this year**, and whether both levels are needed.
+6. **The privacy officer** (an adult), and the consent route for under-13
+   delegates — [`PRIVACY.md` §8](PRIVACY.md#8-open-decisions-and-action-items).
 
 ---
 

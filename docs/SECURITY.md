@@ -5,7 +5,13 @@ deliberately not protected. Written to be handed to somebody outside the
 project — a district reviewer, a parent who asks, next year's commissioner.
 
 Kept honest rather than reassuring. Everything below was read out of the code
-rather than remembered, and the parts that are weak say so.
+rather than remembered, and the parts that are weak say so. Re-checked against
+the code on 25 September 2026.
+
+**For the legal side** — what data is kept and for how long, the privacy notice
+for families, what schools agree to, and COPPA, FERPA, SOPIPA and AB 1584
+provision by provision — see [`PRIVACY.md`](PRIVACY.md). This file is the
+technical half of the same story.
 
 ---
 
@@ -20,11 +26,11 @@ guardian's name and phone number where a sponsor typed one in.
 | | |
 | --- | --- |
 | Delegate email addresses | Never asked for. Several delegates are eleven years old. |
-| Medical information | Paper. Scanned by sponsors into a Drive folder no code here reads. |
+| Medical information | Paper. Scanned by sponsors into a Drive folder no code here reads. That folder is still CAJCL's to protect and delete — see [`PRIVACY.md` §2.4](PRIVACY.md#24-written-data-retention-policy). |
 | Waivers and signatures | Same. |
 | Home addresses | Never asked for. |
 | Payment card details | None. Chapters pay by cheque, by post. |
-| Passwords | There are none. |
+| Passwords | None for the site. The optional Certamen practice arena has its own username and PIN — §8. |
 
 The largest realistic loss is **a roster of names** — one chapter's, or all of
 them. That is what the rest of this document is about.
@@ -72,7 +78,7 @@ codes is not the way in.
 ## 3. How somebody is stopped from reading what is not theirs
 
 Every endpoint declares the scope it requires as a real object, not a comment.
-The test suite walks all fifty-six guarded routes and asserts each one refuses a
+The test suite walks all eighty-six guarded routes and asserts each one refuses a
 wrong-scope credential and a wrong-school credential. **A route added without a
 guard fails that test**, which is the point of writing it that way.
 
@@ -81,13 +87,17 @@ There is no table attaching a scope to a person, and there never will be — the
 schema says so in a comment above the tables and the tests enforce it.
 
 Identity scopes (`sponsor`, `delegate`, `chapter`) are always limited to the
-holder's own school. Administrative scopes (`registration`, `academics`,
-`awards`, `*`) are global; there are a handful of holders and they are the
-convention board.
+holder's own school, plus any school a chair has explicitly granted a sponsor.
+Administrative scopes (`registration`, `academics`, `awards`, `*`) are global;
+there are a handful of holders and they are the convention board. The `judge`
+scope is global but is **not** administrative: it reaches anonymous contest
+entries and nothing else, and anybody holding `academics` is refused it.
 
 **Nothing unauthenticated returns a name.** The three public endpoints return
-aggregate counts, convention facts, and the announcement banner. That is the
-whole unauthenticated surface besides sign-in and a health check.
+aggregate counts, convention facts, and the announcement banner. Besides sign-in
+and a health check, the only other unauthenticated routes are the seven
+`/certamen/*` routes of the practice arena, which sit on the guard test's
+allow-list and have weaknesses of their own — §8.
 
 ---
 
@@ -103,8 +113,8 @@ Ordered by how likely it is, not how bad it is.
 | The Turso auth token leaks | The whole database. Names are plaintext there — see §5. Codes are not. |
 | Modal Secrets are compromised | The pepper *and* the database token. Everything, including the ability to compute codes from the stored hashes. |
 | A new endpoint ships without a guard | Nothing — CI fails first. |
-| SQL injection | Nothing. Every statement is a named, parameterised query in `backend/queries/*.sql`; a test refuses any query containing a format placeholder. There is no string-built SQL anywhere. |
-| Cross-site scripting | Nothing found. The frontend never uses `innerHTML`; every value goes through `document.createTextNode`. A test enforces it. |
+| SQL injection | Nothing found. Every registration statement is a named, parameterised query in `backend/queries/*.sql`; a test refuses any of them containing a format placeholder. Outside that folder, `lib/certamen_db.py` and `workers/export.py` build a few statements with f-strings, from fixed table names and integer-cast or whitelisted values only — no user text. The test does not cover them. |
+| Cross-site scripting | Nothing found. The frontend never uses `innerHTML`; every value goes through `document.createTextNode`. That was checked by search; **no test enforces it**, and the Certamen bundle is excluded from the frontend tests. |
 
 **The honest summary: the codes are the security.** Almost every path above is
 somebody's sheet going astray rather than a technical break. That is worth
@@ -154,9 +164,12 @@ printed packet and the printed invoice — both of which carry an inline
 `<style>`, and both of which would have printed as unstyled text. The packet is
 the most important thing this system produces on paper.
 
-**Still open:** the frontend itself is served by GitHub Pages, which sets no CSP
-of its own. A meta-tag policy on `index.html` would cover it, and has not been
-written.
+**Fixed since.** The frontend is served by GitHub Pages, which sets no CSP of its
+own, so `index.html` now carries a meta-tag policy: `default-src 'self'`,
+scripts only from the site plus one hashed inline script, connections only to
+the site and the Modal API, `form-action 'none'`, `object-src 'none'`. A test
+holds it in place. **Still open:** the Certamen page
+(`frontend/public/certamen/index.html`) has no policy.
 
 **Open — a 180-day session.** A sponsor's session on a school Chromebook is
 valid for six months. That is a deliberate trade against making people re-enter
@@ -189,8 +202,9 @@ That is sponsors, chaperones, and every board member.
 
 **On the two delivery options.** Apps Script on the Workspace account is the
 better choice: 1,500 a day against 300, no DNS work, no third-party account, no
-API key to leak, and the project already has an Apps Script deployment planned
-for Drive exports. Brevo needs SPF and DKIM set up on `uhsjcl.org` before
+API key to leak, and the project already has an Apps Script deployment, for
+contest files. It would need Gmail added to its OAuth scopes (today it holds
+Drive only). Brevo needs SPF and DKIM set up on `uhsjcl.org` before
 anything sends reliably, and adds a vendor holding a log of who signed in when.
 
 **What it costs, honestly.** A sponsor with no signal in a school car park
@@ -207,3 +221,28 @@ barely inconveniencing anybody deliberate. Two-factor is the better spend.
 after the queued registration work and before codes are sent to chapters — the
 codes go out once, and changing the sign-in flow afterwards means telling fifty
 sponsors that it changed.
+
+---
+
+## 8. The Certamen practice arena
+
+Added 25 September 2026. The arena (`certamen-bot/`, `backend/lib/certamen_db.py`,
+the `/certamen/*` routes at the end of `backend/api.py`) was built separately
+from registration and does not follow its rules. It holds no registration data
+and is not linked to anybody's access code, but it holds usernames — which
+students may make their real names — with a chapter and every answer given.
+
+| Weakness | Where | Consequence |
+| --- | --- | --- |
+| **Any profile can be taken over.** `POST /certamen/sync-user` upserts on username and overwrites the PIN without checking the old one. | `certamen_db.py:351-374` | Anybody can replace anybody's PIN and profile. |
+| **PINs are stored in plain text** and `POST /certamen/login` returns the PIN in its response. No rate limit on login. | `certamen_db.py:130,441-466` | A username plus a PIN is "a username… in combination with a password" under Cal. Civ. Code §1798.82, so a leak of this table is a notifiable breach. |
+| **Anyone can delete the whole question bank.** `POST /certamen/questions/batch` with `replace=true` runs `DELETE FROM certamen_questions`, unauthenticated. | `certamen_db.py:469-473` | Loss of the bank, restored only by re-import. |
+| No audit. Writes go around `Tx`, so nothing records them. | `certamen_db.py` | No trail after any of the above. |
+| No Content-Security-Policy on the arena's page, and the routes are on the guard test's allow-list. | `frontend/public/certamen/index.html`, `test_endpoints.py` | The two nets that catch mistakes elsewhere do not cover it. |
+| The client can talk to Turso directly if a URL and token are typed into its Settings; the built bundle carries none. | `certamen-bot/src/services/tursoService.ts` | Safe as shipped; a token typed there lands in that browser's `localStorage`. |
+
+**Status: documented, not fixed** — the commissioners' decision on 25 September
+2026. The fixes are small: hash PINs (the pepper is already available), require
+the current PIN to change a profile, rate-limit login the way `/auth/redeem` is
+limited, never return the PIN, and put the question import behind `guard("*")`.
+Do them before the arena is promoted to students.

@@ -1,0 +1,120 @@
+// CAJCL 2027 — data flow, one printed page (US Letter, landscape).
+// Render (from the repository root):
+//   dot -Tpdf docs/privacy/data-flow.dot -o docs/privacy/data-flow.pdf
+//   dot -Tsvg docs/privacy/data-flow.dot -o docs/privacy/data-flow.svg
+// Solid = live today. Dashed = planned. Red = the most sensitive data.
+// Circled numbers match the flow list in docs/PRIVACY.md §1.
+
+digraph cajcl_data_flow {
+  graph [
+    label=<<b>CAJCL 2027 — where personal information goes</b><br/><font point-size="10">Solid: live (Sept 2026) · Dashed: planned · Red: most sensitive · ① – ⑫ are explained in docs/PRIVACY.md §1</font>>,
+    labelloc=t, fontname="Helvetica", fontsize=16,
+    rankdir=LR, newrank=true, splines=spline, nodesep=0.75, ranksep=1.1,
+    size="10.5,8", ratio=compress, margin=0, pad=0.15
+  ];
+  node [fontname="Helvetica", fontsize=10, shape=box, style="rounded,filled", fillcolor="#ffffff", color="#444444", margin="0.1,0.05"];
+  edge [fontname="Helvetica", fontsize=8.5, color="#555555", fontcolor="#333333", arrowsize=0.6];
+
+  // ============================================================ column 1: people
+  subgraph cluster_people {
+    label=<<b>People</b>>; style="rounded,filled"; fillcolor="#f3f3f3"; color="#999999"; fontsize=12;
+    public   [label=<<b>Public</b><br/>anyone, no code>];
+    delegate [label=<<b>Delegates (students)</b><br/>grades 6–12 · some under 13<br/>code DEL-…>];
+    sponsor  [label=<<b>Sponsors (teachers)</b><br/>code SPO-… · own chapter only>];
+    adult    [label=<<b>Chaperones / other adults</b><br/>code VOL-…>];
+    board    [label=<<b>Board / admins</b><br/>registration · academics · awards<br/>chairs · Presidents (scope *)>];
+    judge    [label=<<b>Contest judges</b><br/>scope judge · never sees names>];
+    parent   [label=<<b>Parents / guardians</b><br/>paper only: waiver + medical form>, fillcolor="#fff4f4", color="#b22222"];
+  }
+
+  // ============================================================ column 2: delivery
+  subgraph cluster_github {
+    label=<<b>GitHub</b><br/><font point-size="9">SOC 1 + SOC 2 Type 2 · ISO 27001</font>>; style="rounded,filled"; fillcolor="#eef3fb"; color="#5b7bb5"; fontsize=11;
+    pages   [label=<<b>GitHub Pages</b> — state.uhsjcl.org<br/>static site + Certamen page<br/>stores nothing · GitHub logs visitor IPs>];
+    actions [label=<<b>GitHub Actions</b><br/>deploy · daily stats snapshot<br/>(aggregate counts only)>];
+  }
+  browser [label=<<b>The user's own browser</b><br/>localStorage: session token (180 days)<br/>form drafts (≤ 30 days) · Certamen PIN>, style="rounded,dashed"];
+
+  // ============================================================ column 3: Modal
+  subgraph cluster_modal {
+    label=<<b>Modal</b><br/><font point-size="9">SOC 2 Type 2 · encrypted in transit + at rest</font>>; style="rounded,filled"; fillcolor="#eef8ef"; color="#4f8f5a"; fontsize=11;
+    api     [label=<<b>API</b> (FastAPI)<br/>every route: scope + school check<br/>sign-in rate limits · audit on every change<br/>security headers · CORS allow-list>];
+    secrets [label=<<b>Modal Secrets</b><br/>CODE_PEPPER · Turso tokens<br/>Apps Script key>, fillcolor="#fffbe6"];
+    workers [label=<<b>Workers</b><br/>PDF packets · xlsx / sql exports<br/>temporary disk only>];
+    certapi [label=<<b>/certamen/*</b><br/>NO sign-in · PINs in plain text<br/>(known weakness, §2.8)>, color="#b22222"];
+  }
+
+  // ============================================================ column 4: storage
+  subgraph cluster_turso {
+    label=<<b>Turso</b><br/><font point-size="9">SOC 2 Type II · encrypted at rest</font>>; style="rounded,filled"; fillcolor="#f6f0fb"; color="#7d5ba6"; fontsize=11;
+    maindb  [label=<<b>Main database</b><br/>names · grade · Latin level · meal<br/>guardian name + phone · adult email + phone<br/>event choices · contest entry text<br/>HMAC of codes and IPs · hashed sessions<br/>append-only audit log (contains names)>];
+    archive [label=<<b>Archive — from 12 Apr 2027</b><br/>person no. + chapter + grade + level<br/>+ placements · NO names (pseudonymous)>, style="rounded,dashed,filled"];
+    certdb  [label=<<b>Certamen database</b><br/>username · PIN · chapter<br/>answers · XP>];
+  }
+
+  subgraph cluster_google {
+    label=<<b>Google</b><br/><font point-size="9">personal Gmail today → cajcl.org Workspace later</font>>; style="rounded,filled"; fillcolor="#fdf5ea"; color="#c98a2e"; fontsize=11;
+    gas    [label=<<b>Apps Script "puppet"</b><br/>upload · fetch · mkdir · trash<br/>HMAC-signed · 5-minute window>];
+    drive  [label=<<b>Drive: contest entries</b><br/>Contest / Chapter / Last, First.ext>];
+    scans  [label=<<b>Drive: waiver + MEDICAL scans</b><br/>uploaded by hand · no code reads it<br/>Presidents only>, fillcolor="#fff4f4", color="#b22222", penwidth=1.8];
+    mail   [label=<<b>Gmail (planned)</b><br/>2FA one-time codes<br/>adults + board only>, style="rounded,dashed,filled"];
+    sheets [label=<<b>Sheets (planned)</b><br/>one results sheet per school<br/>shared with that sponsor only>, style="rounded,dashed,filled"];
+  }
+
+  // ============================================================ layout skeleton (invisible)
+  // Four columns: people | browser + GitHub | Modal | Turso + Google.
+  public -> pages [style=invis];
+  pages -> api [style=invis];
+  api -> maindb [style=invis];
+  gas -> drive -> scans [style=invis];
+  mail -> sheets [style=invis];
+  actions -> browser [style=invis];
+  { rank=same; pages; actions; browser; }
+  { rank=same; api; workers; certapi; secrets; }
+  { rank=same; maindb; archive; certdb; gas; drive; scans; mail; sheets; }
+
+  // ============================================================ flows
+  // ① browsing the public site
+  public   -> pages   [label="① open site"];
+  pages    -> browser [label="page + scripts"];
+  browser  -> api     [label="① /public/*: counts only\n② sign-in · ③–⑥ every signed-in request\n(HTTPS, Bearer token)"];
+
+  // ② sign-in (everyone with a code)
+  delegate -> browser [label="② code or QR"];
+  sponsor  -> browser;
+  adult    -> browser;
+  board    -> browser;
+  judge    -> browser;
+  secrets  -> api     [label="pepper", style=dotted];
+  api      -> maindb  [label="② HMAC(code) → session\n③ roster · ④ activity sheets\n⑤ entries · audit rows\n(TLS · parameterised SQL)"];
+  api      -> mail    [label="② planned: 2FA code", style=dashed];
+  sponsor  -> mail    [label="② email (adults, board)", style=dashed, dir=back];
+
+  // ③ roster and printed packet
+  api      -> workers [label="③ print · ⑧ export"];
+  sponsor  -> workers [label="③ packet: names + codes + QR", color="#b22222", fontcolor="#b22222", dir=back];
+  sponsor  -> delegate [label="③ hands out", style=dotted, constraint=false];
+  board    -> workers [label="⑧ export (scope *, audited)", dir=back];
+
+  // ⑤ ⑥ contests
+  api      -> gas     [label="⑤ upload · ⑥ fetch\n(signed)", dir=both];
+  gas      -> drive   [label="⑤"];
+  judge    -> api     [label="⑥ \"Entry N\" — no names", style=dotted, dir=back];
+
+  // ⑦ paper forms (outside the code)
+  parent   -> sponsor [label="⑦ signed", color="#b22222", fontcolor="#b22222", constraint=false];
+  sponsor  -> scans   [label="⑦ manual upload — not through our code", color="#b22222", fontcolor="#b22222"];
+
+  // ⑨ Certamen practice
+  browser  -> certapi [label="⑨ practice (anyone)"];
+  certapi  -> certdb  [label="⑨"];
+
+  // ⑩ ⑫ end of year
+  maindb   -> sheets  [label="⑩ results by school", style=dashed];
+  sponsor  -> sheets  [label="⑩ permanent record", style=dashed, dir=back];
+  maindb   -> archive [label="⑫ 12 Apr 2027: keep\nno names, destroy the rest", style=dashed];
+
+  // ⑪ build
+  actions  -> maindb  [label="⑪ read counts", constraint=false];
+  actions  -> pages   [label="⑪ bake stats · deploy"];
+}

@@ -62,6 +62,16 @@ rules), then `docs/design.md` for the visual rules.
   never return usernames; placeholder chapters (`PLACEHOLDER_CHAPTERS`: guest
   "Roma Antiqua Academy", "Independent") are left out. Chapter is free text,
   required in the profile dialog.
+- Privacy and compliance: `docs/PRIVACY.md` (data-flow diagram, safeguards,
+  inventory, written retention policy, incident response, family notice,
+  school authorization form, COPPA/FERPA/SOPIPA/AB 1584/Cal. Civ. Code
+  mapping, open decisions). Diagram source `docs/privacy/data-flow.dot`;
+  re-render `.svg` and `.pdf` with `dot` after editing (one Letter page).
+  A change to what is collected, who sees it, where it goes, or how long it
+  is kept must update `PRIVACY.md` §1–§2 and, if families would care, §4.
+  Decided facts: CAJCL (501(c)(3)) is the operator; deletion 12 Apr 2027,
+  keeping only person number + chapter + grade + level + placements;
+  Drive/Apps Script on a personal Gmail until the `cajcl.org` Workspace.
 - `apps-script/`, `scripts/`, `docs/`. Bulk question import: `python scripts/import_certamen_questions.py --file <path.json|path.csv>`.
 
 ## Checks
@@ -79,5 +89,10 @@ rules), then `docs/design.md` for the visual rules.
 - Contest file uploads wait on deploying `apps-script/Code.gs` (now with a
   `fetch` op; the HMAC string is `ts.op.folderId.name.fileId`) — see
   `docs/TODO.md` §2.
+- Certamen routes are unauthenticated: `sync-user` overwrites any PIN, PINs
+  are plaintext and returned by `login`, `questions/batch?replace` wipes the
+  bank. Documented only (`SECURITY.md` §8), by the commissioners' choice.
+- No per-person redaction (audit log is append-only and holds names), no
+  archive/deletion script, no durable backup — `PRIVACY.md` §8.
 - `certamen-bot/bun.lock` is stale (still lists tailwind and lucide-react);
   npm's `package-lock.json` is current.

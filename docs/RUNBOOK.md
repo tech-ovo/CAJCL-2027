@@ -6,7 +6,7 @@ This is written for someone who did not build it. You do not need to have seen
 the code before, and you do not need to be an experienced programmer. Where
 something is genuinely hard, it says so.
 
-**If the site is broken right now, skip to [When something is broken](#when-something-is-broken).** Everything else can wait.
+**If the site is broken right now, skip to [When something is broken](#12-when-something-is-broken).** Everything else can wait.
 
 ---
 
@@ -579,10 +579,21 @@ You get four files: a spreadsheet and a database dump, each in a **full** versio
 and an **anonymised** version.
 
 The anonymised files have every attendee's name, guardian, email, phone and
-free-text note removed — genuinely removed, not hidden. Those are the ones you
-can safely send to someone helping out, or paste into an AI tool. They still
-contain chapter names and the convention's own settings, which are public
-anyway.
+free-text note removed — genuinely removed, not hidden. They still contain
+chapter names and the convention's own settings, which are public anyway —
+**and each person's number, chapter, grade, Latin level and event choices.**
+The person number is printed beside the name on every sponsor's packet, so the
+anonymised file is *pseudonymous*, not anonymous: anybody holding a packet can
+tell which row is whom. Share it only with somebody helping run the convention,
+and do not paste it into an outside AI tool or service unless CAJCL has a
+contract with that service ([`PRIVACY.md` §2.4](PRIVACY.md#24-written-data-retention-policy),
+§6.3). Share counts, not rows, when you can.
+
+**Every export is personal data with an expiry date.** A full export on your
+laptop falls under the retention policy like the database itself: delete it by
+**12 April 2027** ([`PRIVACY.md` §2.4](PRIVACY.md#24-written-data-retention-policy)).
+The ten-minute auto-export writes to the Modal container's temporary disk and is
+gone when the container is; it is not a backup.
 
 ### Restoring
 
@@ -760,6 +771,15 @@ is worse than none because it invites conclusions about data that has moved on.
 ---
 
 ## 12. When something is broken
+
+### Somebody may have seen data they should not have
+
+A packet left on a desk, a code posted in a group chat, a token pasted
+somewhere public, a report from a parent. Follow
+[`PRIVACY.md` §2.7](PRIVACY.md#27-incident-response) step by step: write it
+down, contain it the same hour (the per-secret list is there), work out whose
+data, then notify. Medical scans or Certamen username + PIN in the wrong hands
+are a **legally notifiable breach**, within 30 days.
 
 ### The page loads but says the server is not responding
 

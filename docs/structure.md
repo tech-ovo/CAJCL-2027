@@ -222,9 +222,11 @@ relying on one: a few were written when parts of this were still unbuilt.
 
 **"What about student privacy?"**
 Delegate email addresses are never collected — several delegates are eleven.
-Medical forms and waivers are paper, scanned by the sponsor into their own
-Drive folder that no code here reads. The site records only that a form
-arrived, never what is in it.
+Medical forms and waivers are paper, scanned by the sponsor into a CAJCL Drive
+folder that only the Presidents can open and no code here reads. The site
+records only that a form arrived, never what is in it. Everything personal is
+deleted on 12 April 2027. The whole answer — what is kept, for how long, the
+notice for families, and each law — is [`PRIVACY.md`](PRIVACY.md).
 
 **"Is this real student data?"**
 No. Every chapter, delegate and parent on the site is invented, and the banner

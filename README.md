@@ -9,6 +9,11 @@ Turso + GitHub Pages, no Apps Script needed.
 **Something broken?** [`docs/RUNBOOK.md`](docs/RUNBOOK.md) — written for someone
 who did not build this and may be panicking.
 
+**Privacy, or a school or parent asking?** [`docs/PRIVACY.md`](docs/PRIVACY.md) —
+the data-flow diagram, what is stored and when it is deleted, the notice for
+families, the school authorization form, and COPPA / FERPA / SOPIPA / AB 1584
+provision by provision.
+
 ---
 
 ## Start here

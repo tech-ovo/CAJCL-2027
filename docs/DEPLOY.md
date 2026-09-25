@@ -203,9 +203,12 @@ Work through steps 1 to 7 as written, substituting your own name for
 
 1. **Fork or clone the repository.** Do not start from an empty one — the
    migrations and the catalog are years of accumulated decisions.
-2. **Make a new Turso database.** Never reuse last year's: a convention's data
-   is a record, and next year's registration does not belong in the same table
-   as last year's. Old databases cost nothing to keep.
+2. **Make a new Turso database.** Never reuse last year's: next year's
+   registration does not belong in the same table as last year's. **Last
+   year's should no longer exist** — the retention policy destroys it 30 days
+   after the convention, keeping only a nameless archive
+   ([`PRIVACY.md` §2.4](PRIVACY.md#24-written-data-retention-policy)). If it is
+   still there, that step was missed: do it now, don't copy from it.
 3. **Find and replace the app name** in `backend/app.py`. Four lines.
 4. **Make a new Modal secret** under the matching name, with a **new pepper**.
    Do not carry the old one across — every code from last year would still
