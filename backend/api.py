@@ -573,6 +573,8 @@ def edit_person(person_id: int, request: Request, payload: dict = Body(...),
                                                   "registration", writes=True)):
     with database().tx(request_id=request_id(request)) as tx:
         person = _person_of(tx, principal, person_id)
+        if person.get("first_name") == "REDACTED":
+            raise auth.ForbiddenError("A redacted attendee cannot be edited.")
         now = clock.now_iso()
 
         if person["person_type"] == "delegate":
@@ -636,6 +638,18 @@ def restore_person(person_id: int, request: Request,
         person, school = _person_and_school(tx, principal, person_id)
         roster.restore(tx, school, principal, person)
     return {"ok": True}
+
+
+@app.post("/sponsor/people/{person_id}/redact")
+def redact_person(person_id: int, request: Request,
+                  principal: auth.Principal = guard("sponsor.people.redact",
+                                                    "sponsor", "registration",
+                                                    writes=True)):
+    with database().tx(request_id=request_id(request)) as tx:
+        person, school = _person_and_school(tx, principal, person_id)
+        roster.redact(tx, school, principal, person)
+    return {"ok": True}
+
 
 
 @app.post("/sponsor/people/{person_id}/regenerate-code")

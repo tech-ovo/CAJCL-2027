@@ -320,10 +320,11 @@ How each law treats that:
   database.
 
 **Deletion on request, before 12 April.** See §4 for what families are told.
-**The code cannot fully do this today.** A person can be cancelled and their
-fields edited, but their name stays in the append-only audit log, and a rename
-is itself logged with the old name. A "redact this person" operation must be
-built before registration opens (§8, item 5).
+A sponsor or registration chair can redact an attendee via `POST /sponsor/people/{id}/redact`
+(`roster.redact`, migration 010). This overwrites all personal details with
+`"REDACTED"`, revokes credentials and sessions, clears roles and grants, unranks
+and redacts contest entries, and scrubs historical names from audit sentences
+as one audited operation, keeping row integrity and school statistics accurate.
 
 ### 2.5 Backups
 
@@ -922,7 +923,7 @@ cite the Student Privacy Pledge — its sponsor
 | 2 | Board resolution: CAJCL operates the site; account ownership matches. | Operator ambiguity (§6.0). | Board |
 | 3 | Fill every placeholder: **privacy officer's name, title, email and phone; CAJCL's mailing address**; effective date; waiver retention date; reply deadline. Then link the notice from the home page and the sign-in page. | COPPA §312.4(d); CalOPPA. | Board, then commissioners |
 | 4 | Choose how under-13 consent is obtained: the waiver paragraph (§4.1) **and** holding `DEL-` sheets until it is signed, or school authorisation (§5). | COPPA §312.5; FERPA §99.30. | Board |
-| 5 | **Build "redact a person"**: remove a person's details everywhere, including names inside audit sentences, as one audited operation. | Deletion requests (§2.4); SOPIPA (d)(2). | Commissioners |
+| 5 | **"Redact a person"**: built (`POST /sponsor/people/{id}/redact`, migration 010). Removes personal details everywhere and cleans audit sentences without deleting row. | Deletion requests (§2.4); SOPIPA (d)(2). | Done |
 | 6 | Stop storing a delegate's own cell phone; stop keeping pasted roster text after the commit. | §2.8 #8, #9. | Commissioners |
 | 7 | A backup plan: where copies live, who can open them, destroyed on 12 April. Check Turso's point-in-time recovery and what `db destroy` leaves behind. | §2.5. | Commissioners |
 | 8 | Someone looks at the audit and sign-in logs weekly during registration. | §2.8 #13. | Board |

@@ -71,3 +71,28 @@ SELECT id, code_prefix, ip_hash, succeeded, attempted_at
 FROM login_attempts
 ORDER BY id DESC
 LIMIT ?;
+
+-- name: audit.redact_summary
+-- Update the summary of an audit log entry during redaction.
+-- Triggers enforce that id, ts_utc, and all other metadata remain untouched,
+-- and the new summary must contain 'REDACTED'.
+UPDATE audit_log SET summary = ? WHERE id = ?;
+
+-- name: audit.by_entity_person
+-- Find audit entries referencing a person as the entity.
+-- Uses idx_audit_entity (entity_type, entity_id).
+SELECT id, summary FROM audit_log
+WHERE entity_type = 'person' AND entity_id = ?;
+
+-- name: audit.by_actor_person
+-- Find audit entries where this person was the actor.
+-- Uses idx_audit_actor (actor_person_id, ts_utc).
+SELECT id, summary FROM audit_log
+WHERE actor_person_id = ?;
+
+-- name: audit.by_school_mentioning_name
+-- Search for audit rows for this school where summary mentions the name.
+-- Uses idx_audit_school (school_id, ts_utc).
+SELECT id, summary FROM audit_log
+WHERE school_id = ? AND summary LIKE ?;
+

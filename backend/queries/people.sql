@@ -163,3 +163,50 @@ UPDATE people SET activity_sheet_waived = ?, updated_at = ? WHERE id = ?;
 -- rather than letting the UNIQUE index refuse them with a constraint error.
 -- Indexed by idx_people_school_seq.
 SELECT COALESCE(MAX(school_seq), 0) + 1 AS next FROM people WHERE school_id = ?;
+
+-- name: people.redact_delegate
+-- Redact all personal details for a delegate while keeping badge number and school intact.
+UPDATE people
+SET first_name = 'REDACTED',
+    middle_name = NULL,
+    last_name = 'REDACTED',
+    suffix = NULL,
+    raw_name_input = 'REDACTED',
+    grade = NULL,
+    latin_level = NULL,
+    meal = NULL,
+    cell_phone = 'REDACTED',
+    guardian_name = 'REDACTED',
+    guardian_phone = 'REDACTED',
+    code_hmac = ?,
+    status = ?,
+    cancelled_at = COALESCE(cancelled_at, ?),
+    updated_at = ?
+WHERE id = ?;
+
+-- name: people.redact_adult
+-- Redact all personal details for an adult while preserving foreign key integrity.
+-- CASE WHEN is used to safely redact adult_type_other only if it was populated.
+UPDATE people
+SET first_name = 'REDACTED',
+    middle_name = NULL,
+    last_name = 'REDACTED',
+    suffix = NULL,
+    raw_name_input = 'REDACTED',
+    meal = NULL,
+    cell_phone = 'REDACTED',
+    email = 'REDACTED',
+    latin_knowledge = NULL,
+    availability_note = 'REDACTED',
+    adult_type_other = CASE WHEN adult_type_other IS NOT NULL THEN 'REDACTED' ELSE NULL END,
+    board_title = NULL,
+    code_hmac = ?,
+    status = ?,
+    cancelled_at = COALESCE(cancelled_at, ?),
+    updated_at = ?
+WHERE id = ?;
+
+-- name: people.revoke_all_roles
+-- Revoke all assigned roles for a person. Uses idx_person_roles_person.
+DELETE FROM person_roles WHERE person_id = ?;
+

@@ -505,13 +505,32 @@ CREATE INDEX idx_audit_school   ON audit_log (school_id, ts_utc);
 CREATE INDEX idx_audit_actor    ON audit_log (actor_person_id, ts_utc);
 CREATE INDEX idx_audit_entity   ON audit_log (entity_type, entity_id);
 
+-- Migration 010 updated audit_log_no_update to allow redaction while preserving append-only:
+-- UPDATE is rejected unless all metadata remains identical and NEW.summary LIKE '%REDACTED%'.
 CREATE TRIGGER audit_log_no_update BEFORE UPDATE ON audit_log
+WHEN NOT (
+    OLD.id = NEW.id AND OLD.ts_utc = NEW.ts_utc
+    AND (OLD.actor_person_id IS NEW.actor_person_id)
+    AND (OLD.actor_role_snapshot IS NEW.actor_role_snapshot)
+    AND (OLD.impersonator_person_id IS NEW.impersonator_person_id)
+    AND OLD.action = NEW.action
+    AND (OLD.entity_type IS NEW.entity_type)
+    AND (OLD.entity_id IS NEW.entity_id)
+    AND (OLD.school_id IS NEW.school_id)
+    AND (OLD.changed_fields IS NEW.changed_fields)
+    AND (OLD.value_detail IS NEW.value_detail)
+    AND (OLD.request_id IS NEW.request_id)
+    AND (OLD.ip_hash IS NEW.ip_hash)
+    AND NEW.summary LIKE '%REDACTED%'
+)
 BEGIN SELECT RAISE(ABORT, 'audit_log is append-only'); END;
+
 CREATE TRIGGER audit_log_no_delete BEFORE DELETE ON audit_log
 BEGIN SELECT RAISE(ABORT, 'audit_log is append-only'); END;
 ```
 
-Actions: `auth.login`, `auth.login_failed`, `auth.magic_link`, `auth.logout`, `impersonation.start`, `impersonation.end`, `school.create`, `school.update`, `roster.preview`, `roster.import`, `person.create`, `person.update`, `person.cancel`, `person.restore`, `person.code_regenerate`, `form.submit`, `form.update`, `form.unlock`, `paper_form.mark`, `chapter_entry.create`, `chapter_entry.delete`, `payment.record`, `catalog.update`, `settings.update`, `announcement.update`, `role.create`, `role.grant`, `role.revoke`, `export.run`, `warm.set`, `contest.submit`, `session.revoke`.
+Actions: `auth.login`, `auth.login_failed`, `auth.magic_link`, `auth.logout`, `impersonation.start`, `impersonation.end`, `school.create`, `school.update`, `roster.preview`, `roster.import`, `person.create`, `person.update`, `person.cancel`, `person.restore`, `person.redact`, `person.code_regenerate`, `form.submit`, `form.update`, `form.unlock`, `paper_form.mark`, `chapter_entry.create`, `chapter_entry.delete`, `payment.record`, `catalog.update`, `settings.update`, `announcement.update`, `role.create`, `role.grant`, `role.revoke`, `export.run`, `warm.set`, `contest.submit`, `session.revoke`.
+
 
 `changed_fields` records field **names only**, never values — this keeps PII out of the log and matches the requirement that the log show "Bob updated their forms" rather than what Bob wrote. `value_detail` carries before/after values for `payment.record` only, because money disputes are exactly when you need them.
 

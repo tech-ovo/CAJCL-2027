@@ -59,3 +59,9 @@ JOIN person_roles pr ON pr.person_id = p.id
 JOIN roles r ON r.id = pr.role_id AND r.key = 'sponsor'
 WHERE p.status = 'active' AND p.school_id <> ?
 ORDER BY p.last_name, p.first_name;
+
+-- name: grants.delete_all_for_person
+-- Delete all sponsor school grants for a person.
+-- Uses sponsor_school_grants_unique (person_id, school_id).
+DELETE FROM sponsor_school_grants WHERE person_id = ?;
+

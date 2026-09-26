@@ -92,7 +92,6 @@ rules), then `docs/design.md` for the visual rules.
 - Certamen routes are unauthenticated: `sync-user` overwrites any PIN, PINs
   are plaintext and returned by `login`, `questions/batch?replace` wipes the
   bank. Documented only (`SECURITY.md` §8), by the commissioners' choice.
-- No per-person redaction (audit log is append-only and holds names), no
-  archive/deletion script, no durable backup — `PRIVACY.md` §8.
+- Per-person redaction built (migration 010, `lib/roster.py:redact`, `POST /sponsor/people/{id}/redact`); archive/deletion script and durable backup remain — `PRIVACY.md` §8.
 - `certamen-bot/bun.lock` is stale (still lists tailwind and lucide-react);
   npm's `package-lock.json` is current.

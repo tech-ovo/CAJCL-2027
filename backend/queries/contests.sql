@@ -204,3 +204,19 @@ JOIN people j ON j.id = b.judge_person_id
 LEFT JOIN contest_ballot_places p ON p.ballot_id = b.id
 WHERE b.item_id = ? AND b.status = 'submitted'
 ORDER BY b.id, p.place;
+
+-- name: contests.redact_for_person
+-- Blank out personal text and file links on a redacted person's contest entries.
+-- CASE WHEN is used to redact translation only when present.
+-- Uses idx_contest_entries_person.
+UPDATE contest_entries
+SET title = 'REDACTED',
+    body_text = 'REDACTED',
+    translation = CASE WHEN translation IS NOT NULL THEN 'REDACTED' ELSE NULL END,
+    original_name = 'REDACTED',
+    link_url = NULL,
+    drive_file_id = NULL,
+    drive_folder_id = NULL,
+    updated_at = ?
+WHERE person_id = ?;
+

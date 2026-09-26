@@ -75,6 +75,7 @@ ROUTES = [
     ("sponsor.people.edit", "PATCH", "/sponsor/people/{person}", {"first_name": "X"}),
     ("sponsor.people.cancel", "POST", "/sponsor/people/{person}/cancel", {}),
     ("sponsor.people.restore", "POST", "/sponsor/people/{person}/restore", {}),
+    ("sponsor.people.redact", "POST", "/sponsor/people/{person}/redact", {}),
     ("sponsor.people.regenerate", "POST",
      "/sponsor/people/{person}/regenerate-code", {}),
     ("sponsor.chapter_leader", "POST",

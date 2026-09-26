@@ -69,3 +69,10 @@ SELECT id, first_name, middle_name, last_name, suffix, person_type, code_prefix
 FROM people
 WHERE roster_import_id = ?
 ORDER BY id;
+
+-- name: roster.import_get
+SELECT id, raw_text FROM roster_imports WHERE id = ?;
+
+-- name: roster.import_update_raw_text
+UPDATE roster_imports SET raw_text = ? WHERE id = ?;
+
