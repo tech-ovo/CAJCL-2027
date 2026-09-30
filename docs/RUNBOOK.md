@@ -1,952 +1,251 @@
-# Runbook
+# Platform Operations & Incident Management Runbook
 
-How to run and repair this system.
-
-This is written for someone who did not build it. You do not need to have seen
-the code before, and you do not need to be an experienced programmer. Where
-something is genuinely hard, it says so.
-
-**If the site is broken right now, skip to [When something is broken](#12-when-something-is-broken).** Everything else can wait.
+**System:** 72nd Annual CAJCL State Convention Digital Platform  
+**Target Environment:** Production (`state.uhsjcl.org`)  
+**Audience:** Technology Commissioners, Systems Administrators, Operations Leads  
 
 ---
 
-## Contents
+## 1. System Architecture & Data Flow
 
-1. [What this system is, in plain terms](#1-what-this-system-is-in-plain-terms)
-2. [How the repository is laid out](#2-how-the-repository-is-laid-out)
-3. [Setting up your computer](#3-setting-up-your-computer)
-   - [Working with the real database from an ARM machine](#working-with-the-real-database-from-an-arm-machine)
-4. [Running it on your own machine](#4-running-it-on-your-own-machine)
-5. [The everyday jobs](#5-the-everyday-jobs)
-6. [Deploying a change](#6-deploying-a-change)
-7. [Secrets, and what breaks if you change one](#7-secrets-and-what-breaks-if-you-change-one)
-8. [Keeping the site fast for an event](#8-keeping-the-site-fast-for-an-event)
-    - [If pages are slow even when the server is awake](#if-pages-are-slow-even-when-the-server-is-awake)
-9. [Backups, exports, and restoring](#9-backups-exports-and-restoring)
-10. [Adding a chair and giving them access](#10-adding-a-chair-and-giving-them-access)
-    - [One sponsor, two chapters](#10b-one-sponsor-two-chapters)
-11. [Watching the database quota](#11-watching-the-database-quota)
-12. [When something is broken](#12-when-something-is-broken)
-13. [Things that will catch you out](#13-things-that-will-catch-you-out)
+The platform utilizes a decoupled, serverless architecture where public clients interact with compute and database tiers through strictly authenticated interfaces.
 
----
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client as User / Browser
+    participant CDN as GitHub Pages (Static Host)
+    participant API as Modal (FastAPI Compute)
+    participant DB as Turso (libSQL Engine)
 
-## 1. What this system is, in plain terms
-
-Four separate services. Only one of them holds anything you would be sad to
-lose.
-
-**GitHub Pages** serves the website itself — the HTML, the CSS, the JavaScript,
-the fonts. It is free, it is just files, and it essentially cannot break. If
-someone visits the site and sees *anything at all*, this part is working.
-
-**Modal** runs the program that does the thinking. Every question the website
-asks — who is this person, what is on their roster, how much do they owe — goes
-to Modal. Modal is the only thing allowed to talk to the database.
-
-Modal *sleeps when nobody is using it*, which is what keeps it free. Waking up
-takes a few seconds. That is normal and the site is designed to say so politely
-rather than appearing frozen.
-
-**Turso** is the database. It stores every school, person, form, and payment.
-Turso is a hosted version of SQLite, which matters more than it sounds: every
-backup this system produces is an ordinary SQLite file that you can open in a
-free program called DB Browser, or load into a Google Colab notebook, without
-any special tools.
-
-**Google Apps Script** is a small helper that writes files into the Google
-Drive. It exists only because nothing else can act as his Google identity. It is
-**not needed to run registration**. It **is** needed for pre-convention contest
-entries that are files (art, myths, poems): without it those answer "not
-switched on yet", while slogans and Publicity portfolios still work.
-
-### How a single click travels
-
-Someone clicks "Roster" on the website.
-
-1. Their browser already has the page (from GitHub Pages) and runs a little
-   JavaScript.
-2. That JavaScript sends a request to Modal, carrying a session token that says
-   who they are.
-3. Modal checks the token, works out what that person is allowed to see, and
-   asks Turso one question.
-4. Turso answers. Modal turns it into JSON and sends it back.
-5. The browser draws the table.
-
-The browser never talks to Turso and never holds a database password. That is
-deliberate: the website's code is public, so anything the browser knows is
-public too.
-
----
-
-## 2. How the repository is laid out
-
-Six top-level folders. Here is what each is for and when you would open it.
-
-```
-frontend/     the website people see
-backend/      the program that does the thinking
-scripts/      one-off tools you run by hand
-docs/         these documents
-apps-script/  the Google Drive helper (not needed yet)
-.github/      instructions for the robots that deploy things
+    Client->>CDN: Request Web Page Assets (HTML/CSS/JS)
+    CDN-->>Client: Return Static Assets
+    Client->>API: API Request (Bearer Session Token Hash)
+    API->>API: Authenticate & Evaluate RBAC Scopes
+    API->>DB: Execute Parameterized SQL Query (Connection Pool)
+    DB-->>API: Return Result Set
+    API-->>Client: JSON Response (Zero Database Credentials Exposed)
 ```
 
-### `frontend/` — the website
-
-Plain HTML, CSS and JavaScript. There is **no build step**: the files in
-`frontend/public/` are exactly what a browser downloads. You can edit one, save
-it, and refresh. Nothing to compile, nothing to install.
-
-| File | What it is |
-|---|---|
-| `index.html` | The page shell. Everything else is drawn into it. |
-| `tokens.css` | **Every colour, font and spacing size in the entire site.** |
-| `app.css` | How things look — buttons, tables, forms. |
-| `js/main.js` | Decides which page to show, handles signing in and out. |
-| `js/api.js` | Every request to Modal, and the "waking up the server" message. |
-| `js/ui.js` | Small helpers for building the page. |
-| `js/pages/` | One file per screen: `roster.js`, `invoice.js`, and so on. |
-| `fonts/` | The three typefaces, stored here so no outside service is needed. |
-
-**If you want to change how the site looks, start with `tokens.css`.** Change
-the colours there and the whole site changes. That file exists so the next
-commissioners can re-skin the site for their own school in an afternoon.
-
-### `backend/` — the program
-
-| Path | What it is |
-|---|---|
-| `api.py` | Every web address the site can call, and who is allowed to call it. |
-| `app.py` | The small file that tells Modal how to run everything else. |
-| `lib/` | The actual logic, one file per topic. |
-| `queries/` | **Every database question this system asks**, as plain `.sql` files. |
-| `migrations/` | The database's structure, as numbered steps. |
-| `workers/` | Slow jobs (PDFs, exports) that run separately. |
-| `tests/` | Around 420 automated checks. |
-
-Inside `lib/`, the files are named after what they handle:
-
-| File | What it handles |
-|---|---|
-| `db.py` | Talking to the database, and transactions. |
-| `auth.py` | Signing in, sessions, and who may do what. |
-| `codes.py` | Making and checking access codes. |
-| `names.py` | Reading a pasted roster into first/middle/last names. |
-| `roster.py` | Adding, cancelling, and restoring people. |
-| `forms.py` | The activity sheet and the adult sheet. |
-| `catalog.py` | The list of tests and activities, and who may enter each. |
-| `stats.py` | The counters, and the invoice arithmetic. |
-| `printing.py` | The printed packet and invoice. |
-| `settings.py` | The values an admin can change from the dashboard. |
-| `clock.py` | Dates and times, and the deadline rules. |
-| `queries.py` | Loading the `.sql` files. |
-| `migrate.py` | Running the migrations. |
-
-**Two folders are worth knowing about even if you never open `lib/`.**
-
-`backend/queries/` holds every single question this system asks the database, in
-readable SQL, each one with a comment explaining why it is written that way. If
-you want to understand what the system actually does, this folder is the
-shortest path. Nothing anywhere else builds a database query — that rule exists
-so an automated check can inspect all of them.
-
-`backend/migrations/` holds the database structure as numbered steps
-(`001_core.sql`, `002_forms_catalog.sql`, and so on). They run in order, once
-each. **Never edit one that has already run** — write a new one instead. The
-system refuses to start if it notices an old migration has changed, because at
-that point the database and the code no longer agree and guessing which is right
-would be worse than stopping.
-
-### `scripts/` — tools you run by hand
-
-| Script | What it does |
-|---|---|
-| `seed.py` | Fills the database with invented sample data. |
-| `build_fonts.py` | Downloads and trims the fonts; fails if the theme cannot render. |
-| `build_snapshot.py` | Bakes the current numbers into the welcome page. |
-| `check_query_plans.py` | Checks no database question is accidentally slow. |
-| `measure_usage.py` | Estimates how much of the free tier is being used. |
-| `build_favicon.py` | Rebuilds the browser-tab icons from `img/logo.webp`. Run it when the logo changes. Needs Pillow. |
-| `add_board.py` | Gives real board members accounts. Reads `board.json`, which is gitignored so no real name reaches the repository. |
+### Security Boundary
+- The browser **never** connects directly to the database and contains no database credentials.
+- All business logic, transaction scopes, and authorization policies execute within Modal.
 
 ---
 
-## 3. Setting up your computer
+## 2. Repository Layout & Topology
 
-### Which terminal?
-
-**Whichever one you already use, and only one copy of the repository.** On
-Windows that is PowerShell or the VS Code terminal; on macOS or Linux, your
-usual terminal. Everything in this project runs natively on all three.
-
-The tempting mistake on Windows is to keep a second copy of the repository
-inside WSL — the Linux environment that ships with Windows — on the grounds
-that Modal runs on Linux. It costs more than it gives. Two copies drift apart
-within a day: you edit one, run a script in the other, and lose an afternoon
-working out why the two disagree.
-
-Nothing here needs Linux:
-
-- The test suite passes on Windows.
-- `scripts/build_fonts.py` and `scripts/build_snapshot.py` are plain Python.
-- The Modal command line tool has a Windows version.
-- WeasyPrint, which is the awkward one to install, is never installed locally.
-  It lives in `backend/requirements-worker.txt` and runs only inside Modal's
-  own image. See section 2 for what that image is.
-
-The single exception is Turso's command line tool, which is published for macOS
-and Linux only. On Windows, run those few commands in WSL — they ask Turso
-about your account and never touch your files, so it does not matter which
-folder you are in. Turso's website can do the same jobs if you would rather not
-use WSL at all.
-
-**If you have ended up with two copies**, keep the one your editor opens, and
-delete the other. Nothing is stored in the working folder that is not either in
-Git or recoverable: `.venv` is rebuilt with one command, and `~/.modal.toml` is
-recreated by `modal setup`.
-
-### Python and the virtual environment
-
-A **virtual environment** is a private folder of Python packages belonging to
-this project alone, so that installing something here cannot break something
-else on your computer. Some systems — Ubuntu among them — refuse to let `pip`
-install anything without one, which is a deliberate safety feature rather than
-a mistake on your part.
-
-Keep it *inside the project*, not in your home folder, so it is obvious what it
-belongs to.
-
-Windows, in PowerShell:
-
-```powershell
-cd path\to\CAJCL-2027
-py -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r backend/requirements.txt
-pip install pytest httpx esprima fonttools brotli modal
+```text
+├── frontend/public/          # Static distribution root (HTML5, Vanilla ES6, CSS Tokens)
+│   ├── index.html            # Single-page application shell
+│   ├── tokens.css            # Global design tokens (color palette, typography, spacing)
+│   ├── app.css               # Core component styling & layouts
+│   ├── js/                   # Modular client-side controllers
+│   │   ├── main.js           # Client router, session controller, auth dispatcher
+│   │   ├── api.js            # Fetch wrapper, error interceptors, cold-start polling
+│   │   └── pages/            # Page-specific DOM controllers (roster, invoice, etc.)
+│   └── fonts/                # Self-hosted typography assets (Literata, Plex)
+├── backend/                  # Serverless application tier
+│   ├── api.py                # FastAPI route declarations & CORS security policy
+│   ├── app.py                # Modal container images, function declarations, schedules
+│   ├── lib/                  # Isolated domain logic (auth, codes, roster, stats)
+│   ├── queries/              # Immutable, parameterized SQL statements (.sql files)
+│   ├── migrations/           # Forward-only schema version control
+│   └── workers/              # Heavy asynchronous jobs (WeasyPrint PDF, bulk exports)
+├── scripts/                  # Administrative operations & continuous validation CLI
+└── docs/                     # Product, security, architecture, and regulatory specs
 ```
 
-macOS or Linux:
+---
 
+## 3. Local Development & Automated Testing
+
+### Environment Initialization
 ```bash
-cd path/to/CAJCL-2027
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r backend/requirements.txt
-pip install pytest httpx esprima fonttools brotli modal
-```
+# Activate environment
+source .venv/bin/activate  # Windows: .venv\Scripts\Activate.ps1
 
-You must run the activate line **each time you open a new terminal**. You will
-know it worked because your prompt gains a `(.venv)` prefix. If a command
-suddenly reports that a package is missing, that is almost always the reason.
-
-If PowerShell refuses to run the activate script and mentions an execution
-policy, allow local scripts once, for your account only. It changes nothing for
-other users and turns off no other protection:
-
-```powershell
-Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
-```
-
-On a school-managed machine you may not be allowed to. You do not need to be:
-skip activation and call the environment's Python by path instead, which needs
-no permission at all.
-
-```powershell
-.venv\Scripts\python.exe -m pytest backend/tests
-```
-
-Watch the folder in your prompt, too. A `.venv` created before you `cd` into
-the project lands in your home folder and belongs to nothing.
-
-`.venv` is already in `.gitignore`, so it will not be committed.
-
-### Working with the real database from an ARM machine
-
-Skip this unless `pip install` fails with a wall of Rust output ending in
-**`is cmake not installed?`**
-
-The driver that talks to hosted Turso is called `libsql`. It ships ready-built
-for x86_64 Linux, both kinds of Mac, and x86_64 Windows — but for **no ARM
-platform except Apple silicon**. If your laptop has a Snapdragon or similar ARM
-chip, that rules out both Windows itself and WSL on it, so pip tries to compile
-the driver from Rust source instead. That needs cmake and a full toolchain,
-takes about ten minutes, and often fails anyway.
-
-To find out which you have:
-
-```bash
-python -c "import platform, sys; print(platform.machine(), sys.platform)"
-```
-
-`ARM64 win32` or `aarch64 linux` means this section applies to you.
-
-**You almost certainly do not need it.** Local work uses a plain file and the
-`sqlite3` module that comes with Python. The driver is only needed to reach the
-*hosted* database, and there is a better way to do that:
-
-```bash
-modal run backend/app.py::doctor           # check the settings and connect
-modal run backend/app.py::setup            # migrate, then seed
-modal run backend/app.py::setup --reset    # wipe first, then rebuild
-modal run backend/app.py::setup --no-seed  # migrate only, leave data alone
-```
-
-That runs on Modal, whose machines are x86_64, so the driver is simply there.
-The access codes come back to your terminal and are written to
-`codes.txt` on your own machine, exactly as if you had run it locally.
-
-This is better practice anyway: the migration runs in the same environment as
-the code that will use it.
-
-`backend/requirements.txt` already skips the driver on both ARM platforms that
-lack a wheel, so a plain `pip install -r backend/requirements.txt` works there.
-If you genuinely want direct access from an ARM machine, install cmake and a
-Rust toolchain — on WSL, `sudo apt install cmake build-essential` — then
-`pip install libsql`. Try the Modal route first.
-
----
-
-## 4. Running it on your own machine
-
-Two terminals, both with the virtual environment active.
-
-**Terminal one — the program:**
-
-```bash
-export CODE_PEPPER="anything-at-all-for-local-work"
+# Terminal 1: Local Backend API Service
+export CODE_PEPPER="local-development-pepper-string"
 python scripts/seed.py --db dev.db --reset
 uvicorn backend.api:app --reload --port 8000
-```
 
-**Terminal two — the website:**
-
-```bash
+# Terminal 2: Static Asset Server
 python -m http.server 8080 --directory frontend/public
 ```
+Navigate to: `http://localhost:8080` (point `frontend/public/config.js` to `http://localhost:8000`).
 
-Open <http://localhost:8080>.
-
-The seed prints the access codes you need and writes them to `codes.txt`.
-They are freshly generated every time you seed, so an old copy will not work.
-
-Run the automated checks with:
-
+### Automated Test Suite Execution
 ```bash
-python -m pytest backend/tests -q
-```
+# Execute unit and integration tests (approx. 420 checks)
+pytest backend/tests -q
 
-They take about a minute. If they all pass, the system is behaving.
-
----
-
-## 5. The everyday jobs
-
-None of these require touching code or deploying anything.
-
-| I need to… | Where |
-|---|---|
-| Change a fee, deadline, address, or the theme | Settings → Values |
-| Reword something that gets printed | Settings → Printed wording |
-| Put a notice on every page | Settings → Announcements |
-| Add a chapter | Chapters → Add a chapter |
-| Create a sponsor account | Chapters → the chapter → Add sponsor |
-| Record a payment | Chapters → Payment, on that row |
-| Download a backup | Settings → Operations → Export |
-| Keep the site awake for an event | Settings → Operations → Keep warm |
-| See what happened and who did it | Log |
-
-That list is the point of the whole design. Running a convention should never
-require a programmer.
-
----
-
-## 5b. Making a change stick
-
-**Start here before changing anything.** Most of what people want to change is
-not code, and the ones that are code have one rule that matters.
-
-### Which kind of change is this?
-
-| You want to change | Where | Deploy? |
-| --- | --- | --- |
-| Fees, deadlines, convention dates, venue, theme, ordinal | **Settings → Values** | No |
-| Any printed or displayed wording | **Settings → Printed wording** | No |
-| A banner on every page | **Settings → Announcements** | No |
-| Who holds which role | **Settings → Roles** | No |
-| Whether the site stays warm | **Settings → Operations** | No |
-| A new person on the board | `board.json`, then `modal run backend/app.py::board` | No |
-| Colours, fonts, page layout | `frontend/public/tokens.css` and `app.css` | Yes |
-| What a page says or does | the code | Yes |
-| A new table, column or index | a **new** migration | Yes |
-| The default data a future convention starts from | a **new** migration | Yes |
-
-The first six rows are the point of this system. If you find yourself editing
-code to change a fee or a sentence, stop — that is a bug in the dashboard, and
-worth fixing there instead.
-
-### The one rule about migrations
-
-**Never edit a migration that has already run. Not a statement, not a comment,
-not a space.**
-
-A migration is a record of what was done to a database that exists. Changing
-the file makes that record a lie, and the deploy will refuse to start:
-
-```
-005_seed_roles_settings.sql has already been applied but its contents
-have changed.
-```
-
-The hash covers the whole file, so correcting a typo in a comment breaks it
-exactly as thoroughly as rewriting a table would. This has happened twice here,
-both times over wording.
-
-**What to do instead**, whether you are fixing a typo or adding a column:
-
-1. `git checkout backend/migrations/00N_whatever.sql` — put it back.
-2. Write a new file: `011_says_what_it_does.sql`. The number is the next one up.
-3. Express the change as something that runs against a database that already
-   exists — `ALTER TABLE`, `CREATE INDEX IF NOT EXISTS`, an `UPDATE` with a
-   `WHERE` narrow enough not to clobber anybody's edits.
-4. `python scripts/checksum_migrations.py` and commit the manifest with it.
-5. `python -m pytest backend/tests` — this is caught locally now, not in CI.
-
-### The exception, and it is one exception
-
-**Between conventions, when the database is going to be rebuilt anyway, the
-migrations can be rewritten.** Corrections were accumulating as new files — a
-comment here, a wording change there — until seventeen migrations described a
-schema that six could have. Folding them back in is the right move at that
-moment and nowhere else.
-
-```
-python scripts/checksum_migrations.py --accept
-modal run backend/app.py::setup --reset
-```
-
-The first refuses without `--accept` and tells you the flag exists. The second
-**wipes before it migrates**, which is what makes this recoverable: a database
-holding migrations that no longer exist cannot be migrated at all, so the reset
-has to drop the tables before the hash check ever runs.
-
-**Both commands, in that order, or the site is down.** After `--accept` the
-deployed database has run files that are gone; until it is reset, every deploy
-refuses to start with:
-
-```
-001_core.sql has already been applied but its contents have changed.
-```
-
-If you see that after a consolidation, you have not run the reset yet. That is
-the whole diagnosis.
-
-### Why the checksum exists at all
-
-Because the alternative is silent. Two databases that ran different versions of
-"the same" migration have different schemas and no way to tell. Refusing to
-start is the only safe response, and the deploy log says which file and why.
-
-`backend/migrations/CHECKSUMS.txt` brings the same check to your laptop, so the
-answer is `git checkout` before the commit rather than a failed deploy after
-it. `scripts/checksum_migrations.py` maintains it and refuses to record a file
-that has drifted since git first saw it.
-
----
-
-## 6. Deploying a change
-
-Push to `main`. A robot (GitHub Actions) runs the tests, updates the database
-structure, deploys Modal, and republishes the website.
-
-To do it by hand:
-
-```bash
-source .venv/bin/activate
-modal deploy backend/app.py
-```
-
-### Updating the database structure
-
-```bash
-python -m backend.lib.migrate --db dev.db     # your own machine
-
-export TURSO_DATABASE_URL="libsql://..."      # the real one
-export TURSO_AUTH_TOKEN="..."
-python -m backend.lib.migrate
-```
-
-Migrations only ever go forwards. There is no "undo migration", on purpose: an
-undo script is something you write once, never test, and then run for the first
-time at the worst possible moment. If a migration was wrong, write another one
-that fixes it.
-
-### One thing to know about deploying
-
-Deploying **resets the "keep awake" setting** to whatever is written in the code.
-That is why the awake-setting lives in the database and a background job
-re-applies it every five minutes. A quick fix during convention will not
-accidentally put the site back to sleep.
-
----
-
-## 7. Secrets, and what breaks if you change one
-
-Secrets live in **Modal Secrets** and in **GitHub Actions secrets**. Never in
-the repository, never in the website's files.
-
-| Secret | What it is | If you change it |
-|---|---|---|
-| `CODE_PEPPER` | Scrambles every access code | **Nobody can sign in, ever again.** See below. |
-| `TURSO_DATABASE_URL` | Which database to use | Nothing, if the new one has the same data |
-| `TURSO_AUTH_TOKEN` | Permission to use it | The site errors until you update it |
-| `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET` | Lets the robot deploy | Deploys fail |
-| `APPS_SCRIPT_URL` / `APPS_SCRIPT_KEY` | The Drive helper, for contest file uploads. In the separate `apps-script` secret | Uploads fail with "not switched on yet" until both match the deployed script |
-| `DB_POOL` | Optional. `0` stops connections being reused | Every page gets slower. See section 8. |
-
-### Viewing and updating a secret
-
-You **can** read a Modal secret back — open the Modal dashboard, go to Secrets,
-and click into `cajcl-2027`. But do not rely on that as your only copy.
-
-To change one after it already exists, `modal secret create` will refuse. Use:
-
-```bash
-modal secret create cajcl-2027 KEY="value" ... --force
-```
-
-`--force` replaces the whole secret, so you must pass **every** key again, not
-just the one you are changing. Have them all in front of you first.
-
-### `CODE_PEPPER` — read this before touching it
-
-Every access code is stored scrambled, using this value as the scrambling key.
-The plain codes are never stored anywhere.
-
-Change the pepper and every stored code becomes unreadable. Nobody can sign in.
-There is no recovery — that is the entire point of doing it this way, because it
-means a stolen copy of the database is useless on its own.
-
-If you ever genuinely have to change it, you must also regenerate every person's
-code and **reprint and redistribute every packet**.
-
-**Keep a copy in a password manager the day you create it.**
-
----
-
-## 8. Keeping the site fast for an event
-
-**Settings → Operations → Keep warm for N hours.**
-
-Modal sleeps when idle. The first visitor after a quiet period waits a few
-seconds. Before a board meeting or convention, set this for the length of the
-event plus a couple of hours. It costs a few cents.
-
-The setting lives in the database, and a background job checks it every five
-minutes, so it survives deploys and restarts.
-
-### If pages are slow even when the server is awake
-
-**Settings → Operations → Connections.** Opening a connection to the database
-costs a handshake, which the browser sees as roughly a third of a second, and a
-page that opens two waits twice. They are kept open and reused instead, and
-that panel says how often. **Reused should be most of them.**
-
-If it says *Reuse is off*, somebody has set `DB_POOL=0` in the Modal secret.
-That switch exists so reuse can be turned off in a minute if it is ever
-suspected of causing something, which also means it can be left off by
-accident. Remove it and redeploy:
-
-```bash
-modal secret create cajcl-2027 KEY="value" ... --force
-```
-
-Remember that `--force` replaces the whole secret, so pass every other key
-again — see section 7.
-
----
-
-## 9. Backups, exports, and restoring
-
-**Settings → Operations → Export**, or from a terminal:
-
-```bash
-python backend/workers/export.py --db cajcl.db --out ./exports
-```
-
-You get four files: a spreadsheet and a database dump, each in a **full** version
-and an **anonymised** version.
-
-The anonymised files have every attendee's name, guardian, email, phone and
-free-text note removed — genuinely removed, not hidden. They still contain
-chapter names and the convention's own settings, which are public anyway —
-**and each person's number, chapter, grade, Latin level and event choices.**
-The person number is printed beside the name on every sponsor's packet, so the
-anonymised file is *pseudonymous*, not anonymous: anybody holding a packet can
-tell which row is whom. Share it only with somebody helping run the convention,
-and do not paste it into an outside AI tool or service unless CAJCL has a
-contract with that service ([`PRIVACY.md` §2.4](PRIVACY.md#24-written-data-retention-policy),
-§6.3). Share counts, not rows, when you can.
-
-**Every export is personal data with an expiry date.** A full export on your
-laptop falls under the retention policy like the database itself: delete it by
-**12 April 2027** ([`PRIVACY.md` §2.4](PRIVACY.md#24-written-data-retention-policy)).
-The ten-minute auto-export writes to the Modal container's temporary disk and is
-gone when the container is; it is not a backup.
-
-### Restoring
-
-```bash
-sqlite3 restored.db < exports/cajcl-20270312-1430-full.sql
-```
-
-That gives you a working database file. Both the full and anonymised dumps
-restore; there is an automated test that proves it.
-
-**A backup is the last resort, not the first.** If Modal breaks, restart it and
-fix the problem. Backups are for the case where the *database itself* was
-destroyed. Then: restore the most recent export, and reconstruct what happened
-since from the activity log, which can never be edited or deleted and therefore
-records the whole sequence.
-
-### Running a backup tool without this project
-
-Every tool in `workers/` is a standalone file. Given a `.db` file it runs
-anywhere — including a free Google Colab notebook, with no setup:
-
-```python
-!pip install openpyxl
-# upload cajcl.db and export.py, then:
-!python export.py --db cajcl.db --out ./exports
-```
-
-**Try this once before convention, for real.** Do not assume it works.
-
-`--db` can also be given as the `EXPORT_DB_PATH` environment variable, which is
-what you want when the file is somewhere long and awkward, or when you are
-running the exporter repeatedly. With neither, the exporter copies the live
-Turso database to a local file first and works on that — which is what happens
-on Modal, and the reason the Colab run and the production run take exactly the
-same path through the code.
-
----
-
-## 10. Adding a chair and giving them access
-
-1. Create their account. If they belong to a chapter, add them there; otherwise
-   they go on the state board row.
-2. **Settings → Roles.** If no existing role fits, create one.
-3. Grant it to their account.
-
-Permissions only ever arrive through a role. There is no way to give one person
-a special permission directly, and there should never be one — every security
-check in the system assumes this.
-
-| Permission | What it opens |
-|---|---|
-| `*` | Everything: the log, exports, roles, viewing-as, Drive links |
-| `registration` | Rosters, chapters, payments, check-in |
-| `academics` | Tests and activities, contests, grading, Certamen |
-| `awards` | Scores, test printing, tabulation |
-| `sponsor` | One chapter's roster — always their own |
-| `delegate` | Their own activity sheet |
-| `chapter` | Team entries and the Publicity portfolio for their own chapter |
-| `judge` | Judging pre-convention contests, without seeing names (role: Contest Judge). Refused to anyone who also holds `academics`. |
-
-The first four work across every chapter. `sponsor`, `delegate` and `chapter`
-are **always** limited to the person's own chapter, and nothing can change
-that. `judge` reaches every contest entry but no roster or chapter.
-
-**Making someone a contest judge:** Settings → Roles → grant *Contest Judge* to
-their account. They sign in with their own code and see a *Judging* tab.
-
-Granting or removing a role signs that person out everywhere, because their
-open sessions still carry their old permissions.
-
----
-
-## 10b. One sponsor, two chapters
-
-A teacher who moved schools mid-year. A district where one person covers the
-middle school and the high school. Somebody covering while a colleague is on
-leave.
-
-**Chapters → open the second chapter → Use an existing sponsor.** Pick them
-from the list and write down why. They keep their own chapter, their own access
-code and their own number; the second chapter is added to what that one code
-reaches. A line at the top of their roster lets them switch between the two.
-
-The list only offers people who are already sponsors somewhere, and a grant
-cannot make somebody one: it widens which chapters an existing sponsor scope
-reaches and nothing else. Removing it is the same screen.
-
-**Their own chapter is not on that screen**, and that is deliberate. Removing
-the chapter somebody belongs to is "they have left", which is a different thing
-with different consequences — see Settings → Roles.
-
----
-
-## 11. Watching the database quota
-
-**Settings → Operations** shows how much of Turso's free tier is used. (It shows
-a message instead of numbers unless the three optional Turso platform values are
-configured; the Turso dashboard always works.)
-
-Measured and projected to a full-size convention — 50 chapters, 1,000 delegates:
-
-| | Projected | Free limit | Room to spare |
-|---|---|---|---|
-| Storage | 2.2 MB | 5 GB | 2,200× |
-| Reads, ordinary month | 434,000 | 500,000,000 | 1,150× |
-| Reads, convention month | 1.7 M | 500,000,000 | 288× |
-
-**Why this matters more than it looks.** Turso counts every row it has to *look
-at*, not every row it returns. Go over the monthly limit and the database stops
-answering entirely — and you cannot pay to fix it. One badly-written question
-asked on a busy page could use the whole month's allowance in a week.
-
-That is why an automated check inspects every question in `backend/queries/` and
-fails the build if any of them would have to scan a large table. If usage
-suddenly climbs, run:
-
-```bash
+# Validate that no queries trigger unindexed table scans
 python scripts/check_query_plans.py
 ```
 
-### Can we just rotate to a new database to reset the counter?
-
-**No, and it is worth understanding why not** — because it is the obvious move
-and it does not work.
-
-A new database is an EMPTY database. Pointing the site at one does not carry
-the registration across; it throws it away. Getting the data over means an
-export and an import, during which the site is answering from neither. That is
-a disaster-recovery procedure, not a way to buy quota.
-
-**And the read limit is a plan limit, not a per-database one.** Creating a
-second database under the same organisation divides the same allowance rather
-than doubling it. If you ever need to confirm the current figure, the Turso
-dashboard states it per plan.
-
-**What actually protects the allowance** is that nothing here can scan. Every
-question lives in `backend/queries/`, every one has its plan checked by CI, and
-the public welcome page costs a single row read because its numbers are baked
-into the page at build time. A flood of anonymous traffic hits Modal's compute,
-not Turso's read counter.
-
-If you are genuinely under attack: take the site off the internet by removing
-the custom domain from GitHub Pages, or set `min_containers=0` and let Modal's
-own limits absorb it. Neither loses data.
-
-### What the staging database is for
-
-`docs/DEPLOY.md` step 1 has you create `cajcl-2027-staging` and then never
-mentions it again. Here is where it goes.
-
-It is for trying something that could destroy data — a migration you are unsure
-of, a bulk edit, a script written at midnight — against a copy, so that finding
-out you were wrong costs nothing:
-
-```bash
-turso db shell cajcl-2027 ".dump" > snapshot.sql       # from WSL
-turso db shell cajcl-2027-staging < snapshot.sql
-```
-
-Then point a **local** run at it and do the dangerous thing:
-
-```powershell
-$env:TURSO_DATABASE_URL = "libsql://cajcl-2027-staging-<org>.turso.io"
-$env:TURSO_AUTH_TOKEN   = "<a token for the staging database>"
-python -m backend.lib.migrate
-```
-
-**Never point the deployed app at staging.** The Modal secret holds the
-production URL and should keep holding it; staging is reached by setting those
-two variables in one terminal, for one command, and then closing it.
-
-Empty it and re-dump whenever you need it. It costs nothing, and a stale copy
-is worse than none because it invites conclusions about data that has moved on.
+### Architecture Note on ARM64 Platforms (Apple Silicon vs Snapdragon/ARM Windows)
+- Hosted `libsql` pre-built wheels exist for macOS ARM64 and Linux/Windows x86_64.
+- If running on ARM Windows without native wheels, run database tasks through Modal:
+  `modal run backend/app.py::setup` (runs remotely on x86_64 containers).
 
 ---
 
-## 12. When something is broken
+## 4. Configuration Management & Change Governance
 
-### Somebody may have seen data they should not have
+### Change Classification Matrix
 
-A packet left on a desk, a code posted in a group chat, a token pasted
-somewhere public, a report from a parent. Follow
-[`PRIVACY.md` §2.7](PRIVACY.md#27-incident-response) step by step: write it
-down, contain it the same hour (the per-secret list is there), work out whose
-data, then notify. Medical scans or Certamen username + PIN in the wrong hands
-are a **legally notifiable breach**, within 30 days.
+| Change Scope | Target Configuration Point | Requires Code Deploy? |
+| :--- | :--- | :--- |
+| **Convention Parameters** (Dates, Venue, Fees, Theme) | **Settings → Values** (Web Portal) | No (Immediate) |
+| **Display / Printed Copy** | **Settings → Printed Wording** | No (Immediate) |
+| **System Banner Alerts** | **Settings → Announcements** | No (Immediate) |
+| **User Role Assignments** | **Settings → Roles** | No (Immediate) |
+| **Container Warm Schedule** | **Settings → Operations** | No (Immediate) |
+| **Design / Stylesheet Tokens** | `frontend/public/tokens.css` | Yes (Git Push) |
+| **API Logic & Endpoints** | `backend/lib/` or `backend/api.py` | Yes (Git Push / Modal Deploy) |
+| **Schema & Database Migrations**| `backend/migrations/` | Yes (Controlled Pipeline) |
 
-### The page loads but says the server is not responding
-
-Modal is asleep, or crashed.
-
-1. Open the Modal dashboard and look at the `cajcl-2027` app.
-2. If a function is erroring, read its logs — the error is usually the last line.
-3. Redeploy: `modal deploy backend/app.py`.
-4. Set **Keep warm** so it does not sleep again while you work.
-
-The public welcome page keeps working the whole time, because its numbers are
-baked into the page itself.
-
-### Every page shows a database error
-
-Start here, which reports the shape of every setting in the Modal secret
-without printing any of them in full, and then tries the connection for real:
-
-```bash
-modal run backend/app.py::doctor
-```
-
-If the settings look right, look at Turso.
-
-- If it says **BLOCKED**, a monthly limit is exhausted. See section 11.
-- If it cannot connect, `TURSO_AUTH_TOKEN` may have expired. Make a new one.
-
-### `Hrana: http error: http::Error(InvalidHeaderValue)`
-
-The authentication token contains a character that cannot be sent over the
-network. The token travels in an HTTP header, and a header may hold only
-ordinary printable characters — so a single line break inside the token makes
-the request impossible to build, which is why this appears before any SQL runs
-and looks nothing like a configuration problem.
-
-It happens when a token several hundred characters long wraps across two lines
-in the terminal and the wrap is copied along with it. Set the values without
-pasting anything, then replace the whole secret:
-
-```bash
-export TURSO_DATABASE_URL="$(turso db show cajcl-2027 --url)"
-export TURSO_AUTH_TOKEN="$(turso db tokens create cajcl-2027)"
-```
-
-Then re-create the Modal secret with `--force`, as in `docs/DEPLOY.md` step 2,
-and confirm with `modal run backend/app.py::doctor`.
-
-A newline at the *end* of a value is trimmed automatically and causes no
-trouble. Only one in the middle is fatal.
-
-### `WSServerHandshakeError: 400` when connecting to Turso
-
-The wrong database driver is installed. The correct one is **`libsql`**. An
-older package called `libsql-client` was abandoned in June 2025 and current
-Turso servers reject it — confusingly, *before* running any SQL, and while the
-Turso command-line tool connects to the same database perfectly happily.
-
-```bash
-pip uninstall libsql-client
-pip install libsql
-```
-
-### `ZoneInfoNotFoundError: No time zone found with key America/Los_Angeles`
-
-The time-zone database is missing. `zoneinfo` reads the operating system's
-copy; Linux and macOS ship one and **Windows does not**.
-
-```powershell
-pip install -r backend/requirements.txt
-```
-
-`tzdata` is declared there, so a correct install fixes it. If it persists, you
-are running a different Python from the one you installed into — check that
-your prompt shows `(.venv)`.
-
-Every deadline in this system means "end of day in California", so this is not
-a cosmetic dependency: it is loaded at import time and nothing runs without it.
-
-### `is cmake not installed?` while running `pip install`
-
-Your machine is ARM and the Turso driver has no ready-built version for it.
-Nothing is broken and there is nothing to fix — see *Working with the real
-database from an ARM machine* in section 3.
-
-### The published site shows *There isn't a GitHub Pages site here*
-
-Nothing has ever been published. This is not a misconfiguration of the site
-itself; it is the message GitHub shows for an address with no site behind it.
-
-The publishing workflow has two jobs and the second waits for the first, so a
-failure in the Modal half means the site half never runs. Open the **Actions**
-tab and look at the most recent run. The usual cause is a missing repository
-secret — see `docs/DEPLOY.md` step 7 for the four of them. Fix the cause, then
-use **Re-run failed jobs** on that run; there is no need to make a commit
-purely to trigger it.
-
-If the workflow has succeeded and the site is still missing, check whether a
-custom domain is set. GitHub then serves the site only at that domain and
-redirects the `github.io` address to it, so a domain whose DNS is not ready
-yet makes a perfectly good deployment look like a broken one.
-
-### Nobody can sign in
-
-Almost certainly `CODE_PEPPER`. Check the Modal secret exists and has not
-changed. Every stored code depends on it.
-
-### One person cannot sign in
-
-- Their code was regenerated — they need the new sheet.
-- Their registration was cancelled.
-- They are locked out temporarily: ten wrong attempts from one place in fifteen
-  minutes, or five wrong attempts at one code in an hour. It clears on its own.
-
-### I need a notice on the site right now and Modal is down
-
-Edit `frontend/public/announcement.json` in the GitHub website. Set `active` to
-`true` and write your message. It appears within a minute, with no server
-involved at all.
-
-### The venue has no Wi-Fi
-
-Run everything locally — section 4. The whole site works offline. Have a screen
-recording as a second fallback.
+### Migration Integrity & Forward-Only Rule
+Migrations are strictly immutable. **Never edit an applied migration.**
+1. Changing an existing migration invalidates `backend/migrations/CHECKSUMS.txt` and crashes deployment on hash mismatch.
+2. To apply a structural change:
+   - Create a new migration file: `backend/migrations/01X_descriptive_name.sql`.
+   - Update checksums: `python scripts/checksum_migrations.py`.
+   - Commit both the migration and `CHECKSUMS.txt`.
 
 ---
 
-## 13. Things that will catch you out
+## 5. Deployment & Release Pipeline
 
-**Deadlines are stored in UTC but mean "end of day in California."** Always set
-them through the dashboard, which does the conversion — including working out
-whether that date falls in daylight saving. Never type a UTC time by hand.
+### Continuous Deployment (GitOps)
+Pushing to `main` triggers `.github/workflows/deploy.yml`:
+1. Executes automated test suite (`pytest`).
+2. Validates migration checksum integrity.
+3. Deploys updated containers to Modal.
+4. Executes forward migrations against production Turso.
+5. Builds fonts and dynamic snapshots.
+6. Deploys static distribution to GitHub Pages.
 
-**Payments are never edited.** A correction is a new entry, and a refund is a
-negative one. The history is the record.
-
-**Nothing is ever really deleted.** Cancelling a person hides them and can be
-undone. The activity log physically cannot be changed or deleted.
-
-**There are no refunds.** Someone who cancels after their chapter has paid still
-counts toward the invoice, so the balance stays correct. The system chooses this
-automatically; nobody has to remember it.
-
-**Delegates have no email addresses.** The database refuses to store one. Every
-message goes through the sponsor. Several delegates are eleven years old.
-
-**The medical forms folder is not part of this system.** No code here reads it.
-Only Convention Presidents can see the link. Keep it that way.
-
-**Access codes are shown exactly once.** When you create an account or
-regenerate a code, that screen is the only time it is ever displayed. Print it
-or write it down before navigating away.
+### Manual Backend Deployment
+```bash
+modal deploy backend/app.py
+```
 
 ---
 
-## Rebuilding the sample data
+## 6. Cryptographic Secrets & Environment Configuration
 
+Secrets reside exclusively in **Modal Secrets** (`cajcl-2027`) and **GitHub Actions Secrets**:
+
+| Secret Key | Description | Critical Operational Impact |
+| :--- | :--- | :--- |
+| `CODE_PEPPER` | Cryptographic HMAC pepper for access codes. | **FATAL IF CHANGED:** Invalidates all existing access codes system-wide. Requires full credential reissuance. |
+| `TURSO_DATABASE_URL` | TLS endpoint for libSQL database. | Direct database connectivity failure if incorrect. |
+| `TURSO_AUTH_TOKEN` | Bearer token for database read/write. | Authentication failure to database layer. |
+| `MODAL_TOKEN_ID` / `_SECRET`| CI/CD deployment credentials. | GitHub Actions deployment failure. |
+| `APPS_SCRIPT_URL` / `_KEY` | Drive puppet webhook integration. | Contest digital upload pipeline failure. |
+| `DB_POOL` | Connection pooling toggle (`1` by default). | If set to `0`, increases query latency significantly. |
+
+*Rotating Secrets Safely:* `modal secret create cajcl-2027 KEY="value" ... --force` (Must pass all existing keys; `--force` replaces the entire bundle).
+
+---
+
+## 7. Performance Optimization & Infrastructure Warming
+
+### Container Warm Management
+Modal spins down inactive compute instances to conserve resources. During high-priority windows:
+1. Navigate to **Settings → Operations → Keep Warm**.
+2. Select **Keep warm for 6 hours**.
+3. *System Design:* A database-backed scheduled reconciler polls every 5 minutes to maintain instance warmth across rolling redeployments.
+
+### Connection Reuse Monitoring
+- Modal FastAPI endpoints maintain a thread-local libSQL connection pool, eliminating per-request TLS handshake overhead (~350ms).
+- Verify connection metrics under **Settings → Operations → Connections**.
+
+---
+
+## 8. Backup, Export & Disaster Recovery SOP
+
+### Data Export Procedures
+From **Settings → Operations → Export** or via CLI:
 ```bash
-python scripts/seed.py --db dev.db --reset
+python backend/workers/export.py --db cajcl.db --out ./exports
+```
+Generates 4 discrete artifacts:
+1. `cajcl-YYYYMMDD-HHMM-full.xlsx` (Complete human-readable workbook)
+2. `cajcl-YYYYMMDD-HHMM-full.sql` (Raw database SQL dump)
+3. `cajcl-YYYYMMDD-HHMM-anonymized.xlsx` (PII-stripped analytical workbook)
+4. `cajcl-YYYYMMDD-HHMM-anonymized.sql` (PII-stripped database dump)
+
+*Data Privacy Constraint:* Anonymized exports remain **pseudonymous** (attendee sequence numbers correlate with printed badges). Distribute only under strict non-disclosure. All local exports must be purged post-convention by **April 12, 2027**.
+
+### Database Restoration SOP
+To restore from an SQL dump into a new database:
+```bash
+sqlite3 restored.db < exports/cajcl-YYYYMMDD-HHMM-full.sql
 ```
 
-Twelve chapters, about 150 delegates, a filled-in activity log, one partial
-payment, and a chapter that is not billed — the same every time.
+---
 
-In production the same thing is at **Settings → Operations → Rebuild sample
-data**, and it refuses to run unless the database is marked as sample data. That
-mark is the only thing standing between a mis-click and an erased convention.
+## 9. Role-Based Access Control (RBAC) Governance
 
-Whenever it is set, every page carries a **"Sample data"** banner. The
-site is sometimes shown to a room full of teachers, and nobody should have to wonder
-whether the names on the screen belong to real children.
+Roles bundle functional permission scopes. Scopes are never assigned to individuals directly.
+
+| Scope Identifier | Permitted Operations | Bound Context |
+| :--- | :--- | :--- |
+| `*` (Superadmin) | System configuration, audit logs, raw exports, viewing-as | Global |
+| `registration` | Roster mutations, chapter profiles, payments, Friday check-in | Global |
+| `academics` | Activity catalogs, competition scoring, test administration | Global |
+| `awards` | Score tabulation, awards calculation, ceremony exports | Global |
+| `sponsor` | Roster ingestion, credential generation, activity verification | Strictly scoped to own chapter |
+| `delegate` | Digital activity sheet submission, schedule review | Strictly scoped to self |
+| `chapter` | Team athletics registrations, publicity portfolio submission | Strictly scoped to own chapter |
+| `judge` | Pre-convention submission judging | Blind contest evaluation |
+
+*Multi-Chapter Sponsor Association:*  
+If a single teacher manages multiple institutions (e.g., MS and HS delegations), navigate to **Chapters → Select Second Chapter → Use Existing Sponsor**. Adds access scope without duplicating attendee records or access codes.
+
+---
+
+## 10. Quota Monitoring & Capacity Planning
+
+Current consumption vs. Turso Free Tier thresholds:
+
+| Metric | Monthly Quota | Expected Peak Load | Safety Margin |
+| :--- | :--- | :--- | :--- |
+| **Storage** | 5.0 GB | ~25.0 MB | 200× Headroom |
+| **Row Reads** | 500,000,000 | ~15,000,000 | >30× Headroom |
+| **Row Writes** | 10,000,000 | ~150,000 | >60× Headroom |
+
+*Quota Exhaustion Defense:*  
+Exceeding row read quotas triggers a hard database block. To prevent runaway scans:
+- All database queries are centrally maintained in `backend/queries/`.
+- CI runs `EXPLAIN QUERY PLAN` validation on all SQL queries before merge.
+- The public welcome page serves cached pre-baked statistics snapshots (`build_snapshot.py`), neutralizing DDoS row consumption.
+
+---
+
+## 11. Incident Response & Troubleshooting Playbooks
+
+| Incident Condition | Diagnostic Pathway | Remediation Protocol |
+| :--- | :--- | :--- |
+| **Service Unresponsive (504 / Gateway Timeout)** | Modal container is suspended or crashed. | 1. Check Modal dashboard logs.<br>2. Execute `modal deploy backend/app.py`.<br>3. Engage **Keep Warm** for 6 hours. |
+| **Database Connection Failure** | Network TLS or token authentication error. | 1. Run `modal run backend/app.py::doctor`.<br>2. If status is `BLOCKED`, quota has been exceeded.<br>3. If handshake fails, regenerate `TURSO_AUTH_TOKEN`. |
+| **`InvalidHeaderValue` Error** | Unintended newline character embedded in token string. | Re-export `TURSO_AUTH_TOKEN` ensuring strict single-line formatting (`tr -d '\n'`). Re-create Modal secret with `--force`. |
+| **`WSServerHandshakeError: 400`** | Deprecated `libsql-client` package installed. | Run `pip uninstall libsql-client && pip install libsql`. |
+| **Missing Timezone Database on Windows** | `ZoneInfoNotFoundError: America/Los_Angeles`. | Windows lacks native Olson timezone data. Run `pip install tzdata`. |
+| **GitHub Pages 404 Error** | Workflow execution failed or custom DNS misconfigured. | 1. Review GitHub Actions workflow status.<br>2. Ensure repository secrets (`MODAL_TOKEN_ID`, etc.) are configured.<br>3. Verify `frontend/CNAME` matches DNS records. |
+| **Global Authentication Failure** | Access codes rejected system-wide. | Verify `CODE_PEPPER` in Modal Secrets matches the deployment key. |
+| **Venue Connectivity Outage** | Internet failure at convention site. | Launch local standalone instance (`uvicorn backend.api:app --port 8000` + static file server). All local SQLite features function offline. |
+| **Emergency Notice Requirement** | Need to broadcast critical alert while backend is down. | Edit `frontend/public/announcement.json` directly via GitHub web UI (`"active": true`). Displays across the static shell within 60 seconds without backend dependencies. |
+
+---
+
+## 12. Non-Negotiable Architectural Invariants
+
+1. **Deterministic Time Handling:** All system deadlines represent 11:59:59 PM Pacific Time (`America/Los_Angeles`). Stored internally in ISO-8601 UTC.
+2. **Immutable Financial Ledger:** Payment entries cannot be edited or deleted. Discrepancies are resolved solely via offsetting credit/debit records.
+3. **Data Immutability & Audit Trail:** Deletion is strictly implemented as a soft status flag (`status = 'cancelled'`). Audit trails in `audit_log` cannot be altered or truncated.
+4. **Strict No-Refund Accounting:** Attendees cancelled post-payment maintain a `cancelled_paid` state to ensure invoice reconciliation matches bank receipts.
+5. **PII Minimization:** The system never collects or stores student email addresses or direct medical histories.

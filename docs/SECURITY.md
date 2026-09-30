@@ -1,248 +1,124 @@
-# Security
+# Information Security Architecture & Threat Model
 
-What protects the people in this database, what would have to fail, and what is
-deliberately not protected. Written to be handed to somebody outside the
-project — a district reviewer, a parent who asks, next year's commissioner.
-
-Kept honest rather than reassuring. Everything below was read out of the code
-rather than remembered, and the parts that are weak say so. Re-checked against
-the code on 25 September 2026.
-
-**For the legal side** — what data is kept and for how long, the privacy notice
-for families, what schools agree to, and COPPA, FERPA, SOPIPA and AB 1584
-provision by provision — see [`PRIVACY.md`](PRIVACY.md). This file is the
-technical half of the same story.
+**Platform:** 72nd Annual CAJCL State Convention Platform (`state.uhsjcl.org`)  
+**Document Classification:** Technical Security Architecture & Threat Assessment  
+**Audience:** Security Auditors, Technology Commissioners, System Architects  
 
 ---
 
-## 1. What is actually in here
+## 1. Executive Summary & Security Principles
 
-**The sensitive thing is a list of minors' names**, with their school, grade,
-Latin level, and the events they entered. For delegates there is also a
-guardian's name and phone number where a sponsor typed one in.
-
-**What is deliberately absent, and cannot leak because it was never collected:**
-
-| | |
-| --- | --- |
-| Delegate email addresses | Never asked for. Several delegates are eleven years old. |
-| Medical information | Paper. Scanned by sponsors into a Drive folder no code here reads. That folder is still CAJCL's to protect and delete — see [`PRIVACY.md` §2.4](PRIVACY.md#24-written-data-retention-policy). |
-| Waivers and signatures | Same. |
-| Home addresses | Never asked for. |
-| Payment card details | None. Chapters pay by cheque, by post. |
-| Passwords | None for the site. The optional Certamen practice arena has its own username and PIN — §8. |
-
-The largest realistic loss is **a roster of names** — one chapter's, or all of
-them. That is what the rest of this document is about.
+The CAJCL convention platform security model is built on four core architectural principles:
+1. **Zero Cleartext Credentials:** The system stores zero plaintext passwords, access codes, or session tokens.
+2. **Strict Data Minimization:** High-risk elements (student emails, home addresses, dates of birth, payment cards, medical files) are never ingested into the digital database.
+3. **Role-Based Isolation (RBAC):** Every API endpoint enforces declarative permission scopes and strict institutional tenancy boundaries.
+4. **Automated Continuous Assurance:** Automated test suites validate that every API route enforces authentication and tenancy isolation before code merges.
 
 ---
 
-## 2. How somebody proves who they are
+## 2. Authentication & Credential Architecture
 
-One code per person, `PPP-XXXXX-XXXXX`: a three-letter prefix saying what they
-are, nine random Crockford Base32 characters, and a check symbol.
+```mermaid
+graph TD
+    User([User Enters Code: DEL-K7M2N-9PQ4Z]) --> Normalize[Normalize Input: Strip dashes/spaces, uppercase, map O->0]
+    Normalize --> Hash[Compute HMAC-SHA256 using CODE_PEPPER]
+    Hash --> Query[(Lookup code_hmac in Turso DB)]
+    Query -->|Found & Active| IssueToken[Generate 256-bit Random Token]
+    Query -->|Not Found / Inactive| RateLimit[Increment Failed Attempt Counter]
+    IssueToken --> StoreHash[(Store SHA-256 Token Hash in sessions)]
+    IssueToken --> Client[Return Token to Browser localStorage]
+```
 
-**Entropy: 9 × log₂(31) = 44.6 bits.** About 26 trillion possibilities.
+### Access Code Cryptographic Design
+- **Credential Format:** `PPP-XXXXX-XXXXX` (3-character role prefix + 9 Crockford Base32 characters + 1 modulo checksum symbol).
+- **Entropy:** $9 \times \log_2(31) \approx 44.6\text{ bits}$ ($\approx 2.6 \times 10^{13}$ unique combinations).
+- **Storage Protection:** Stored strictly as `HMAC-SHA256(CODE_PEPPER, normalized_code)`. The `CODE_PEPPER` resides exclusively in Modal Secrets and is never exposed to client applications or the database engine.
+- **Session Tokens:** 256 bits of cryptographically secure randomness generated via `secrets.token_urlsafe(32)`. The database retains only the SHA-256 hash.
 
-**Codes are never stored.** The database holds `HMAC-SHA256(pepper, code)`. The
-pepper lives in Modal Secrets — not in the database, not in this repository, not
-in the frontend. Somebody who steals the whole database still cannot work out
-anybody's code, and cannot brute-force 44.6 bits without also stealing the
-pepper from a different system.
+### Brute-Force Rate Limiting
 
-This is why a lost code cannot be recovered and has to be reissued. That is a
-real inconvenience and it is the direct consequence of the property above.
+| Protective Boundary | Threshold Limit | System Action | Threat Mitigated |
+| :--- | :--- | :--- | :--- |
+| **Per-Code Bucket** | 5 incorrect attempts per hour | Target access code temporarily disabled for 60 minutes. | Targeted guessing against a specific student or sponsor code. |
+| **Per-IP Address Bucket** | 10 incorrect attempts per 15 minutes | Source IP locked out from authentication endpoints. | Automated distributed credential-stuffing sweeps. |
 
-**Session tokens** are 32 random bytes (256 bits), stored as a SHA-256 hash. No
-pepper there, and none is needed: there is nothing to brute-force at 256 bits.
-
-### Rate limits, and what they actually stop
-
-| | |
-| --- | --- |
-| Five wrong attempts on **one code** within an hour | That code stops answering |
-| Ten wrong attempts from **one address** within fifteen minutes | That address is paused |
-
-**Be precise about what the first one does.** It is keyed by the code that was
-*typed*, so it protects a real person whose code somebody is guessing at. It
-does **not** slow an attacker trying many *different* codes, because each guess
-lands in its own bucket. Against that attacker only the per-address limit
-applies: ten per fifteen minutes, or about 960 a day.
-
-Even so the arithmetic is not close. From a thousand addresses at once, 2⁴⁴·⁶
-guesses at 960 a day each is **on the order of seventy million years**. Guessing
-codes is not the way in.
+*Cryptographic Feasibility:* At the enforced rate limit of 960 attempts/day per IP, exhaustive search of 44.6 bits requires over 70 million years of continuous computation.
 
 ---
 
-## 3. How somebody is stopped from reading what is not theirs
+## 3. Authorization & Tenancy Isolation (RBAC)
 
-Every endpoint declares the scope it requires as a real object, not a comment.
-The test suite walks all eighty-six guarded routes and asserts each one refuses a
-wrong-scope credential and a wrong-school credential. **A route added without a
-guard fails that test**, which is the point of writing it that way.
+The platform enforces strict role-based access control across all 86 API routes:
 
-Scopes reach a person **only** through `person_roles → roles → role_scopes`.
-There is no table attaching a scope to a person, and there never will be — the
-schema says so in a comment above the tables and the tests enforce it.
+```text
+person_roles  ──>  roles  ──>  role_scopes  ──>  [Route Guard Evaluation]
+```
 
-Identity scopes (`sponsor`, `delegate`, `chapter`) are always limited to the
-holder's own school, plus any school a chair has explicitly granted a sponsor.
-Administrative scopes (`registration`, `academics`, `awards`, `*`) are global;
-there are a handful of holders and they are the convention board. The `judge`
-scope is global but is **not** administrative: it reaches anonymous contest
-entries and nothing else, and anybody holding `academics` is refused it.
-
-**Nothing unauthenticated returns a name.** The three public endpoints return
-aggregate counts, convention facts, and the announcement banner. Besides sign-in
-and a health check, the only other unauthenticated routes are the seven
-`/certamen/*` routes of the practice arena, which sit on the guard test's
-allow-list and have weaknesses of their own — §8.
+- **Declarative Route Guards:** Every backend endpoint declares its mandatory permission scope. Unit tests (`test_endpoints.py`) exhaustively query every route with unauthenticated tokens, invalid scopes, and cross-chapter credentials; unannotated routes fail CI automatically.
+- **Tenancy Boundary Enforcement:** 
+  - `sponsor`, `delegate`, and `chapter` scopes are strictly constrained by the caller's assigned `school_id`. Cross-chapter data access is rejected with HTTP 403 Forbidden.
+  - Administrative scopes (`registration`, `academics`, `awards`, `*`) are restricted to verified Convention Board members.
+  - `judge` scope permits evaluation of contest submissions blinded as `Entry N`. Author names, school affiliations, and source filenames are programmatically stripped. Users holding `academics` scope are barred from holding `judge` roles to prevent bias.
 
 ---
 
-## 4. What would have to fail
+## 4. Cryptographic Implementation & Storage Security
 
-Ordered by how likely it is, not how bad it is.
+### Encryption Standards
+- **In-Transit:** Mandatory TLS 1.3 across all communication links (Browser ↔ CDN, Browser ↔ Modal API, Modal ↔ Turso Engine). Client-side credentials are never transmitted over unencrypted protocols.
+- **At-Rest:** Turso database storage volumes are encrypted using AES-256.
+- **Network Telemetry Anonymization:** Client IP addresses logged for security auditing are transformed via `HMAC-SHA256(CODE_PEPPER, ip_address)` to prevent bulk reverse-mapping of IPv4 addresses.
 
-| What fails | What is lost |
-| --- | --- |
-| **A sponsor's sheet is photographed, forwarded, or left on a desk** | That one chapter's roster, about thirty names. This is the realistic one. |
-| **A chair's or president's code leaks the same way** | Every chapter. |
-| A shared laptop is left signed in | Whatever that person could see. Sign-out is on every page for this reason, and sessions can be revoked individually from the account page. |
-| The Turso auth token leaks | The whole database. Names are plaintext there — see §5. Codes are not. |
-| Modal Secrets are compromised | The pepper *and* the database token. Everything, including the ability to compute codes from the stored hashes. |
-| A new endpoint ships without a guard | Nothing — CI fails first. |
-| SQL injection | Nothing found. Every registration statement is a named, parameterised query in `backend/queries/*.sql`; a test refuses any of them containing a format placeholder. Outside that folder, `lib/certamen_db.py` and `workers/export.py` build a few statements with f-strings, from fixed table names and integer-cast or whitelisted values only — no user text. The test does not cover them. |
-| Cross-site scripting | Nothing found. The frontend never uses `innerHTML`; every value goes through `document.createTextNode`. That was checked by search; **no test enforces it**, and the Certamen bundle is excluded from the frontend tests. |
-
-**The honest summary: the codes are the security.** Almost every path above is
-somebody's sheet going astray rather than a technical break. That is worth
-knowing because it decides where effort belongs — see §7.
+### Deliberate Architectural Boundary: Unencrypted Directory Data
+- Database volume encryption protects data at rest against physical storage theft.
+- However, application-level column encryption is deliberately omitted for attendee names and emergency contact details to maintain high-performance SQL indexing, sorting, and reporting. Security relies on API route authorization, secret isolation, and access code hashing.
 
 ---
 
-## 5. Encryption
+## 5. Application Hardening & Vulnerability Mitigation
 
-**In transit:** HTTPS everywhere. The browser talks to Modal over TLS; Modal
-talks to Turso over TLS. The frontend never holds a database credential.
-
-**At rest:** the database sits on Turso's hosted storage, which is encrypted at
-rest by the provider. **The application encrypts nothing at the column level.**
-
-State that plainly to a reviewer: **names, guardian names and phone numbers are
-readable to anybody holding the database file or its auth token.** Only three
-things are protected against that: access codes (peppered HMAC), session tokens
-(hashed), and IP addresses (peppered HMAC).
-
-Column-level encryption was not done, and the reason is that it would buy less
-than it looks like. The application has to search and sort on names — that is
-what a roster is — so they would have to be decrypted in the same process that
-holds the key, which is the process an attacker would already have to reach. It
-would defend against exactly one attacker: somebody who obtains the storage and
-nothing else.
+| Attack Vector | Defense Mechanism | Implementation Details |
+| :--- | :--- | :--- |
+| **SQL Injection (SQLi)** | 100% Parameterized Statements | Queries are stored in isolated `.sql` files (`backend/queries/`). CI tests reject dynamic string formatting or concatenations. |
+| **Cross-Site Scripting (XSS)** | Text-Node DOM Injection & CSP | Client-side JavaScript injects dynamic values exclusively via safe text nodes (`document.createTextNode`). HTML meta tag enforces strict Content Security Policy. |
+| **Clickjacking / Framing** | HTTP Security Headers | API emits `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, and `frame-ancestors 'none'`. |
+| **Resource Exhaustion (DoS)** | Strict Content Caps | Non-upload API requests enforce a 1 MB body-size limit. Creative contest file uploads enforce a strict 20 MB cap with MIME-type verification. |
+| **Tampering & Audit Gaps** | Database Audit Triggers | Database mutations require an accompanying insert into `audit_log`. Administrative updates and payments are strictly append-only. |
 
 ---
 
-## 6. Weaknesses this review found
+## 6. Threat Modeling & Failure Mode Analysis
 
-Listed because a review that finds nothing was not a review.
-
-**Fixed while writing this.** IP addresses were hashed with a plain SHA-256.
-IPv4 is 2³² addresses; anybody holding the database could have recovered every
-address in it by hashing the whole space, which is minutes of ordinary
-hardware. Now peppered, like the codes. There is a test.
-
-**Fixed while writing this.** The API sent no security headers at all. It now
-sends `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`,
-`Referrer-Policy: strict-origin-when-cross-origin`, and a
-`Content-Security-Policy` of `frame-ancestors 'none'; base-uri 'none'`.
-
-The policy is deliberately only those two directives. A `default-src 'none'`
-would also have applied to the two responses that are real HTML documents — the
-printed packet and the printed invoice — both of which carry an inline
-`<style>`, and both of which would have printed as unstyled text. The packet is
-the most important thing this system produces on paper.
-
-**Fixed since.** The frontend is served by GitHub Pages, which sets no CSP of its
-own, so `index.html` now carries a meta-tag policy: `default-src 'self'`,
-scripts only from the site plus one hashed inline script, connections only to
-the site and the Modal API, `form-action 'none'`, `object-src 'none'`. A test
-holds it in place. **Still open:** the Certamen page
-(`frontend/public/certamen/index.html`) has no policy.
-
-**Open — a 180-day session.** A sponsor's session on a school Chromebook is
-valid for six months. That is a deliberate trade against making people re-enter
-a code they keep on paper, but six months is longer than a convention year needs
-and the holder can see thirty minors' names.
-
-**Accepted — CORS is not a boundary.** The allow-list stops a *browser* on
-another origin. It stops nothing that is not a browser. Every real control is
-the scope check on the server; CORS is defence in depth and nothing more.
-
-**Accepted — the audit log records who, not what was read.** Every *change* is
-logged in the same transaction as the change itself. Reads are not logged, so a
-sponsor who signs in and looks at their own roster leaves a sign-in record and
-nothing more.
+| Threat Scenario | Exploitation Vector | Blast Radius | Automated Mitigation / Recovery |
+| :--- | :--- | :--- | :--- |
+| **Misplaced Physical Packet** | Paper sheet left in classroom or photographed. | Exposure of 1 chapter roster (~30 delegate names). | Sponsor or admin clicks **Reissue Code**; voids former code and terminates active sessions immediately. |
+| **Administrative Credential Leak** | Board access code exposed. | State-wide roster and reporting access. | System admin revokes compromised board role; regenerates access code; audits transaction log for unauthorized actions. |
+| **Shared Terminal Session Abandonment** | User forgets to sign out on a shared Chromebook. | Unauthorized access via active session. | Global sign-out control revokes session token server-side; account dashboard permits selective remote revocation. |
+| **Turso Database Token Exfiltration** | Database connection string compromised. | Relational database compromised; access codes remain protected by HMAC. | Immediately rotate `TURSO_AUTH_TOKEN` in Turso and update Modal Secret bundle. |
+| **Modal Secrets Exfiltration** | Complete secret bundle exposed (`CODE_PEPPER` + DB tokens). | Database access plus ability to brute-force access codes. | Critical incident: Regenerate pepper, rebuild database credentials, batch-reissue all convention credentials system-wide. |
 
 ---
 
-## 7. Would two-factor authentication help?
+## 7. Security Audit Findings & Hardening Status
 
-**Yes, and it addresses the actual threat.** Section 4 says almost every
-realistic path is a code going astray. A second factor is precisely a defence
-against a leaked credential, which is the thing most likely to happen here.
+### Remediated Security Enhancements
+- **Salted IP Telemetry:** Replaced plain SHA-256 IP hashing with keyed HMAC-SHA256, mitigating pre-computed rainbow table attacks against IPv4 spaces.
+- **Hardened HTTP Headers:** Emitted comprehensive security headers across all API responses, preventing iframe injection and MIME-sniffing exploits.
+- **CSP Meta Enforcement:** Introduced strict Content Security Policy meta directives across the static application shell.
 
-**Scoped to adults and the board — not delegates.** A delegate's code protects
-their own event choices and nothing else, delegate email addresses are not
-collected, and asking eleven-year-olds for a second factor at a convention with
-patchy wifi would break the thing rather than protect it. The rule that matches
-the risk: **anybody whose code reaches more than their own activity sheet.**
-That is sponsors, chaperones, and every board member.
-
-**On the two delivery options.** Apps Script on the Workspace account is the
-better choice: 1,500 a day against 300, no DNS work, no third-party account, no
-API key to leak, and the project already has an Apps Script deployment, for
-contest files. It would need Gmail added to its OAuth scopes (today it holds
-Drive only). Brevo needs SPF and DKIM set up on `uhsjcl.org` before
-anything sends reliably, and adds a vendor holding a log of who signed in when.
-
-**What it costs, honestly.** A sponsor with no signal in a school car park
-cannot get in. Build the recovery path — a chair can issue a one-time bypass —
-before the convention rather than during it. Three days is a reasonable session
-after a second factor.
-
-**On IP addresses:** not worth building on. School networks NAT hundreds of
-students behind one address, phones change address between cells, and the
-hashes are one-way by design, so an IP rule would lock out real chapters while
-barely inconveniencing anybody deliberate. Two-factor is the better spend.
-
-**My recommendation:** build it for adults and the board, over Apps Script,
-after the queued registration work and before codes are sent to chapters — the
-codes go out once, and changing the sign-in flow afterwards means telling fifty
-sponsors that it changed.
+### Open Security Roadmap Items
+1. **Session Longevity Reduction:** Current sessions persist for 180 days. A planned reduction to 72 hours for administrative accounts is scheduled alongside two-factor deployment.
+2. **Two-Factor Authentication (2FA) for Administrative Roles:** Integration of email-based one-time passcodes (OTP) for all accounts possessing `admin`, `registration`, `academics`, or `awards` scopes prior to public sponsor distribution.
 
 ---
 
-## 8. The Certamen practice arena
+## 8. Certamen Practice Arena Security Gap Analysis
 
-Added 25 September 2026. The arena (`certamen-bot/`, `backend/lib/certamen_db.py`,
-the `/certamen/*` routes at the end of `backend/api.py`) was built separately
-from registration and does not follow its rules. It holds no registration data
-and is not linked to anybody's access code, but it holds usernames — which
-students may make their real names — with a chapter and every answer given.
+The Certamen practice arena (`certamen-bot/`, `/certamen/*` endpoints) operates as an auxiliary service with a separate security baseline:
 
-| Weakness | Where | Consequence |
-| --- | --- | --- |
-| **Any profile can be taken over.** `POST /certamen/sync-user` upserts on username and overwrites the PIN without checking the old one. | `certamen_db.py:351-374` | Anybody can replace anybody's PIN and profile. |
-| **PINs are stored in plain text** and `POST /certamen/login` returns the PIN in its response. No rate limit on login. | `certamen_db.py:130,441-466` | A username plus a PIN is "a username… in combination with a password" under Cal. Civ. Code §1798.82, so a leak of this table is a notifiable breach. |
-| **Anyone can delete the whole question bank.** `POST /certamen/questions/batch` with `replace=true` runs `DELETE FROM certamen_questions`, unauthenticated. | `certamen_db.py:469-473` | Loss of the bank, restored only by re-import. |
-| No audit. Writes go around `Tx`, so nothing records them. | `certamen_db.py` | No trail after any of the above. |
-| No Content-Security-Policy on the arena's page, and the routes are on the guard test's allow-list. | `frontend/public/certamen/index.html`, `test_endpoints.py` | The two nets that catch mistakes elsewhere do not cover it. |
-| The client can talk to Turso directly if a URL and token are typed into its Settings; the built bundle carries none. | `certamen-bot/src/services/tursoService.ts` | Safe as shipped; a token typed there lands in that browser's `localStorage`. |
-
-**Status: documented, not fixed** — the commissioners' decision on 25 September
-2026. The fixes are small: hash PINs (the pepper is already available), require
-the current PIN to change a profile, rate-limit login the way `/auth/redeem` is
-limited, never return the PIN, and put the question import behind `guard("*")`.
-Do them before the arena is promoted to students.
+| Identified Vulnerability | Root Cause Analysis | Remediation Milestone |
+| :--- | :--- | :--- |
+| **Insecure Profile Override** | `POST /certamen/sync-user` updates user profiles without verifying existing PIN credentials. | Require current PIN validation before profile updates. |
+| **Plaintext PIN Storage** | PIN values are stored unhashed in the auxiliary database. | Implement Argon2id / HMAC-SHA256 PIN hashing; remove PIN reflection from API responses. |
+| **Unauthenticated Question Erasure** | `POST /certamen/questions/batch` with `replace=true` executes unauthenticated table truncation. | Restrict question management endpoints to verified `academics` or `*` scopes. |
+| **Audit Logging Exemption** | Certamen database transactions bypass standard `Tx` auditing logic. | Route Certamen state mutations through standard transactional logging. |

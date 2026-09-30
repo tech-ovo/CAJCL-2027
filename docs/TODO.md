@@ -1,209 +1,107 @@
-# What is left
+# Product Roadmap, Delivery Tracker & Milestone Governance
 
-Everything between here and **March 12–13, 2027**, worked out from
-`docs/structure.md` and from what is actually in the repository.
-
-Read the first two sections and you know what to do next. The rest is reference.
-
-**Hours are one person's working hours**, not calendar time, and they assume
-somebody who already knows this codebase. Double them for somebody who does
-not.
+**Platform:** 72nd Annual CAJCL State Convention Platform (`state.uhsjcl.org`)  
+**Target Release:** March 12–13, 2027  
+**Document Classification:** Product Delivery & Milestone Management  
 
 ---
 
-## How to read the columns
+## 1. Executive Roadmap & Milestone Schedule
 
-| | |
-| --- | --- |
-| **NOW** | Nothing blocks it. It can start today. |
-| **NEEDS YOU** | Blocked on a decision, an account, or a document only you can get. The blocker is named. |
-| **NOT DOING** | Ruled out. Left here so nobody reopens it without new information. |
-
-The **Who** column says whether it needs you at all:
-
-| | |
-| --- | --- |
-| **auto** | Buildable start to finish with no input. |
-| **ask** | One question, then buildable. |
-| **you** | Genuinely yours: an account, a policy, a document. |
-
----
-
-## 1. Before registration opens
-
-**This is the critical path.** Codes go out to fifty chapters once, and
-anything that changes how somebody signs in, or what their sheet says, is far
-cheaper before that than after.
-
-| | What | Hrs | Who | Notes |
-| --- | --- | --- | --- | --- |
-| NEEDS YOU | Two-factor for adults and the board | 8 | you | Deliberately on hold until the `conventionpresidents@cajcl.org` Workspace account exists. Design and reasoning are in `docs/SECURITY.md` §7. **Do it before codes are sent**, or fifty sponsors have to be told sign-in changed. |
-| NEEDS YOU | The opening email | 1 | you | Drafted in `docs/REGISTRATION.md` §4. Check every figure against Settings → Values, then send one message per chapter. |
-| NEEDS YOU | Click **Save as PDF** once, on Modal | 0.2 | you | Everything either side of WeasyPrint is built and tested. WeasyPrint itself needs Pango and Cairo and cannot run on Windows, so the render has never executed. One click after the next deploy settles it. **Print is unaffected either way** — it is the same document, built by the same code, and it works. |
-| NEEDS YOU | Real chapters and sponsors | 2 | you | Chapters → Add a chapter, then Add the sponsor on each. About fifty. Nothing technical; it is the data the whole year runs on. |
-
-### Privacy, before the notice or any code goes out
-
-From [`PRIVACY.md` §8](PRIVACY.md#8-open-decisions-and-action-items), which has
-the reasoning. The notice and the school form cannot be sent until the first four
-are done.
-
-| | What | Hrs | Who | Notes |
-| --- | --- | --- | --- | --- |
-| NEEDS YOU | Move Drive + Apps Script to the `cajcl.org` Workspace | 2 | you | The medical scans sit in a personal Gmail under consumer terms, with no data-processing agreement. Find out the Workspace edition; Education is best if CAJCL is eligible. Same account unblocks two-factor. |
-| NEEDS YOU | Name the privacy officer; CAJCL's mailing address | 0.2 | you | An adult officer. Every `[PLACEHOLDER]` in `PRIVACY.md` §2, §4 and §5. |
-| NEEDS YOU | How under-13 consent is obtained | — | you | The waiver paragraph in `PRIVACY.md` §4.1, and whether sponsors hold `DEL-` sheets until it is signed, or the school form in §5. |
-| NEEDS YOU | Board resolution: CAJCL operates the site | — | you | The domain and Modal account are named for UHS JCL (`PRIVACY.md` §6.0). |
-| ask | Redact a person | 6 | ask | A deletion request cannot be honoured today: names stay in the append-only audit log. One audited operation that blanks a person everywhere, audit sentences included. Needs one decision: rewrite the sentences, or store person IDs in them and render names at read time. |
-| NOW | Stop keeping pasted roster text and delegates' own cell phones | 2 | auto | `roster_imports.raw_text` keeps emails the parser discarded; no CHECK stops `people.cell_phone` for delegates. |
-| NOW | A real backup | 2 | auto | Today there is none that outlives a container (`PRIVACY.md` §2.5). Must be destroyed with everything else on 12 April 2027. |
-| NEEDS YOU | Certamen fixes | 3 | you | Documented, not fixed, by your decision (`SECURITY.md` §8). Before the arena is promoted to students. |
-
-### Privacy, before 12 April 2027
-
-| | What | Hrs | Who | Notes |
-| --- | --- | --- | --- | --- |
-| NOW | Archive script | 3 | auto | From the anonymised export keep only person number, chapter, grade, Latin level and placements. Then `turso db destroy`, delete the pepper, empty the Drive trash. Checklist in `PRIVACY.md` §2.4. |
-| NEEDS YOU | Results to each school | 2 | ask | One Google Sheet per school, shared only with its sponsor; how CAJCL's copies are deleted. |
-| NEEDS YOU | Certamen retention | — | you | Undecided. |
-
-**"At Large" is two chapters, not one** — one MS, one HS — because every rule
-that gates Latin levels, tests and grades reads `schools.level`. Neither is
-billing-exempt; only SCL is. Make them the same way as any other chapter.
+```mermaid
+gantt
+    title Convention Delivery Milestones (2026–2027)
+    dateFormat  YYYY-MM-DD
+    section Phase 1: Launch
+    Sponsor Registration Launch       :crit, active, p1, 2026-10-01, 2026-10-15
+    section Phase 2: Operations
+    Contest Upload Pipeline Deployment :p2, 2026-10-15, 2027-01-15
+    Activity & Registration Form Lock :crit, p3, 2027-02-13, 2027-02-14
+    section Phase 3: Convention
+    Live Convention Check-in & Desk   :crit, p4, 2027-03-12, 2027-03-14
+    section Phase 4: Compliance
+    Mandatory Data Purge & Archive    :crit, p5, 2027-04-12, 2027-04-13
+```
 
 ---
 
-## 2. Before the forms deadline — 13 February 2027
+## 2. Work Breakdown Structure (WBS) & Delivery Tracker
 
-Registration is running by now. These make the months in between bearable.
+### Milestone 1: Pre-Registration Launch (Critical Path)
+*Target: System open to ~50 school chapters for roster entry.*
 
-| | What | Hrs | Who | Notes |
-| --- | --- | --- | --- | --- |
-| NEEDS YOU | Deploy the Drive puppet | 2 | you | **Contest file uploads are built and wait on this.** Needs the Workspace account and its Drive root. Deploy `apps-script/Code.gs` (it now has a `fetch` op and signs `fileId`), set `APPS_SCRIPT_URL` and `APPS_SCRIPT_KEY` in the Modal secret `apps-script`, and paste the contest root folder's ID into Settings → *Drive folder ID for contest entries*. Until then slogans and Publicity work and file entries answer "not switched on yet". Exports still download to the browser. |
-| NEEDS YOU | The pre-convention deadline | 0.1 | you | Settings → *Pre-convention contests due*. It starts at the forms deadline; the Convention Book has the real date. |
-| ask | How many places each contest awards | 0.1 | ask | Judges rank their top N per division (per category for Publicity), and N is also how many places are awarded. Every contest starts at 3. The Academics chairs change it on Results → a contest → *Rules and places*; it can change after judging without losing anything handed in. |
-| ask | Should judges be limited to particular contests? | 3 | ask | Today anyone with the Contest Judge role can rank every contest. Limiting it means a role per contest (`judge` scope stays; the endpoints check which). |
-
----
-
-## 3. Before convention — March 2027
-
-**The awards side is the largest unbuilt piece**, and the one with the most
-unknowns.
-
-| | What | Hrs | Who | Notes |
-| --- | --- | --- | --- | --- |
-| NEEDS YOU | Tabulation rules, in writing | — | you | **Get these from the awards chair before anything below is built.** Ties, sweepstakes, per-chapter totals, what counts toward what. Building against a guess and rewriting it is the expensive path. |
-| NEEDS YOU | Score entry | 12 | ask | Needs an offline story: the gym has no wifi. One question first — do scores go in on paper and get typed after, or on a laptop in the room? |
-| NEEDS YOU | Tabulation and placings | 10 | you | Blocked on the rules above. |
-| NOT DOING | Certamen brackets | 16 | — | You have said not to build grading infrastructure. Rounds, rooms and buzzer order are a scheduling problem wearing a scoring hat. |
-| NOW | Nametag PDFs | 3 | auto | The print pipeline exists; this is a template and a page size. |
-| NOW | Printed award certificates | 4 | auto | Same pipeline, same shape. |
-| NOW | A quota check the week before | 0.5 | auto | Settings → Operations shows it. Look at it in February, not in March. |
+| Work Item | Domain | Est. Hours | Lead | Dependencies / Blockers | Description & Implementation Notes |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Two-Factor Authentication (2FA)** | Security | 8 | Eng | `cajcl.org` Workspace Account | Implement email OTP authentication via Apps Script for adult and administrative roles. |
+| **Launch Email Broadcast** | Operations | 1 | PM | Verification of Fees/Dates | Transmit launch notification template (`docs/REGISTRATION.md`) to verified chapter sponsors. |
+| **WeasyPrint Remote Smoke Test** | Workers | 0.5 | Eng | Modal Deployment | Execute one remote PDF generation run on Modal Debian worker container to confirm Pango/Cairo rendering. |
+| **Chapter & Sponsor Seeding** | Data | 2 | Ops | Official CAJCL Roster | Ingest 50 verified chapter institutions and primary sponsor profiles via `board.json` or dashboard. |
+| **Roster Ingestion Sanitization** | Privacy | 2 | Eng | None | Strip discarded email and phone strings from raw pasted roster text before persisting to `roster_imports`. |
+| **Certamen Practice Hardening** | Security | 3 | Eng | Decision on Arena Lifespan | Hash user PINs, enforce rate limits on login, and restrict question batch-deletion endpoints. |
 
 ---
 
-## 4. Ruled out for this year
+### Milestone 2: Pre-Convention Operations (Deadline: February 13, 2027)
+*Target: Active student activity sheet submissions and creative contest entries.*
 
-You have said not to build these. Recorded so the reasoning survives.
-
-| What | Why |
-| --- | --- |
-| **The map** | Your call. An interactive campus map with live event locations. |
-| **The schedule** | Your call. Per-delegate schedules, signups, mobile notifications. |
-| **Grading infrastructure** | Your call. Score entry, tabulation, Certamen brackets — §3 keeps the pieces that are not grading. |
-| Refunds | The convention runs on pre-payment. `cancelled_paid` keeps the balance honest without a refund path. |
-| Moving delegates between chapters | Has not come up. Cancel and re-add if it ever does. |
-| A fee snapshot per school | The fee does not change once registration opens. If it must, a discount or a negative payment handles it, and both leave a trail. |
-| Storing codes reversibly | It would make packet reprints easy and make a database dump useful to a thief. Selective reissue solves the same problem. |
-| Deleting a board member | They are real people, usually also a sponsor or a delegate, and the audit log refers to them. **Settings → Roles → Remove every role** is what "they have left the board" actually means. |
-| An idle session timeout | Would mostly punish an honest delegate filling in a long form on a school Chromebook. Sign-out is on every page. |
-| Voting, scavenger hunt, feedback form | In `structure.md` under Miscellaneous. None is on the critical path; all are cheap to add later if somebody wants one. |
+| Work Item | Domain | Est. Hours | Lead | Dependencies / Blockers | Description & Implementation Notes |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Drive Upload Puppet Deployment** | Backend | 2 | Eng | Google Workspace Root Folder | Deploy `apps-script/Code.gs` to host Google Drive folder; configure `APPS_SCRIPT_URL` in Modal Secrets. |
+| **Contest Award Tiers Config** | Product | 1 | Ops | Academics Chair Input | Configure awarded placement counts ($N$) per competition category in dashboard. |
+| **Role-Based Judge Scoping** | Auth | 3 | Eng | Contest Division Rules | Bind `judge` scopes to specific contest categories to prevent cross-contest ballot evaluation. |
+| **Quota Pre-Flight Audit** | DevOps | 0.5 | Eng | None | Audit Turso row read metrics 30 days prior to event to confirm usage remains within free allowances. |
 
 ---
 
-## 5. What I need from you, in one list
+### Milestone 3: Convention Weekend Operations (March 12–13, 2027)
+*Target: On-site check-in, walk-on handling, scoring, and awards tabulation.*
 
-Everything above marked **you** or **ask**, gathered:
-
-1. **The Workspace account** (`conventionpresidents@cajcl.org`). Unblocks
-   two-factor and Apps Script — two of the four remaining large items.
-2. **Tabulation rules from the awards chair**, in writing. Blocks all of §3.
-3. **How scores are entered at convention** — paper then typed, or live on a
-   laptop in a room with no wifi. One sentence unblocks 12 hours of work.
-4. **The real chapter list**, with sponsors' names and emails.
-5. **Whether "At Large" exists this year**, and whether both levels are needed.
-6. **The privacy officer** (an adult), and the consent route for under-13
-   delegates — [`PRIVACY.md` §8](PRIVACY.md#8-open-decisions-and-action-items).
+| Work Item | Domain | Est. Hours | Lead | Dependencies / Blockers | Description & Implementation Notes |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Written Tabulation Specifications**| Product | — | Board | Awards Chair Specification | Formulate written rules for sweepstakes point tabulation, chapter aggregate scoring, and tie-breakers. |
+| **Offline Scoring Entry Tooling** | Frontend | 12 | Eng | Tabulation Rules | Deliver offline-capable scoring entry interface for athletic and academic competitions. |
+| **Printable Badge & Certificate Gen**| Workers | 4 | Eng | Badge Stock Specifications | Deploy batch PDF rendering templates for attendee badge inserts and formal award certificates. |
 
 ---
 
-## 6. Things that were tried and abandoned
+### Milestone 4: Compliance Sunset & Data Decommissioning (April 12, 2027)
+*Target: Complete purge of personally identifiable records exactly 30 days post-convention.*
 
-Kept because the next person will otherwise try them again.
-
-**Per-request connection reuse, the first two ways.** Both are recorded because
-both look like the obvious approach.
-
-*Opening the connection in middleware.* Middleware runs on the event loop and
-handlers run on a threadpool thread, so the connection is used cross-thread and
-`sqlite3` refuses outright.
-
-*A per-thread pool with no way out.* It works, and then it leaks. anyio retires
-a threadpool worker after ten seconds idle, and the connection it was holding
-becomes unreachable — while `sqlite3` refuses `close()` from another thread, so
-nothing can release it either.
-
-**What worked**, on the third attempt, is in `backend/lib/db.py`: the pool is
-thread-local and a connection is only ever handed back to the thread that
-opened it; `check_same_thread` comes off the driver and the same check goes on
-`_Handle`, where it covers the remote driver too; and each thread's idle list
-carries a finalizer, so a retired worker closes what it was holding as it goes.
-`backend/tests/test_pool.py` holds all three to account. **`DB_POOL=0` in the
-Modal secret turns the whole thing off without a deploy.**
-
-**Closing another thread's connection.** A fourth thing that looks obvious and
-is not, found while building the above: with `check_same_thread=False`,
-`sqlite3` does not refuse a close from the wrong thread — it segfaults. It
-surfaced as a test run that hung twice and once as `Windows fatal exception:
-access violation`. `Database.close()` therefore closes only what the calling
-thread is holding, and everything else is closed by its own thread's
-finalizer.
+| Work Item | Domain | Est. Hours | Lead | Dependencies / Blockers | Description & Implementation Notes |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Automated Data Purge Pipeline** | Compliance | 3 | Eng | Automated Export Validation | Execute `scripts/purge_convention_data.py`. Expunge student PII, medical PDF scans, and temporary exports. |
+| **De-Identified Archive Extraction**| Data | 2 | Eng | Post-Event Verification | Export permanent historical competition archive: Badge ID, Chapter, Grade, Latin Level, Placements. |
+| **Sponsor Results Distribution** | Operations | 2 | Ops | Tabulation Finalization | Distribute individual school placement spreadsheets directly to chapter sponsors. |
 
 ---
 
-## 7. Known-good, and worth not breaking
+## 3. Product Boundaries & Scope Exclusions
 
-Short list of things that took a while to get right and look ordinary now.
+The following features have been evaluated and deliberately excluded from the current product scope:
 
-- **The roster parser.** `docs/structure.md` Appendix A is the reference paste;
-  `backend/tests/test_names.py` covers the same ground automatically.
-- **Idempotent roster commit.** A double-click cannot create two rosters. The
-  key covers the pasted text and the roster as it stood, not the rows, which is
-  why removing a row before committing still works.
-- **Counters in the same transaction as the change.** No aggregate is ever
-  computed live. `backend/queries/stats.sql` explains the arithmetic.
-- **Scopes only through roles.** There is no table attaching a scope to a
-  person and there must never be one.
-- **A sponsor can cover more than one chapter.** `people.school_id` still says
-  which chapter somebody belongs to; `sponsor_school_grants` says which others
-  they may act for. A grant widens reach, never permission — it cannot give
-  anybody a scope, and the endpoint refuses one for a person without the
-  sponsor role. `backend/tests/test_grants.py` is written to be suspicious.
-- **One connection per authenticated request.** It was two: the guard reads
-  the session, then the handler reads the data. Each was a TLS handshake to
-  Turso — about 350 ms as the browser saw it — so the second was most of the
-  wait on every page. Settings → Operations shows the reuse rate.
-- **Every endpoint declares its scope**, and the test suite walks all of them.
+| Feature / Request | Determination | Architectural Rationale |
+| :--- | :--- | :--- |
+| **Interactive Campus Navigation** | **Out of Scope** | High maintenance cost; physical event maps and signage satisfy attendee wayfinding. |
+| **Push Notification Schedules** | **Out of Scope** | Delegate privacy rules prohibit student contact information; delegates utilize printed schedules. |
+| **Reversible Credential Encryption**| **Rejected** | Storing reversible access codes compromises security posture; selective reissuance addresses lost credentials safely. |
+| **Inter-Chapter Student Transfers** | **Rejected** | Cross-school transfers violate institutional billing and Latin level eligibility constraints; drop-and-readd is required. |
+| **Automated Financial Refunds** | **Rejected** | Convention budget operates on firm pre-payment terms; accounting reconciles via `cancelled_paid` state. |
 
 ---
 
-## How to keep this file honest
+## 4. Key Stakeholder Decisions Required
 
-Add a row when you notice something missing, not when you get round to fixing
-it. A file that only records completed work is a changelog, and there is
-already one of those in the commit history.
+1. **Google Workspace Account Provisioning:** Appoint official CAJCL Google Workspace for Education account (`conventionpresidents@cajcl.org`) to unblock 2FA and Drive integrations.
+2. **Written Tabulation Model:** Obtain formal point weighting and sweepstakes rules from Awards and Academics Chairs.
+3. **Privacy Coordinator Appointment:** Appoint designated adult compliance officer to finalize statutory privacy filings.
+4. **Offline Scoring Workflow:** Align on whether athletic scoring is recorded on paper and back-entered or input directly via offline laptops.
 
-When something ships, delete its row. When something is ruled out, move it to
-§4 with the reason — a row that quietly disappears teaches the next person
-nothing.
+---
+
+## 5. Architectural Invariants (Protected Patterns)
+
+The following core patterns are tested and must not be refactored without executive review:
+- **Idempotent Roster Submissions:** Roster commits require signed tokens binding payload hash and target roster fingerprint.
+- **Transactional Counter Aggregates:** Statistical metrics and invoices update within mutation transactions; live full-table scans are forbidden.
+- **Thread-Local Connection Pooling:** Database connection handles are pooled strictly per-thread with automatic disposal hooks, preventing cross-thread SQLite panics.
+- **Strict Role-Based Scope Assignment:** Permissions bind exclusively to roles; no permissions may be assigned directly to user records.

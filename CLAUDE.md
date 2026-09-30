@@ -62,16 +62,20 @@ rules), then `docs/design.md` for the visual rules.
   never return usernames; placeholder chapters (`PLACEHOLDER_CHAPTERS`: guest
   "Roma Antiqua Academy", "Independent") are left out. Chapter is free text,
   required in the profile dialog.
-- Privacy and compliance: `docs/PRIVACY.md` (data-flow diagram, safeguards,
+- Privacy and compliance: `docs/PRIVACY.md` (data-flow architecture, safeguards,
   inventory, written retention policy, incident response, family notice,
   school authorization form, COPPA/FERPA/SOPIPA/AB 1584/Cal. Civ. Code
   mapping, open decisions). Diagram source `docs/privacy/data-flow.dot`;
   re-render `.svg` and `.pdf` with `dot` after editing (one Letter page).
   A change to what is collected, who sees it, where it goes, or how long it
-  is kept must update `PRIVACY.md` §1–§2 and, if families would care, §4.
-  Decided facts: CAJCL (501(c)(3)) is the operator; deletion 12 Apr 2027,
+  is kept must update `PRIVACY.md`. Decided facts: CAJCL (501(c)(3)) is the operator; deletion 12 Apr 2027,
   keeping only person number + chapter + grade + level + placements;
   Drive/Apps Script on a personal Gmail until the `cajcl.org` Workspace.
+- `docs/` rewritten to professional PM specifications: `DEPLOY.md` (deployment runbook),
+  `PRIVACY.md` (regulatory & privacy spec), `REGISTRATION.md` (chair SOP), `RISKS.md` (risk register),
+  `RUNBOOK.md` (incident & ops runbook), `SECURITY.md` (threat model & security spec),
+  `TODO.md` (product roadmap & tracker), `design.md` (design system standard), `schema.md` (DDL & API spec),
+  `stack.md` (architecture blueprint), `structure.md` (PRD & functional spec).
 - `apps-script/`, `scripts/`, `docs/`. Bulk question import: `python scripts/import_certamen_questions.py --file <path.json|path.csv>`.
 
 ## Checks

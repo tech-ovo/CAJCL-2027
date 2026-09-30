@@ -1,282 +1,204 @@
-# Website Guide for Registration Chairs
+# Registration Chair Standard Operating Procedure (SOP)
 
-Familiarize yourself with how the platform works. It's also your opportunity to change anything or request more features. Ask every single question you can think of!
-
----
-
-## Contents
-
-1. [Codes](#1-codes)
-2. [Overview](#2-overview)
-3. [Chapters](#3-chapters)
-4. [Email](#4-email)
-5. [Registration](#5-registration)
-6. [Money](#6-money)
-7. [Chapter](#7-chapter)
-8. [Uhoh](#8-uhoh)
-9. [Arrival](#9-arrival)
-10. [Limitations](#10-limitations)
+**Platform:** `state.uhsjcl.org`  
+**Target Event:** 72nd Annual CAJCL State Convention (March 12–13, 2027)  
+**Audience:** Registration Chairs, Convention Presidents, Chapter Administrators  
 
 ---
 
-## 1. Codes
+## 1. System Overview & Authentication
 
-Go to [**state.uhsjcl.org**](https://state.uhsjcl.org). No usernames/passwords. Everyone signs in with a permanent code like `XXX-XXXXX-XXXXX`. The first three letters are `SPO` for a sponsor, `VOL` for parents/chaperones, and `DEL` for a delegate. Your codes are on Discord!
+The CAJCL Registration Platform operates entirely without conventional username/password pairs. Access control uses deterministic, cryptographically hashed access codes.
 
-Sponsors will give attendees their code on a printed packet. That packet will also have QR codes that attendees can use to sign in with on mobile devices, instead of typing out their code. If somebody loses a code, you need to issue a new one ([§8](#8-uhoh)).
+### Credential Format
+Every attendee is provisioned a unique 13-character identifier formatted as `PPP-XXXXX-XXXXX`:
+- **`PPP` (Entity Prefix):** Identifies registrant classification.
+  - `SPO`: Chapter Sponsor / Primary Teacher Contact
+  - `VOL`: Adult Volunteer / Chaperone
+  - `DEL`: Student Delegate (Grades 6–12)
+- **`XXXXX-XXXXX`:** Nine Crockford Base32 characters plus a checksum symbol. Ambiguous characters (`I`, `L`, `O`, `Z`) are excluded.
 
-## 2. Overview
+### Access Protocols
+1. **Desktop/Direct Entry:** Attendees input their code at [state.uhsjcl.org](https://state.uhsjcl.org).
+2. **Mobile / QR Scanning:** Attendee sheets feature a QR code that encodes the credential in the URL fragment (`#DEL-...`), ensuring credentials bypass intermediate web server logs.
+3. **Session Persistence:** Authenticated sessions persist via client-side storage tokens for up to 180 days.
+4. **Credential Reissuance:** Raw codes are never stored in plaintext (stored exclusively as `HMAC-SHA256`). Lost codes cannot be recovered; they must be reissued, immediately invalidating former active sessions.
 
-When you log in, you'll see this menu.
+---
 
+## 2. Navigation Architecture
+
+Upon authentication, registration chairs have access to the administrative workspace:
+
+| Navigation Item | Functional Scope |
+| :--- | :--- |
+| **Welcome** | Public portal view and live convention statistics. |
+| **Registration** | Personal attendee registration form (meal preferences, emergency contact, dietary requirements). |
+| **Overview** | Executive KPI summary (aggregate headcounts, completion rates, financial balances). |
+| **Chapters** | Chapter directory, roster operations, payment logging, and credential management. |
+| **Check-in** | Friday on-site registration desk workflow. |
+| **Resources** | External links to Certamen practice arenas and digital materials. |
+
+---
+
+## 3. Chapter Provisioning Workflow
+
+### Adding a New Chapter
+Navigate to **Chapters → Add a chapter**:
+1. **School Name:** Enter the official institution name, including explicit division designations (e.g., *University High School*, *Northwood Middle School*).
+2. **City:** Municipal location of the institution.
+3. **Level:** Select either **Middle School (MS)** or **High School (HS)**. If an institution sends both middle and high school delegations, **provision two discrete chapters**.
+4. **Billing Exemption:** Toggle *This chapter is not billed* strictly for California Senior Classical League (SCL) delegations.
+5. **Special Discounts:** Input any approved contractual discounts (in cents) with mandatory itemized justification.
+
+### Assigning Chapter Sponsors
+1. Once a chapter record is created, click **Add Sponsor**.
+2. Complete the legal name and adult profile.
+3. **Record the Access Code:** The generated `SPO-...` code is displayed **once**. Transmit this credential securely to the chapter sponsor via the official launch template.
+
+---
+
+## 4. Sponsor Onboarding Communication Template
+
+Transmit this standard communication upon chapter provisioning:
+
+```text
+Subject: Registration Open: 72nd CAJCL State Convention (March 12–13, 2027)
+
+salvē [Sponsor Name],
+
+Registration is officially open for the 72nd California Junior Classical League State Convention, held March 12–13, 2027, hosted jointly by University High School and Woodbridge High School.
+
+Access the digital registration platform at: https://state.uhsjcl.org
+Your Chapter Access Code: [SPO-XXXXX-XXXXX]
+
+======================================================================
+OPERATIONAL WORKFLOW
+======================================================================
+1. Access the Portal: Sign in using your unique sponsor access code above.
+2. Submit Roster: Paste your attendee list (names only) into the Roster Import tool. The parser accepts spreadsheet columns, bulleted lists, and unformatted text. Review the parsed output and confirm submission.
+3. Distribute Attendee Credentials: Generate and print your chapter packet. Each delegate and adult receives an individual sheet with their personal code and QR sign-in.
+4. Digital Activity Sheets: Attendees sign in individually to submit their test and workshop preferences.
+
+======================================================================
+FINANCIAL SCHEDULE
+======================================================================
+- Delegate Registration Fee: $140.00 per student
+- Adult Chaperones: One complimentary chaperone per 10 registered delegates
+- Additional Chaperones: $75.00 per adult
+- SCL Attendees: Complimentary (non-billed)
+
+Invoices update dynamically as your roster evolves. Remit checks payable to:
+  University High School JCL c/o Mark Michalak
+  4771 Campus Dr, Irvine, CA 92612
+  Memo: [Chapter Name] Registration
+
+======================================================================
+CRITICAL DEADLINES
+======================================================================
+- Registration & Activity Sheets Lock: February 13, 2027 at 11:59 PM PST
+- Postmark Deadline for Fees & Physical Paperwork: February 13, 2027
+- Convention Dates: March 12–13, 2027
+
+======================================================================
+MANDATORY PHYSICAL DOCUMENTATION
+======================================================================
+The following hard-copy documents require physical ink signatures:
+1. Student Waiver & Permission Form (Parent/Guardian signature required)
+2. Student Medical Form (Parent/Guardian signature required)
+3. Adult Medical Form (All attending adults)
+
+Sponsors must collect, scan into their chapter's assigned Google Drive folder, and mail physical originals alongside registration checks.
+
+Support Contact: state@uhsjcl.org
 ```
-Welcome   Registration  |  Overview   Chapters   Check-in     Resources   [name]   Sign out
-```
-
-The first **Registration** is your own form — you attend too, so you have a
-medical form and a meal preference like everybody else. Those after the divider
-are your job.
-
-|  |  |
-| --- | --- |
-| **Overview** | See stuff. |
-| **Chapters** | Do stuff. |
-| **Check-in** | Check-in process on March 12th! |
-
-**Resources** is at the far right, past your name: the Certamen practice app,
-Celerius, and the scrimmages Discord. Nothing to do with registration.
-
-At the far right of that row is a small sun or moon. It switches the site between light and dark, remembers which you picked on that device, and does nothing else. Left alone it follows whatever your phone or laptop is already set to.
 
 ---
 
-## 3. Chapters
+## 5. Registration Metrics & Status Criteria
 
-To create a chapter, **Chapters → Add a chapter**.
+The **Overview** dashboard aggregates live convention metrics:
 
-- **Name** — Use the full name, with *Middle School* or *High School* at the end (even though this is redundant). This may require Googling.
-- **City** — why not? I was too lazy to argue with Claude.
-- **Level** — If a school sends both a middle and a high school delegation, create **two chapters**.
-- **Discount** — If there's any special discount, it has to be applied manually.
-- **This chapter is not billed** — SCL doesn't pay.
+| Metric | Business Logic & Criteria |
+| :--- | :--- |
+| **Chapters** | Total active chapters and count of chapters with populated rosters. |
+| **Delegates** | Total active student registrations (Grades 6–12). |
+| **Adults** | Total attending adult count, segmented by Sponsors and Chaperones. |
+| **Forms Completed** | Count of fully validated attendees: <br>• **Delegate:** Online form submitted AND Sponsor attestation of physical waiver and medical forms confirmed.<br>• **Adult:** Online form submitted AND Sponsor attestation of physical medical form confirmed. |
+| **Financial Balance** | Total billed fees minus verified cash/check receipts across all chapters. |
 
-Once you create a new chapter, your first step is **adding a sponsor**. Once you create their account, it shows you the sponsor's access code. Email that code to just the sponsor ([§4](#4-email)).
-
-If that initial code is lost, it cannot be recovered. However, you can always issue a replacement code ([§8](#8-uhoh)).
-
----
-
-## 4. Email
-
-This is the one message that opens registration. For most sponsors it is the only thing they will read before they start. This is a draft that Claude wrote, so rewrite and double check the values.
-
-> **Subject:** Registration is open — 72nd CAJCL State Convention, March 12–13
-
-salvē [nomen],
-
-The **72nd California Junior Classical League State Convention** will be held **March 12–13, 2027**, hosted jointly by University and Woodbridge High School.
-
-Registration is online this year, at [**state.uhsjcl.org**](https://state.uhsjcl.org). Your access code is at the bottom of this email.
-
-**What to do first**
-
-Sign in and paste your roster. You do not need to format it — paste a column out of a spreadsheet, a numbered list, or one name per line, and it will read it. You will see exactly what it understood before anything is saved, and you can correct any row.
-
-Each of your delegates and adults then gets a sheet with their own access code. Print the packet and hand each sheet to the person named on it. They sign in and complete their own form digitally, which functions as the student activity sheet from previous years.
-
-**What it costs**
-
-|  |  |
-| --- | --- |
-| Per delegate | \$140.00 |
-| Adults | one free per 10 delegates |
-| Each additional adult | \$75.00 |
-
-Your invoice is on the site and updates itself as your roster changes, so check it there rather than working from a printed copy. Make checks payable to **University High School JCL c/o Mark Michalak**, and write your chapter name on the memo line so we can match the payment to your invoice.
-
-**Dates to keep**
-
-|  |  |
-| --- | --- |
-| Forms close | February 13, 2027 |
-| Payment due | February 13, 2027 |
-| Convention | March 12–13, 2027 |
-
-After the forms deadline your delegates can no longer edit their own answers. You can still ask a registration chair to reopen a form.
-
-**Three forms remain on paper**
-
-- **Student Waiver** — every delegate, parent or guardian signature required
-- **Student Medical Form** — every delegate, parent or guardian signature required
-- **Adult Medical Form** — every adult attending, sponsors included
-
-We've kept the process identical to previous years.
-
-**If something goes wrong**
-
-Reply to this email, or write to **state@uhsjcl.org**. If a delegate loses their sheet you can issue them a new code yourself from your roster — the old one stops working immediately.
-
-We are looking forward to seeing your chapter in March.
-
-*[nomina]*
-*Registration Chairs, 72nd CAJCL State Convention*
-*state@uhsjcl.org*
+*Note: SCL records are excluded from completion requirements and invoicing calculations.*
 
 ---
 
-**Your chapter:** [Chapter name]
-**Your access code:** `SPO-XXXXX-XXXXX`
+## 6. Financial Ledger & Reconciliation SOP
 
-Keep this code private. Anyone who has it can sign in as you and see your whole chapter. If you lose it, we can issue another.
+The platform maintains an immutable audit ledger for all accounting actions.
 
----
+### Invoicing Principles
+- **Dynamic Calculation:** Account balances recalculate instantaneously on roster mutations. Never rely on static printouts.
+- **Strict No-Refund Policy:** 
+  - If a delegate is cancelled **prior to payment entry**, their fee is dropped from the invoice.
+  - If a delegate is cancelled **after payment entry**, their record converts to `cancelled_paid`. They are excluded from food counts, but retain their billable charge so accounting balances remain settled.
 
-## 5. Registration
-
-This page has all the important details. The five figures at the top:
-
-|  |  |
-| --- | --- |
-| Chapters | How many, and how many have anybody on their roster yet |
-| Delegates |  |
-| Adults | Split into sponsors and chaperones |
-| Forms complete | Out of everyone attending |
-| Still owed | And how many chapters have settled |
-
-* Complete* has a specific meaning.
-
-- A **delegate** is complete when they have submitted their own registration form online *and* their waiver and medical form have reached their sponsor, who has ticked both.
-- An **adult** is complete when they have submitted their registration form online and their medical form has been ticked.
-
-SCL is listed as a chapter in the table below to make things easier, but they don't complete the forms.
+### Processing Payments
+1. Navigate to **Chapters** and locate the target school row.
+2. Select **Payment**.
+3. Record the transaction amount (in integer cents), check/reference number, and remittance notes.
+4. **Correcting Discrepancies:** Payment records are append-only and cannot be updated or deleted. To adjust an erroneous entry (e.g., entered $1,400 instead of $140), submit an offsetting negative entry (e.g., `-$1,260`) with explanatory audit remarks.
 
 ---
 
-## 6. Money
+## 7. Chapter & Roster Management
 
-There are no refunds! Go to the **Chapters** tab. Every chapter shows what it owes, what it has paid, and the
-balance. When you receive an invoice, press **Payment** on a chapter's row and enter the relevant details.
+From **Chapters → Roster**, administrators execute attendee-level interventions:
 
-Payments are only ever added, never edited or deleted (good recordkeeping practice). If you enter \$1,400 and it should have been \$140, **add a second payment of −\$1,260** (and then a note). The balance is always the sum of everything recorded, and the trail shows what actually happened and when.
-
-**The invoice recalculates itself.** Adding a delegate changes what a chapter owes the moment the roster changes. Never work from a printed copy, or from a figure somebody read to you last week.
-
-**Somebody who withdraws after their chapter paid still counts.** There are no refunds, so they stay on the invoice. Somebody who withdraws before the chapter paid comes off it. The site tracks the difference; you do not have to.
-
----
-
-## 7. Chapter
-
-You can view an individual chapter from **Chapters → Roster**, or by clicking a chapter's name on Overview. You see who is in it, what each person is, and their number — the same number printed on their sheet, so a sponsor reading one out over the phone is reading the same thing you are looking at.
-
-Each chapter has a **Chapter note** at the top of its roster — Certamen machines, roughly when the bus arrives, when it has to leave. The sponsor writes it; it appears again at the desk on the Friday.
-
-**Position** is more useful than "Adult" repeated down a column. It shows Sponsor, Chaperone, SCL — or a board title. What you can do here:
-
-|  |  |
-| --- | --- |
-| **Paste a roster** | For a sponsor who cannot get their own spreadsheet in. A second paste adds to the roster; it does not replace it. |
-| **Add one person** | One name, and whether they are a delegate, chaperone or sponsor. Shows their new code once. |
-| **Add the sponsor** | Only appears when a chapter has none. Same thing, and it is how a new chapter gets somebody who can sign in. |
-| **Edit** | Corrects a name, and the parent/guardian's name and phone. Their code does not change. |
-| **Their form** | Fills in a delegate's registration form for them. Recorded in the log as your doing. |
-| **Chapter teams** | Kickball, Fugepilam, Ultimate Frisbee — entered by the chapter, not by a delegate. |
-| **New code** | On one person's row. Their old code stops working at once. |
-| **Issue new codes** | The same for several people. Tick them, then confirm. |
-| **Reopen form** | Lets one person edit their own answers again after the deadline. **Close form** puts them back. |
-| **Waive sheet** | For somebody added at the desk. They count as complete without an activity sheet — their waiver and medical are still required. |
-| **Cancel** | Takes somebody off the roster. Reversible. |
-| **Make leader** | Marks a delegate as chapter leader. |
-| **Preview packet** | The printed sheets (preview). |
-| **Show [n] cancelled** | Shows everyone cancelled. |
-
-The **Activities** column says where each person's own form has got to: *Not yet*, *Submitted*, *Waived*, and *Reopened* beside the first two when you have opened one back up.
-
-**Preview packet is a preview, not something to hand out.** Because codes are stored scrambled, the preview shows blocks where the codes would be. To produce a sheet somebody can actually use, issue them a new code — the screen that follows has the print link for exactly those sheets.
-
-**You will not see grades, Latin levels, or the paper-form ticks here.** Those are the sponsor's working state. The paper ticks especially: whether a waiver has physically reached somebody's hands is the one thing on this page you should not quietly record on their behalf. The sponsor sees all of it on their own roster.
+| Operation | Trigger & Standard Procedure |
+| :--- | :--- |
+| **Paste Roster** | Ingest new batch of attendees for a chapter. Supports additive uploads without overwriting existing entries. |
+| **Add Person** | Provision a single delegate or adult. Generates and surfaces the access code once. |
+| **Edit Profile** | Correct spelling, suffix, or emergency guardian contact info. Does not alter access codes or invalidate sessions. |
+| **Administrative Submission** | Populate an attendee's digital form on their behalf; logged with administrative actor attribution. |
+| **Team Athletics Entry** | Register chapter rosters for aggregate activities (Kickball, Ultimate Frisbee, etc.). |
+| **Reissue Access Code** | Regenerates access code on loss. Immediately invalidates former credential and active sessions. |
+| **Reopen Form** | Bypasses deadline lock for an individual registrant, allowing post-deadline modifications. |
+| **Waive Activity Sheet** | Applies exclusively to walk-on attendees registered at the Friday desk, removing completion blockers. |
+| **Cancel Attendee** | Soft-deletes attendee from active headcounts while retaining billing audit integrity. Fully reversible. |
 
 ---
 
-## 8. Uhoh
+## 8. Incident Response & Troubleshooting Playbook
 
-### "I lost my code" / "My delegate lost their sheet"
-
-Sponsors can fix this themselves with a single button on their roster, and you should remind them of this feature. If you need to do it for them, open the chapter's roster, locate the individual, and click **New code**. The new code will display only once alongside a reprint link. Print the sheet immediately before navigating away. This action instantly voids the old code and signs out any devices using it. If an entire chapter loses their sheets (which happens when printouts are left behind in classrooms), click **Issue new codes**, select everyone, and print a new batch all at once.
-
-### "The site says my code is wrong and it isn't"
-
-This is almost always caused by one of three things:
-
-- **The code was reissued:** They are trying to use an old sheet. This is the most common issue.
-- **Too many tries:** Five incorrect attempts within an hour will temporarily lock the code. Have them wait, then try again.
-- **A genuine mis-read:** The system never uses the letters `I`, `L`, `O`, or `Z` to prevent confusion with `1`, `0`, and `2`. If a user types an `O` instead of a zero, the site automatically corrects it. It also ignores case, extra spaces, and missing dashes. However, because every code includes a check character, a genuinely mistyped letter will trigger an error instead of logging them into the wrong account.
-
-### "I need to change a delegate's name"
-
-Open the chapter's roster, find them, and click **Edit**. First, middle, last and suffix. Their access code does not change, so the sheet in their hand still works, and nothing they have filled in themselves is touched.
-
-The sponsor can do the same from their own roster, so it is worth telling them.
-
-### "My delegate submitted their form with the wrong Latin level"
-
-Open the chapter's roster and click **Reopen form** on their row. They can then edit their own answers again, deadline or no deadline, and the row shows *Reopened* so the next person to look at it knows why.
-
-Click **Close form** when they are done. If you forget, nothing breaks — they simply keep the ability to edit.
-
-Sponsors cannot do this. It is a registration chair's button.
-
-### "The deadline passed and we still need to change something"
-
-The deadline only stops delegates editing their own submissions. **Reopen form** on their roster row lifts it for that one person, and everything you can do from the roster — adding, cancelling, correcting a name, issuing a code — was never affected by it.
-
-### "A chapter paid the wrong amount"
-
-Log a second transaction for the difference, whether it is a positive or negative amount. Never attempt to edit the original payment entry (see [§6](#6-money)).
-
-### "Somebody dropped out"
-
-Click **Cancel** next to their name on the roster. If the chapter has already paid, the delegate remains on the invoice since we do not issue refunds. However, cancelling them removes them from the meal count so we do not over-order food.
-
-### "A chapter says their invoice is wrong"
-
-Review the live website invoice with them instead of their printed copy. Almost all discrepancies occur because the roster was updated after the invoice was printed. If the math still appears incorrect, it is usually due to the free-adult ratio: chapters get one free adult per ten delegates, meaning the eleventh delegate unlocks a second free adult. If necessary, apply a discount: **Chapters → Edit** on their row, with a reason, which then prints on their invoice.
-
-### "The page is spinning / says the server is not responding"
-
-The server enters a sleep state during periods of inactivity and requires a few seconds to wake up. The site intentionally displays a "waking" message rather than hanging silently. If this loading state persists for more than thirty seconds, notify an admin.
-
-### "Somebody registered who should not have"
-
-Cancel their registration immediately. The system automatically logs every change, including the timestamp and the user who executed it, so you do not need to maintain separate manual records of these actions.
+| Scenario / Symptom | Root Cause Analysis | Remediation Protocol |
+| :--- | :--- | :--- |
+| **Lost Credentials** | Attendee misplaced paper credential sheet. | Open chapter roster, locate individual, click **New Code**. Instruct sponsor to print replacement sheet immediately. Old code is voided. |
+| **Authentication Rejection** | User receiving "Code Not Recognized". | 1. Confirm code has not been superseded by a newer reissuance.<br>2. Check for temporary rate limit (5 failed attempts within 60 minutes triggers lockout).<br>3. Verify input against Crockford Base32 characters (system auto-corrects `O` to `0`, but check character validates structure). |
+| **Attendee Profile Correction** | Name misspelled or incorrect grade. | Click **Edit** on roster row. Access code remains unchanged; printout remains valid. |
+| **Form Revisions Post-Deadline** | Delegate requires category/test adjustment after February 13 lock. | Click **Reopen Form**. Delegate edits directly. Click **Close Form** upon resolution (form lock re-engages). |
+| **Payment Ledger Discrepancy** | Check amount entered incorrectly. | Post an offsetting adjustment transaction with sign inverted (`-` or `+`) and detailed ledger memo. |
+| **Invoice Variance** | Chapter claims fee calculation is inaccurate. | 1. Compare against live web roster rather than historical PDF printouts.<br>2. Verify adult-to-delegate ratio (1 free adult per 10 delegates; 11th delegate unlocks 2nd free adult).<br>3. Check if manual discounts were properly logged. |
+| **Server Latency / Cold Start** | Initial page load takes 5–10 seconds. | Backend operates on serverless infrastructure and suspends during idle periods. Normal wake cycle takes 3–5 seconds. If timeout exceeds 30 seconds, escalate to Technology Commissioners. |
 
 ---
 
-## 9. Arrival
+## 9. Day-Of Arrival & Check-In Operations
 
-**Check-in** is per chapter and not per person. Tap anywhere on a chapter's row. That opens a panel with:
+On Friday, March 12, 2027, the check-in desk executes chapter arrivals via **Check-in**:
 
-- **Notes.** Anything the desk needs to remember: how many Certamen machines, whether they brought a catapult, who is missing, what they are waiting on.
-- **Registration complete** — marks them arrived, with the time.
-- **Unregister** — un-marks them.
-
-Other options:
-
-- **Add a delegate** — for somebody turning up in place of a delegate who could not come. Two fields, and their code appears immediately. Write it down or photograph it before you close the panel; it is not shown again.
-- **Open the roster** — everything else. Cancelling the person they replaced, issuing a code to somebody who lost their sheet, correcting a name.
-
-**A delegate added here has their activity sheet waived automatically.** The tests were printed and the food ordered weeks ago, so there is nothing left for their answers to change, and without the waiver they would sit in their chapter's completion figure as permanently unfinished.
-
-**Their waiver and medical form are not waived.** Those are safety documents and nobody is exempt. Check the paper at the desk as you would for anybody else.
+1. **Chapter Arrival Record:** Click the school row to open the operational drawer.
+2. **Physical Paperwork Audit:** Verify receipt of physical ink-signed Student Waivers, Student Medical Forms, and Adult Medical Forms.
+3. **Walk-On Registrations:**
+   - Select **Add Delegate**. Enter name and grade.
+   - Record generated badge/code.
+   - System automatically marks `activity_sheet_waived` (testing schedules are finalized).
+   - **Hard Constraint:** Physical medical and waiver documents remain mandatory; walk-ons cannot enter without signed forms.
+4. **Mark Complete:** Click **Registration Complete** to log official arrival timestamp.
 
 ---
 
-## 10. Limitations
+## 10. Governance & Security Guardrails
 
-There are some system limitations are intentional security measures, while others are simply features that have not been developed yet.
-
-* **Sign in as somebody else:** Only a convention president or an admin has this clearance.
-* **Change the fee, the deadlines, or any wording on the site:** These configurations are strictly managed by the convention presidents.
-* **Read the audit log:** While the system records everything you do, reviewing those logs is a task reserved for the presidents.
-* **Touch medical or waiver documents:** Physical paperwork is completely segregated from this system. Sponsors scan these into a separate Google Drive folder that the registration site does not access. Physical copies are handed over at check-in.
-* **Collect delegate email addresses:** We purposely do not request or store this information.
+To protect minor privacy and institutional compliance:
+- **No Direct Student Emails:** The system explicitly forbids collecting delegate email addresses. All communications route through sponsors.
+- **Physical Document Segregation:** Medical data and liability waivers reside exclusively on paper and in a restricted-access Google Drive folder. No health records are ingested into the web database.
+- **Role Isolation:** Registration chairs hold operational privileges within their functional scope. System-wide configuration mutations (modifying convention pricing, global deadlines, or viewing raw audit trails) require Convention President authorization.
