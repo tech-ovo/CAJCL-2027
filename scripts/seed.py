@@ -579,11 +579,11 @@ class Seeder:
                      ts=when)
 
     def _seed_contests(self, uni: int, days_ago) -> None:
-        """Slogans, a Publicity portfolio, a judge, and a few scores.
+        """Slogans, a Publicity portfolio, a judge, and a submitted ballot.
 
         Text entries only: a file entry needs Drive, and the seed must run
-        without it. Half the English slogans are scored so Results has
-        something to rank and Judging still has work left to do.
+        without it. One division of English slogans is ranked so Results has
+        something to show and Judging still has work left to do.
         """
         english = [
             "Latin: the language that never gets old",
@@ -608,7 +608,6 @@ class Seeder:
             self.codes["Contest judge: Rosalind Achebe (sees entries without names)"] = code
 
             school = dict(tx.one("schools.get", (uni,)))
-            entered = []
             for index, pid in enumerate(self.uni_delegate_ids[:len(english)]):
                 person = dict(tx.one("people.get", (pid,)))
                 if person["status"] != "active":
@@ -628,7 +627,6 @@ class Seeder:
                              f"their {contest['name']}.",
                              actor_person_id=pid, school_id=uni,
                              entity_type="contest_entry", entity_id=entry_id, ts=when)
-                    entered.append((contest, entry_id, index))
 
             publicity = by_key["publicity"]
             entry_id = tx.insert("contests.entry_create", (
@@ -642,20 +640,39 @@ class Seeder:
                      actor_person_id=self.uni_sponsor_id, school_id=uni,
                      entity_type="contest_entry", entity_id=entry_id, ts=days_ago(9))
 
-            for contest, entry_id, index in entered:
-                if contest["key"] != "slogan_english" or index % 2:
-                    continue
-                criterion = contest["criteria"][0]
-                points = 60 + (index * 7) % 35
-                tx.run("contests.score_upsert", (
-                    entry_id, judge_id, "",
-                    json.dumps({str(criterion["id"]): points}), 0, points,
-                    None, "submitted", days_ago(3), days_ago(3)))
-                tx.audit("contest.score",
-                         f"Rosalind Achebe handed in a score for "
-                         f"{contest['name']} entry {entry_id}.",
-                         actor_person_id=judge_id, entity_type="contest_entry",
-                         entity_id=entry_id, ts=days_ago(3))
+            # Rank one division so Results has something to show, and leave the
+            # others unranked so Judging still has work left to do.
+            slogan = by_key["slogan_english"]
+            rows = tx.all("contests.entries_for_judging", (slogan["item_id"],))
+            groups = contests.groups_of(slogan, rows)
+            if groups:
+                division, facet = groups[0]
+                in_group = [r["id"] for r in rows
+                            if r["division"] == division and facet in contests.facets_of(slogan, r)]
+                places = {entry_id: place for place, entry_id in enumerate(in_group[:slogan["places"]], 1)}
+                payload = {
+                    "division": division,
+                    "facet": facet,
+                    "places": places,
+                    "comment": "Sharp phrasing across the board.",
+                    "submit": True,
+                }
+                ballot = contests.check_ballot(slogan, rows, payload)
+                when = days_ago(3)
+                tx.run("contests.ballot_upsert", (
+                    slogan["item_id"], ballot["division"], ballot["facet"], judge_id,
+                    ballot["comment"], ballot["status"], when, when))
+                ballot_id = tx.value("contests.ballot_get", (
+                    slogan["item_id"], judge_id, ballot["division"], ballot["facet"]))
+                tx.run("contests.ballot_places_delete", (ballot_id,))
+                for place, entry_id in ballot["places"]:
+                    tx.run("contests.ballot_place_create", (ballot_id, place, entry_id))
+                where = ballot["division"] + (f", {ballot['facet']}" if ballot["facet"] else "")
+                tx.audit("contest.rank",
+                         f"Rosalind Achebe handed in a ranking for {slogan['name']} ({where}).",
+                         actor_person_id=judge_id, entity_type="contest",
+                         entity_id=slogan["item_id"], ts=when,
+                         changed_fields=["places", "comment", "status"])
 
     def _finish(self) -> None:
         """Recompute every counter, and raise the demonstration-data marker."""

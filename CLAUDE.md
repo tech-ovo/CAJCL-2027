@@ -76,7 +76,7 @@ rules), then `docs/design.md` for the visual rules.
   `RUNBOOK.md` (incident & ops runbook), `SECURITY.md` (threat model & security spec),
   `TODO.md` (product roadmap & tracker), `design.md` (design system standard), `schema.md` (DDL & API spec),
   `stack.md` (architecture blueprint), `structure.md` (PRD & functional spec).
-- `apps-script/`, `scripts/`, `docs/`. Bulk question import: `python scripts/import_certamen_questions.py --file <path.json|path.csv>`.
+- `apps-script/`, `scripts/`, `docs/`. `scripts/seed.py` seeds demo data (`--reset` to wipe/re-migrate); seeds entries for Slogans & Publicity and a submitted ballot by Rosalind Achebe for English slogans (`contest_ballots`). Bulk question import: `python scripts/import_certamen_questions.py --file <path.json|path.csv>`.
 
 ## Checks
 - `python -m pytest backend/tests -q` (on this machine the installed starlette
