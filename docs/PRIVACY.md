@@ -137,15 +137,6 @@ Pursuant to COPPA § 312.10 and SOPIPA § 22584(d)(2), the platform adheres to a
 
 ---
 
-## 7. Written Information Security Program (WISP)
-
-1. **Designated Governance Leads:** The CAJCL Technology Commissioners and Appointed Privacy Officer maintain overall operational oversight of this program.
-2. **Annual Threat Assessment:** A comprehensive code and threat-model audit is executed annually every September prior to opening registration.
-3. **Continuous Testing:** Every Git push executes an automated test suite verifying route authorization guards, role boundaries, and query execution plans.
-4. **Third-Party Contractual Audits:** All platform sub-processors must maintain independent SOC 2 Type II or ISO 27001 certifications.
-
----
-
 ## 8. Incident Response & Breach Notification Protocol
 
 In accordance with California Civil Code § 1798.82:
