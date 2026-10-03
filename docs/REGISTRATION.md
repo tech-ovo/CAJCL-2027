@@ -55,6 +55,7 @@ Navigate to **Chapters → Add a chapter**:
 1. Once a chapter record is created, click **Add Sponsor**.
 2. Complete the legal name and adult profile.
 3. **Record the Access Code:** The generated `SPO-...` code is displayed **once**. Transmit this credential securely to the chapter sponsor via the official launch template.
+4. **Forward the Join Code:** Every chapter has an 8-character join code (shown on the confirmation after *Add a chapter*, in the *Add Sponsor* confirmation, and any time from **Chapters → Join code**). Put it in the same email. Unlike the access code it is **not** a secret and can be viewed again.
 
 ---
 
@@ -71,14 +72,17 @@ Registration is officially open for the 72nd California Junior Classical League 
 
 Access the digital registration platform at: https://state.uhsjcl.org
 Your Chapter Access Code: [SPO-XXXXX-XXXXX]
+Your Chapter Join Code:   [XXXX-XXXX]
 
 ======================================================================
 OPERATIONAL WORKFLOW
 ======================================================================
 1. Access the Portal: Sign in using your unique sponsor access code above.
-2. Submit Roster: Paste your attendee list (names only) into the Roster Import tool. The parser accepts spreadsheet columns, bulleted lists, and unformatted text. Review the parsed output and confirm submission.
-3. Distribute Attendee Credentials: Generate and print your chapter packet. Each delegate and adult receives an individual sheet with their personal code and QR sign-in.
-4. Digital Activity Sheets: Attendees sign in individually to submit their test and workshop preferences.
+2. Print the Join Sheet: On your Roster page choose "Print the join sheet" and print one copy for every student you expect, with the paper waiver and medical forms behind it. Students go to the site, choose "Join your chapter", and type the join code (or scan the QR) with their name, grade and Latin level. They receive their own access code and can fill in their forms immediately.
+3. Approve Students: Joined students appear under "Waiting for approval" on your Roster. Approve each one (or all at once); until you do, their registration is preliminary and is not on your invoice. Deny anyone who should not be there: all of their data is removed.
+4. Prefer to type a list? You can still paste your roster (names only) into the Roster Import tool and hand out individual access sheets; those students are approved automatically.
+5. Digital Activity Sheets: Attendees sign in individually to submit their test and workshop preferences.
+You can close joining, or replace the join code, at any time from your Roster page.
 
 ======================================================================
 FINANCIAL SCHEDULE
@@ -157,6 +161,8 @@ From **Chapters → Roster**, administrators execute attendee-level intervention
 | :--- | :--- |
 | **Paste Roster** | Ingest new batch of attendees for a chapter. Supports additive uploads without overwriting existing entries. |
 | **Add Person** | Provision a single delegate or adult. Generates and surfaces the access code once. |
+| **Join Code** | Shown on every roster and under **Chapters → Join code**. Print the join sheet, close/reopen joining, or replace the code (old one stops working at once). |
+| **Approve / Deny** | Students who joined by code wait in the roster's *Waiting for approval* panel, marked **Preliminary**. The sponsor approves or denies; a chair can see them (and their separate count on Chapters and Overview) but must sign in as the sponsor to decide. Denial removes all of the student's data. |
 | **Edit Profile** | Correct spelling, suffix, or emergency guardian contact info. Does not alter access codes or invalidate sessions. |
 | **Administrative Submission** | Populate an attendee's digital form on their behalf; logged with administrative actor attribution. |
 | **Team Athletics Entry** | Register chapter rosters for aggregate activities (Kickball, Ultimate Frisbee, etc.). |

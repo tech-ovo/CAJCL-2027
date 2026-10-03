@@ -11,6 +11,7 @@
 import * as api from "../api.js";
 import { add, el, clear, table, button, money, field, input, select, errorSummary, loadingRows, localDate } from "../ui.js";
 import { openPrintView } from "./roster.js";
+import { joinCodePanel, formatJoinCode } from "./joincode.js";
 
 export async function dashboardPage(host) {
   let data = null;
@@ -46,6 +47,11 @@ export async function dashboardPage(host) {
             el("div", { class: "totals__row" },
               el("span", {}, "Delegates"),
               el("span", { class: "mono" }, totals.delegates)),
+            totals.delegates_pending
+              ? el("div", { class: "totals__row" },
+                  el("span", {}, "Preliminary delegates"),
+                  el("span", { class: "mono" }, totals.delegates_pending))
+              : null,
             el("div", { class: "totals__row" },
               el("span", {}, "Adults"),
               el("span", { class: "mono" }, totals.adults)),
@@ -89,6 +95,12 @@ export async function dashboardPage(host) {
             : null) },
       { key: "level", label: "Level", sortable: true },
       { key: "delegates_active", label: "Delegates", num: true, sortable: true },
+      // Joined with the chapter's join code and not yet approved by their
+      // sponsor. Beside the delegate count, never inside it.
+      { key: "delegates_pending", label: "Prelim.", num: true, sortable: true,
+        render: (row) => row.delegates_pending
+          ? el("span", { class: "pill" }, row.delegates_pending)
+          : el("span", { class: "muted" }, "—") },
       { key: "adults_active", label: "Adults", num: true, sortable: true },
       { key: "delegates_complete", label: "Complete", num: true, sortable: true,
         render: (row) => {
@@ -125,6 +137,12 @@ export async function dashboardPage(host) {
           // the packet is its own button, named after what it produces.
           el("a", { class: "btn btn--small", href: `#/roster/${row.id}` },
             "Roster"),
+          // The code a chair forwards to the sponsor, and the one place a chair
+          // can close or replace it without opening the roster.
+          button("Join code", {
+            variant: "btn--small btn--quiet",
+            onclick: () => { panel = { kind: "join", school: row }; render(); },
+          }),
           // A chapter's own details -- its name above all. Created from this
           // page in a hurry, so a typo in one is normal and used to be
           // permanent.
@@ -142,9 +160,48 @@ export async function dashboardPage(host) {
   /* ------------------------------------------------------------------ */
 
   function renderPanel() {
+    if (panel.kind === "created") return createdPanel(panel.created);
+    if (panel.kind === "join") {
+      // The row as it is NOW: changing the code reloads the table, and the
+      // panel must show the new one rather than the row it was opened with.
+      const fresh = data.schools.find((s) => s.id === panel.school.id)
+        || panel.school;
+      return el("div", {},
+        joinCodePanel({
+          school: fresh,
+          reload,
+          print: () => openPrintView(`/sponsor/join-sheet?school_id=${fresh.id}`),
+        }),
+        el("div", { class: "btn-row" },
+          button("Close", { variant: "btn--quiet",
+                            onclick: () => { panel = null; render(); } })));
+    }
     if (panel.kind === "payment") return paymentPanel(panel.school);
     if (panel.kind === "records") return recordsPanel(panel.school);
     return schoolPanel(panel.school || null);
+  }
+
+  /* A chapter has just been made. The join code exists already, and the next
+   * thing a chair does is write to the sponsor, so it is put in front of them
+   * with the sentence to send. */
+  function createdPanel(created) {
+    const shown = formatJoinCode(created.join_code);
+    return el("div", { class: "panel" },
+      el("h2", {}, `${created.name} added`),
+      el("p", { class: "label" }, "Join code"),
+      el("p", { class: "tabula__code mono", style: "font-size:1.75rem" }, shown),
+      el("p", {},
+        "Forward this to the sponsor in your first email. Students type it to "
+        + "register themselves, and the sponsor approves them from their "
+        + "roster. It stays on this chapter's Join code button if you need it "
+        + "again."),
+      el("p", { class: "small muted" },
+        "Next: open the chapter's roster and use Add the sponsor, then send "
+        + "them their access code and this join code together."),
+      el("div", { class: "btn-row" },
+        el("a", { class: "btn btn--primary", href: `#/roster/${created.id}` },
+          "Open the roster"),
+        button("Done", { onclick: () => { panel = null; render(); } })));
   }
 
   function paymentPanel(school) {
@@ -410,9 +467,13 @@ export async function dashboardPage(host) {
                   discount_cents: Math.round(dollars * 100),
                   discount_reason: reason.value.trim() || null,
                 };
-                if (editing) await api.patch(`/admin/schools/${existing.id}`, body);
-                else await api.post("/admin/schools", body);
-                panel = null;
+                if (editing) {
+                  await api.patch(`/admin/schools/${existing.id}`, body);
+                  panel = null;
+                } else {
+                  panel = { kind: "created",
+                            created: await api.post("/admin/schools", body) };
+                }
                 await reload();
               } catch (error) {
                 errors = error.errors && error.errors.length

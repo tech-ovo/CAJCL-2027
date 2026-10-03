@@ -23,7 +23,7 @@ SELECT p.id, p.first_name, p.middle_name, p.last_name, p.suffix,
        p.cell_phone, p.email, p.latin_knowledge,
        p.guardian_name, p.guardian_phone,
        p.code_prefix, p.code_issued_at, p.forms_unlocked, p.school_seq,
-       p.activity_sheet_waived,
+       p.activity_sheet_waived, p.approval,
        fs.status       AS form_status,
        fs.submitted_at AS form_submitted_at,
        COALESCE(pf_w.received, 0) AS waiver_received,
@@ -42,7 +42,7 @@ LEFT JOIN paper_forms pf_m
        ON pf_m.person_id = p.id
       AND pf_m.form_type = CASE WHEN p.person_type = 'delegate'
                                 THEN 'student_medical' ELSE 'adult_medical' END
-WHERE p.school_id = ?
+WHERE p.school_id = ? AND p.approval <> 'denied'
 ORDER BY p.person_type, p.last_name, p.first_name;
 
 -- name: roster.import_by_key

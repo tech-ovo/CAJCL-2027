@@ -78,6 +78,15 @@ ROUTES = [
     ("sponsor.people.redact", "POST", "/sponsor/people/{person}/redact", {}),
     ("sponsor.people.regenerate", "POST",
      "/sponsor/people/{person}/regenerate-code", {}),
+    ("sponsor.people.approve", "POST", "/sponsor/people/{person}/approve", {}),
+    ("sponsor.people.deny", "POST", "/sponsor/people/{person}/deny", {}),
+    ("sponsor.approve_all", "POST", "/sponsor/approve-all",
+     {"school_id": "{school}"}),
+    ("sponsor.join.regenerate", "POST", "/sponsor/join/code",
+     {"school_id": "{school}"}),
+    ("sponsor.join.open", "POST", "/sponsor/join/open",
+     {"school_id": "{school}", "open": False}),
+    ("sponsor.join_sheet", "GET", "/sponsor/join-sheet?school_id={school}", None),
     ("sponsor.chapter_leader", "POST",
      "/sponsor/people/{person}/chapter-leader", {"granted": True}),
     ("sponsor.activity_sheet", "GET",
@@ -256,7 +265,7 @@ def test_no_route_is_accidentally_public():
     """Only the public and auth surfaces may be reached with no credential."""
     allowed = {
         "/public/stats", "/public/convention", "/public/announcements",
-        "/auth/redeem", "/health",
+        "/auth/redeem", "/auth/join", "/health",
         # These take any valid session and check authority in the handler.
         "/auth/me", "/auth/logout", "/auth/impersonate/end",
         "/me/adult-sheet",

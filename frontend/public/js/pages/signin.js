@@ -177,7 +177,7 @@ export async function signInPage(host) {
         el("div", { class: "rail__item" },
           el("p", { class: "label label--ink" }, "Where codes come from"),
           el("div", { class: "rail-list" },
-            ...[["Delegates", "Your sponsor"],
+            ...[["Delegates", "Your sponsor, or the join code on their handout"],
                 ["Chaperones", "Your chapter's sponsor"],
                 ["Sponsors", "A convention chair"],
                 ["Board", "A convention president"]].map(([who, source]) =>
@@ -190,6 +190,12 @@ export async function signInPage(host) {
           "in on this device."),
         form,
         el("hr", { class: "hair" }),
+        // The newer, preferred way for a student to get started: no code of
+        // their own yet, just the chapter's.
+        el("p", { class: "small" },
+          "First time here? ",
+          el("a", { href: "#/join" }, "Join your chapter with its join code"),
+          "."),
         el("p", { class: "small muted" },
           "Lost your code? Whoever issued it can issue another. The old one " +
           "stops working the moment they do."),

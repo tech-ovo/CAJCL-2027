@@ -51,7 +51,11 @@ export async function overviewPage(host) {
       // is really about one level: how many tests to print at each level, how
       // many rooms, which Certamen bracket.
       pair("Delegates", t.delegates.toLocaleString("en-US"),
-           `${t.delegates_ms} middle · ${t.delegates_hs} high`),
+           `${t.delegates_ms} middle · ${t.delegates_hs} high`
+           // Students who joined with a chapter's join code and are waiting on
+           // their sponsor. Said beside the figure, never added into it.
+           + (t.delegates_pending
+              ? ` · ${t.delegates_pending} preliminary, not counted` : "")),
       pair("Adults", t.adults.toLocaleString("en-US"),
            `${t.sponsors} sponsors · ${t.chaperones} chaperones`),
       pair("Forms complete", `${t.complete}/${t.people}`,
@@ -145,7 +149,13 @@ export async function overviewPage(host) {
                        "Not a chapter")
                   : null) },
             { key: "level", label: "Level" },
-            { key: "delegates_active", label: "Delegates", num: true },
+            { key: "delegates_active", label: "Delegates", num: true,
+              render: (row) => el("span", {},
+                row.delegates_pending
+                  ? el("span", { class: "pill", style: "margin-right:.4rem" },
+                       `+${row.delegates_pending} prelim.`)
+                  : null,
+                el("span", { class: "mono" }, row.delegates_active)) },
             // The pill goes BEFORE the number. After it, every flagged row's
             // figure sat a pill's width further right than every other row's,
             // and a column of numbers you cannot read down is not a column.

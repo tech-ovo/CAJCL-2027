@@ -17,6 +17,27 @@ rules), then `docs/design.md` for the visual rules.
   `ROUTES`; every named query needs a Python caller; a new migration needs
   `python scripts/checksum_migrations.py`; a new table needs a block in
   `docs/schema.md` and a size entry in `scripts/check_query_plans.py`.
+- Join codes and pending delegates (migration 011): the PREFERRED way a student
+  registers. Each chapter has `schools.join_code` (8 chars of the access-code
+  alphabet, plaintext, NOT a secret) and `join_open`; every new chapter gets one
+  (`create_school`), existing ones were backfilled. Student: `#/join[/CODE]`
+  (`js/pages/join.js`) → `POST /auth/join` (`lib/joining.py`) creates a delegate
+  with `people.approval = 'pending'`, signs them in, returns the access code
+  once. Pending ≠ blocked (they fill in forms) but they are in NO invoice,
+  public count, meal, completion, academics or whole-packet figure: every SUM in
+  `stats.count_school` carries `approval = 'approved'`; `school_stats.delegates_pending`
+  is the separate count (Chapters/Overview show it as "preliminary"). Sponsor:
+  roster page has `js/pages/joincode.js` (show/copy/print `GET /sponsor/join-sheet`,
+  close/reopen `POST /sponsor/join/open`, replace `POST /sponsor/join/code`) and a
+  "Waiting for approval" panel (`/sponsor/people/{id}/approve|deny`,
+  `/sponsor/approve-all`). Deny = `roster.redact` (anonymous tombstone,
+  `approval = 'denied'`, status always `cancelled`, never billable); redacting a
+  pending person is a denial. Same name already in the chapter is refused.
+  Limits: 150 pending per chapter, 30 wrong join codes per IP per 15 min (stored
+  in `login_attempts` with a leading `j`, so sign-in limits don't see them).
+  Pasting a roster still works and yields approved people. Printed prose is the
+  `join_instructions` document. Open question (PRIVACY.md §12): under-13
+  self-entry before the parent waiver is signed.
 - Pre-convention contests (migrations 008, 009): `lib/contests.py` (rules, divisions,
   word counts, ballots, ranking), `lib/drive.py` (Apps Script puppet client, or
   `DRIVE_LOCAL_DIR` folder stand-in locally/tests), `queries/contests.sql`,

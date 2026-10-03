@@ -51,9 +51,12 @@ CREATE TABLE schools (
   updated_at      TEXT NOT NULL,
   checkin_note    TEXT,
   number          INTEGER,
+  join_code       TEXT,
+  join_open       INTEGER NOT NULL DEFAULT 1 CHECK (join_open IN (0, 1)),
   UNIQUE (name, level)
 );
 CREATE INDEX idx_schools_kind_status_level ON schools (kind, status, level);
+CREATE UNIQUE INDEX idx_schools_join_code ON schools (join_code) WHERE join_code IS NOT NULL;
 ```
 
 ---
@@ -94,6 +97,7 @@ CREATE TABLE people (
   board_title           TEXT,
   activity_sheet_waived INTEGER NOT NULL DEFAULT 0,
   school_seq            INTEGER,
+  approval              TEXT NOT NULL DEFAULT 'approved' CHECK (approval IN ('approved','pending','denied')),
   CHECK (person_type = 'adult'    OR adult_type IS NULL),
   CHECK (person_type = 'delegate' OR (grade IS NULL AND latin_level IS NULL)),
   CHECK (person_type = 'adult'    OR (email IS NULL AND latin_knowledge IS NULL AND availability_note IS NULL)),
@@ -302,7 +306,8 @@ CREATE TABLE school_stats (
   meal_none                INTEGER NOT NULL DEFAULT 0,
   adults_sponsors          INTEGER NOT NULL DEFAULT 0,
   adults_chaperones        INTEGER NOT NULL DEFAULT 0,
-  arrived_at               TEXT
+  arrived_at               TEXT,
+  delegates_pending        INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE public_stats_cache (
@@ -506,6 +511,7 @@ The ingestion engine processes raw unstructured text from chapter sponsors via `
 | Method | Route | Required Scope | Summary |
 | :--- | :--- | :--- | :--- |
 | `POST` | `/auth/redeem` | *Public* | Validates access code; returns session token and persona profile. Rate limited. |
+| `POST` | `/auth/join` | *Public* | Chapter join code + name, grade, Latin level. Creates a **pending** delegate, signs them in, returns their access code once. Wrong codes rate limited apart from sign-in failures. |
 | `GET` | `/auth/me` | *Any Session* | Returns active identity, assigned roles, scopes, and chapter metadata. |
 | `POST` | `/auth/logout` | *Any Session* | Revokes current session token server-side. |
 | `POST` | `/auth/impersonate`| `*` | Step-up authentication creating a 30-minute read-only support session. |
@@ -520,6 +526,12 @@ The ingestion engine processes raw unstructured text from chapter sponsors via `
 | `PATCH` | `/sponsor/people/{id}`| `sponsor` | Updates attendee directory fields (name, phone, grade). |
 | `POST` | `/sponsor/people/{id}/cancel` | `sponsor` | Executes soft-cancellation; recalculates invoice and statistics. |
 | `POST` | `/sponsor/people/{id}/regenerate-code` | `sponsor` | Reissues access code and revokes existing sessions. |
+| `POST` | `/sponsor/people/{id}/approve` | `sponsor` | Approves a pending (join-code) student; they move into the invoice, public count and meal totals. |
+| `POST` | `/sponsor/people/{id}/deny` | `sponsor` | Denies a pending student: runs the full redaction and leaves an anonymous `denied` row. |
+| `POST` | `/sponsor/approve-all` | `sponsor` | Approves everyone currently pending in the chapter. |
+| `POST` | `/sponsor/join/code` | `sponsor` | Replaces the chapter's join code; the old one stops working at once. |
+| `POST` | `/sponsor/join/open` | `sponsor` | Closes or reopens joining without changing the code. |
+| `GET` | `/sponsor/join-sheet` | `sponsor` | One-page printable handout: join code, QR, instructions. |
 | `GET` | `/sponsor/packet` | `sponsor` | Generates HTML printable credential packet. |
 | `GET` | `/sponsor/packet.pdf` | `sponsor` | Spawns asynchronous worker to generate WeasyPrint PDF packet. |
 | `GET` | `/sponsor/invoice` | `sponsor` | Computes itemized invoice breakdown from `school_stats`. |

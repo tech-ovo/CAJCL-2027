@@ -59,6 +59,25 @@ Every attendee is provisioned a permanent 13-character identifier (`PPP-XXXXX-XX
 2. **Division Isolation:** If an institution sends both middle and high school delegations, **two distinct chapters are created** (e.g., *Northwood MS* and *Northwood HS*) to maintain grade-level and testing eligibility boundaries.
 3. **Billing Exemption:** The Senior Classical League (SCL) is designated as an exempt organization (`billing_exempt = 1`), automatically zeroing invoice obligations.
 4. **Credential Dispatch:** Administrators issue the initial sponsor access code via the verified launch email template.
+5. **Join Code:** Every chapter is created with an 8-character **join code** (open by default). The chair sees it on the confirmation panel, on the chapter's *Join code* button, and in the *Add the sponsor* confirmation, and forwards it to the sponsor in the same email as the sponsor's access code. See §4a.
+
+---
+
+## 4a. Student Self-Registration by Join Code (preferred)
+
+A sponsor rarely knows which students are coming until paper packets are in hand. Instead of pasting a roster first, the sponsor prints a one-page **join sheet** (join code, QR, instructions) for as many students as they expect, with the paper forms behind it.
+
+```text
+Student: #/join (code + name + grade + Latin level) ──> account + access code (shown once) ──> signed in, PENDING
+Sponsor: roster ▸ "Waiting for approval" ──> Approve (counts everywhere)  |  Deny (all data removed)
+```
+
+- **The join code is not a secret like an access code.** It is stored as-is so the sponsor can read it at any time. It can only create a *pending delegate in that one chapter*. Sponsors can **close/reopen** joining (code kept) or **replace** the code (old one dies instantly; students who already joined are untouched). A chapter holds at most 150 pending students.
+- **Access codes are unchanged.** The student receives an ordinary `DEL-` access code, hashed like any other and used to sign in. The difference is only how they get it.
+- **Pending is not blocked.** A pending student fills in their activity sheet at once. Their registration is marked **preliminary**: it is excluded from the invoice, the public delegate count, meal totals, completion figures, academics entry counts and the packet. It *is* visible to chairs (roster, Chapters and Overview show a separate preliminary count).
+- **Approval** moves the student into every figure. **Denial** runs the existing redaction: every personal field, sessions, code, form answers, contest entries and audit-log mentions are removed, leaving an anonymous `denied` row (the audit log and person numbers point at `people.id`).
+- **Duplicates** (same first and last name, approved or pending, in the chapter) are refused with directions to ask the sponsor for a new code.
+- **Pasting a roster remains fully supported** and produces already-approved people.
 
 ---
 

@@ -331,6 +331,13 @@ def render_packet(tx: Tx, school: dict, *, only_person: int | None = None,
         # sponsor just ticked rather than alphabetical order.
         wanted = {p["id"]: p for p in people}
         people = [wanted[i] for i in only_people if i in wanted]
+    else:
+        # THE WHOLE PACKET IS APPROVED PEOPLE ONLY. A student waiting for
+        # approval already holds their own access code, shown to them once
+        # when they joined, so there is no readable code to print for them.
+        # Asking for one by name (a reissue) is a different matter and is
+        # honoured above.
+        people = [p for p in people if p["approval"] == "approved"]
 
     # A subset is a handful of replacement sheets, not a packet. The cover
     # ("this packet contains one sheet per attendee") and the paper-forms page
@@ -537,6 +544,72 @@ def _paper_forms_page(tx: Tx, people: list[dict]) -> str:
   <p>Legibility and signatures are checked at Friday check-in, so write clearly
   and do not leave a field blank.</p>
 </section>"""
+
+
+# ---------------------------------------------------------------------------
+# The join sheet
+# ---------------------------------------------------------------------------
+
+def render_join_sheet(tx: Tx, school: dict,
+                      *, base_url: str = "https://state.uhsjcl.org") -> str:
+    """One page, the same for every student: the chapter's join code, a QR that
+    opens the join screen with it filled in, and the instructions.
+
+    THE REPLACEMENT FOR A STACK OF INDIVIDUAL SHEETS. A sponsor who expects
+    twenty of forty students prints twenty copies of this and tucks the paper
+    forms behind each. Nothing on it belongs to anybody, so there is nothing to
+    hand to the right person and nothing to guard: the code only ever creates a
+    pending delegate in this chapter, and the sponsor can close or replace it.
+    """
+    code = school.get("join_code")
+    if not code:
+        shown = "████-████"
+        magic = f"{base_url}/#/join"
+    else:
+        shown = f"{code[:4]}-{code[4:]}"
+        magic = f"{base_url}/#/join/{code}"
+
+    closed = ("" if school.get("join_open", 1) else
+              '<div class="warn keep"><strong>Joining is closed.</strong> '
+              'This code will not admit anyone until the sponsor reopens it.'
+              '</div>')
+
+    sheet = f"""
+<section class="sheet">
+  <div class="label rail">{_esc(convention_dates(tx))} &middot; {_esc(school['name'])}</div>
+
+  <div class="tabula keep">
+    <div class="label">JOIN {_esc(school['name'].upper())}</div>
+    <div class="name">Join code</div>
+    <div class="row">
+      <span class="code mono" style="font-size:26pt">{_esc(shown)}</span>
+    </div>
+  </div>
+
+  {closed}
+  <div class="split">
+    <div class="body">
+      <h2>How to register</h2>
+      {_document_body(tx, 'join_instructions')}
+    </div>
+    <div class="aside">
+      <div class="qr">{qr_svg(magic)}</div>
+      <div class="label" style="margin-top:6pt">Scan to join</div>
+    </div>
+  </div>
+
+  <div class="warn keep">
+    <strong>Paper forms.</strong> The student waiver and the student medical
+    form are <strong>not</strong> completed online. Sign them by hand, with a
+    parent or guardian signature, and return them to your sponsor.
+  </div>
+</section>"""
+    note = (
+        '<div class="screen-note"><strong>Print view.</strong> '
+        'Print as many copies as you expect interested students. Every copy '
+        'is the same; nothing on it is personal.</div>'
+    )
+    return _document(f"Join sheet - {school['name']}", note + sheet, _footer(tx))
 
 
 # ---------------------------------------------------------------------------

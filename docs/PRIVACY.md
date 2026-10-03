@@ -57,6 +57,7 @@ graph LR
 1. **Public Browsing:** Anonymous visitors access pre-rendered HTML/CSS from GitHub Pages CDN. Public statistics (`/public/stats`) serve cached, pre-aggregated integer values without scanning identity tables.
 2. **Authentication:** Attendee enters code `PPP-XXXXX-XXXXX`. Modal validates against `HMAC-SHA256(pepper, code)` in Turso. On success, a 256-bit cryptographically secure session token is issued; only its SHA-256 hash is retained.
 3. **Roster Ingestion:** Chapter sponsors input student attendee rosters. Data parses in-memory with zero persistence during preview. Commits are enforced via signed idempotency keys.
+3a. **Self-Registration by Join Code (preferred):** Each chapter has a join code distributed on a printed handout. A student types it with their own first and last name, grade, and Latin level; the site creates a *pending* delegate in that chapter and shows the student their access code once. The sponsor then approves the student (who joins the roster, invoice and totals) or denies them (the existing redaction runs: every personal field, session, form answer, contest entry and audit-log mention is removed, leaving an anonymous row). Until approved, the record is marked *preliminary*: it is visible to the sponsor and to registration chairs, and is excluded from billing, public statistics and caterer counts.
 4. **Digital Activity Sheets:** Delegates submit test selections and meal preferences. Drafts save to local browser storage; finalized records commit to Turso under transactional audit logs.
 5. **Digital Contest Uploads:** Pre-convention creative submissions (art, essays, poetry) transmit via Modal to Google Drive via an authenticated webhook puppet. Files are hashed and stored with anonymized identifiers.
 6. **Double-Blind Judging:** Evaluators access contest files anonymized as `Entry N`. Author names, school chapters, and source metadata are programmatically stripped from judging views.
@@ -69,7 +70,7 @@ graph LR
 
 | Classification Category | Data Fields Captured | Target Subjects | Ingestion Method | Retention Period |
 | :--- | :--- | :--- | :--- | :--- |
-| **Directory Identification** | Full Legal Name, Academic Grade (6–12), Chapter Affiliation, Assigned Badge ID | Delegates, Adults, Sponsors | Sponsor Roster Input | Purged April 12, 2027 |
+| **Directory Identification** | Full Legal Name, Academic Grade (6–12), Chapter Affiliation, Assigned Badge ID | Delegates, Adults, Sponsors | Sponsor Roster Input, or the student's own entry via the chapter join code | Purged April 12, 2027 (denied joiners: removed at once) |
 | **Academic & Event Data** | Latin Level, Testing Categories, Team Competition Selections, Contest Submissions | Delegates | Digital Student Form | Purged April 12, 2027 (De-identified counts archived) |
 | **Emergency Contact** | Parent/Guardian Name, Parent/Guardian Phone Number | Delegates | Sponsor Roster Input | Purged April 12, 2027 |
 | **Adult Contact Info** | Email Address, Mobile Phone, Chaperone Availability Notes | Sponsors, Chaperones | Adult Form | Purged April 12, 2027 |
@@ -101,7 +102,8 @@ graph LR
 ### Authentication & Access Control
 - **Zero Cleartext Credentials:** Access codes are salted and hashed using `HMAC-SHA256(CODE_PEPPER, code)`. The pepper resides exclusively in Modal Secrets.
 - **Session Security:** Bearer tokens represent 256 bits of cryptographically secure pseudorandom entropy (`secrets.token_urlsafe(32)`), verified via SHA-256 hashing.
-- **Brute-Force Rate Limiting:** Enforces maximum thresholds of 5 failed authentication attempts per code per hour, and 10 failed attempts per IP per 15 minutes before triggering an HTTP 429 lockout.
+- **Brute-Force Rate Limiting:** Enforces maximum thresholds of 5 failed authentication attempts per code per hour, and 10 failed attempts per IP per 15 minutes before triggering an HTTP 429 lockout. Wrong chapter join codes are limited separately (30 per IP per 15 minutes).
+- **Join Codes Are Not Credentials:** A chapter's join code is stored in plaintext so the sponsor can read it, and can only create a pending delegate in that chapter. Sponsors can close or replace it at any time.
 
 ### Network & Application Hardening
 - **End-to-End Encryption:** Strict HTTPS enforcement across all endpoints with modern TLS 1.3 ciphers.
@@ -173,7 +175,7 @@ graph TD
 > **Summary for Families & Students:**  
 > CAJCL collects limited student information solely to coordinate registration, competition scheduling, academic test grading, and emergency safety at the 72nd Annual CAJCL State Convention.
 > 
-> - **Information We Collect:** Student legal name, grade level, Latin course level, competition selections, meal preference, and parent/guardian emergency contact numbers (collected through your school Latin teacher/sponsor).
+> - **Information We Collect:** Student legal name, grade level, Latin course level, competition selections, meal preference, and parent/guardian emergency contact numbers (collected through your school Latin teacher/sponsor). A student may also enter their own name, grade, and Latin level when joining their chapter with the join code on the handout their teacher gave them; if the teacher does not approve that registration, everything entered is deleted.
 > - **Information We Never Collect:** We never ask for or store student email addresses, home street addresses, dates of birth, or credit card numbers.
 > - **Zero Commercial Use:** We never sell student data, never display commercial advertisements, and never build marketing profiles.
 > - **Data Deletion:** All identifying student records are permanently purged 30 days after convention (**April 12, 2027**).
@@ -196,7 +198,7 @@ When educational agencies participate in the CAJCL State Convention, CAJCL guara
 
 | Statutory Requirement | Legal Source | Platform Implementation | Verification Status |
 | :--- | :--- | :--- | :--- |
-| **Notice & Verifiable Consent** | COPPA § 312.4, § 312.5 | Mandatory physical signed parent waiver collected prior to portal credential distribution. | **Compliant** |
+| **Notice & Verifiable Consent** | COPPA § 312.4, § 312.5 | Sponsor-pasted rosters: physical signed parent waiver is collected before portal credentials are handed out. **Join-code registration reverses that order for the first entry:** the student types their own name, grade and Latin level (no email, no contact details) on the sponsor's handout *before* a parent has signed the waiver that is in the same packet. The record is pending and invisible to the public, to billing and to judges until the sponsor, acting as the school official, approves it; denial deletes it. | **Needs confirmation** (see §12) |
 | **Data Minimization** | COPPA § 312.7 | Zero student emails, zero financial data; optional fields strictly isolated. | **Compliant** |
 | **Reasonable Security Program** | COPPA § 312.8, Civ. Code § 1798.81.5 | Formal WISP established (§7); TLS 1.3 encryption; SOC 2 Type II vendors; salted HMACs. | **Compliant** |
 | **Retention & Timely Purge** | COPPA § 312.10, SOPIPA § 22584(d)(2) | Documented automated purge cycle executed on April 12, 2027. | **Compliant** |
@@ -210,6 +212,7 @@ When educational agencies participate in the CAJCL State Convention, CAJCL guara
 | Target Milestone | Governance Action Required | Assigned Stakeholder | Target Date |
 | :--- | :--- | :--- | :--- |
 | **Google Workspace Migration** | Transition Drive puppet and medical upload destination from personal Gmail to official `cajcl.org` Google Workspace for Education account. | Technology Commissioners | Prior to Sponsor Launch |
+| **Under-13 Join-Code Self-Entry** | Decide whether COPPA's school-authorization route (the sponsor acts as the school's agent and approves each joiner) is sufficient for middle-school students typing their own name, grade and Latin level before the parent waiver is signed, or whether joining must be limited to high-school chapters / gated on the signed waiver. Record the decision here and in the school authorization form (§10). | CAJCL Board of Directors | Prior to Sponsor Launch |
 | **Privacy Officer Designation** | Formally name adult compliance coordinator and publish contact information across all legal notices. | CAJCL Board of Directors | Prior to Sponsor Launch |
 | **Automated Purge Tooling** | Deploy automated script `scripts/purge_convention_data.py` to execute zero-downtime deletion on April 12, 2027. | Backend Engineering | December 2026 |
 | **Certamen PIN Security Hardening**| Implement Argon2id or bcrypt hashing on Certamen practice arena PINs to align with primary authentication standards. | Backend Engineering | Prior to Public Launch |

@@ -42,6 +42,10 @@ graph TD
 | **Per-Code Bucket** | 5 incorrect attempts per hour | Target access code temporarily disabled for 60 minutes. | Targeted guessing against a specific student or sponsor code. |
 | **Per-IP Address Bucket** | 10 incorrect attempts per 15 minutes | Source IP locked out from authentication endpoints. | Automated distributed credential-stuffing sweeps. |
 
+| **Join-Code Failures (per IP)** | 30 incorrect join codes per 15 minutes | Source IP refused further join attempts. | Walking the 8-character join-code space. Counted apart from sign-in failures (stored with a leading `j`), so a classroom typing one printed code cannot lock anyone out of signing in. |
+
+*Join codes:* a chapter's 8-character join code (about 39 bits) is stored as plaintext, is printed on every handout, and is *not* a bearer credential: it can only create a **pending** delegate in that chapter, a sponsor can close or replace it at any moment, and a chapter accepts at most 150 pending students.
+
 *Cryptographic Feasibility:* At the enforced rate limit of 960 attempts/day per IP, exhaustive search of 44.6 bits requires over 70 million years of continuous computation.
 
 ---
@@ -91,6 +95,7 @@ person_roles  ──>  roles  ──>  role_scopes  ──>  [Route Guard Evalua
 
 | Threat Scenario | Exploitation Vector | Blast Radius | Automated Mitigation / Recovery |
 | :--- | :--- | :--- | :--- |
+| **Leaked Join Code** | Handout photographed or posted publicly. | Spam *pending* accounts in one chapter (never billed, counted or shown publicly; capped at 150). | Sponsor closes joining or replaces the code; denies spam entries (full redaction). |
 | **Misplaced Physical Packet** | Paper sheet left in classroom or photographed. | Exposure of 1 chapter roster (~30 delegate names). | Sponsor or admin clicks **Reissue Code**; voids former code and terminates active sessions immediately. |
 | **Administrative Credential Leak** | Board access code exposed. | State-wide roster and reporting access. | System admin revokes compromised board role; regenerates access code; audits transaction log for unauthorized actions. |
 | **Shared Terminal Session Abandonment** | User forgets to sign out on a shared Chromebook. | Unauthorized access via active session. | Global sign-out control revokes session token server-side; account dashboard permits selective remote revocation. |

@@ -14,6 +14,13 @@
 -- Counts for ONE school. Indexed by idx_people_school, so this reads that
 -- school's ~35 rows, not the whole table. Safe to run on every mutation.
 --
+-- PENDING STUDENTS (joined with the chapter's join code, not yet approved by a
+-- sponsor) are in NONE of the figures below except `delegates_pending`: not the
+-- invoice, not the public count, not the caterer's meals, not completion. Every
+-- SUM carries `approval = 'approved'` for that reason; approving a student is
+-- what moves them into all of it at once. A denied student is a redacted
+-- tombstone and counts nowhere.
+--
 -- Completion is defined in docs/schema.md:
 --   Delegate: student_activity submitted + student_waiver + student_medical.
 --   Adult:    adult_registration submitted + adult_medical.
@@ -22,24 +29,25 @@
 -- refunds: someone who withdrew after their chapter paid still counts toward
 -- the invoice, while someone who withdrew before payment does not.
 SELECT
-  SUM(CASE WHEN p.person_type = 'delegate' AND p.status = 'active'         THEN 1 ELSE 0 END) AS delegates_active,
-  SUM(CASE WHEN p.person_type = 'delegate' AND p.status = 'cancelled'      THEN 1 ELSE 0 END) AS delegates_cancelled,
-  SUM(CASE WHEN p.person_type = 'delegate' AND p.status = 'cancelled_paid' THEN 1 ELSE 0 END) AS delegates_cancelled_paid,
-  SUM(CASE WHEN p.person_type = 'adult'    AND p.status = 'active'         THEN 1 ELSE 0 END) AS adults_active,
-  SUM(CASE WHEN p.person_type = 'adult'    AND p.status = 'cancelled'      THEN 1 ELSE 0 END) AS adults_cancelled,
-  SUM(CASE WHEN p.person_type = 'adult'    AND p.status = 'cancelled_paid' THEN 1 ELSE 0 END) AS adults_cancelled_paid,
+  SUM(CASE WHEN p.approval = 'approved' AND p.person_type = 'delegate' AND p.status = 'active'         THEN 1 ELSE 0 END) AS delegates_active,
+  SUM(CASE WHEN p.approval = 'pending'  AND p.person_type = 'delegate' AND p.status = 'active'         THEN 1 ELSE 0 END) AS delegates_pending,
+  SUM(CASE WHEN p.approval = 'approved' AND p.person_type = 'delegate' AND p.status = 'cancelled'      THEN 1 ELSE 0 END) AS delegates_cancelled,
+  SUM(CASE WHEN p.approval = 'approved' AND p.person_type = 'delegate' AND p.status = 'cancelled_paid' THEN 1 ELSE 0 END) AS delegates_cancelled_paid,
+  SUM(CASE WHEN p.approval = 'approved' AND p.person_type = 'adult'    AND p.status = 'active'         THEN 1 ELSE 0 END) AS adults_active,
+  SUM(CASE WHEN p.approval = 'approved' AND p.person_type = 'adult'    AND p.status = 'cancelled'      THEN 1 ELSE 0 END) AS adults_cancelled,
+  SUM(CASE WHEN p.approval = 'approved' AND p.person_type = 'adult'    AND p.status = 'cancelled_paid' THEN 1 ELSE 0 END) AS adults_cancelled_paid,
 
   -- A delegate whose activity sheet is WAIVED counts as complete once their
   -- paper is in. They were added at the desk on the Friday; there is no sheet
   -- for them to submit, and leaving them permanently unfinished would send a
   -- chair chasing somebody who cannot act. The paper is still required.
-  SUM(CASE WHEN p.person_type = 'delegate' AND p.status = 'active'
+  SUM(CASE WHEN p.approval = 'approved' AND p.person_type = 'delegate' AND p.status = 'active'
             AND (fs.status = 'submitted' OR p.activity_sheet_waived = 1)
             AND pf_w.received = 1
             AND pf_m.received = 1
            THEN 1 ELSE 0 END) AS delegates_complete,
 
-  SUM(CASE WHEN p.person_type = 'adult' AND p.status = 'active'
+  SUM(CASE WHEN p.approval = 'approved' AND p.person_type = 'adult' AND p.status = 'active'
             AND (fs.status = 'submitted' OR p.adult_type = 'scl')
             AND pf_a.received = 1
            THEN 1 ELSE 0 END) AS adults_complete,
@@ -51,20 +59,20 @@ SELECT
   -- ACTIVE ONLY. Somebody who withdrew is not eating, whether or not their
   -- chapter paid for them -- the one place cancelled_paid parts company with
   -- the billing columns above.
-  SUM(CASE WHEN p.status = 'active' AND p.meal = 'regular'     THEN 1 ELSE 0 END) AS meal_regular,
-  SUM(CASE WHEN p.status = 'active' AND p.meal = 'vegetarian'  THEN 1 ELSE 0 END) AS meal_vegetarian,
-  SUM(CASE WHEN p.status = 'active' AND p.meal = 'gluten_free' THEN 1 ELSE 0 END) AS meal_gluten_free,
+  SUM(CASE WHEN p.approval = 'approved' AND p.status = 'active' AND p.meal = 'regular'     THEN 1 ELSE 0 END) AS meal_regular,
+  SUM(CASE WHEN p.approval = 'approved' AND p.status = 'active' AND p.meal = 'vegetarian'  THEN 1 ELSE 0 END) AS meal_vegetarian,
+  SUM(CASE WHEN p.approval = 'approved' AND p.status = 'active' AND p.meal = 'gluten_free' THEN 1 ELSE 0 END) AS meal_gluten_free,
   -- NOT ANSWERED is not the same as NO MEAL. Somebody who has not decided is
   -- still to be chased; somebody bringing their own has answered and is not
   -- eating. Folding them together would have the caterer cook for one and
   -- the chairs chase the other.
-  SUM(CASE WHEN p.status = 'active' AND (p.meal IS NULL OR p.meal = '')
+  SUM(CASE WHEN p.approval = 'approved' AND p.status = 'active' AND (p.meal IS NULL OR p.meal = '')
            THEN 1 ELSE 0 END) AS meal_unanswered,
-  SUM(CASE WHEN p.status = 'active' AND p.meal = 'none'
+  SUM(CASE WHEN p.approval = 'approved' AND p.status = 'active' AND p.meal = 'none'
            THEN 1 ELSE 0 END) AS meal_none,
 
-  SUM(CASE WHEN p.status = 'active' AND p.adult_type = 'sponsor'   THEN 1 ELSE 0 END) AS adults_sponsors,
-  SUM(CASE WHEN p.status = 'active' AND p.adult_type = 'chaperone' THEN 1 ELSE 0 END) AS adults_chaperones
+  SUM(CASE WHEN p.approval = 'approved' AND p.status = 'active' AND p.adult_type = 'sponsor'   THEN 1 ELSE 0 END) AS adults_sponsors,
+  SUM(CASE WHEN p.approval = 'approved' AND p.status = 'active' AND p.adult_type = 'chaperone' THEN 1 ELSE 0 END) AS adults_chaperones
 FROM people p
 LEFT JOIN form_submissions fs
        ON fs.person_id = p.id
@@ -91,9 +99,9 @@ INSERT INTO school_stats (
   adults_active, adults_cancelled, adults_cancelled_paid,
   delegates_complete, adults_complete,
   meal_regular, meal_vegetarian, meal_gluten_free, meal_unanswered, meal_none,
-  adults_sponsors, adults_chaperones,
+  adults_sponsors, adults_chaperones, delegates_pending,
   discount_cents, amount_owed_cents, amount_paid_cents, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (school_id) DO UPDATE SET
   delegates_active         = excluded.delegates_active,
   delegates_cancelled      = excluded.delegates_cancelled,
@@ -110,6 +118,7 @@ ON CONFLICT (school_id) DO UPDATE SET
   meal_none                = excluded.meal_none,
   adults_sponsors          = excluded.adults_sponsors,
   adults_chaperones        = excluded.adults_chaperones,
+  delegates_pending        = excluded.delegates_pending,
   discount_cents           = excluded.discount_cents,
   amount_owed_cents        = excluded.amount_owed_cents,
   amount_paid_cents        = excluded.amount_paid_cents,
@@ -164,9 +173,10 @@ SELECT * FROM school_stats WHERE school_id = ?;
 -- are excluded -- the state board is not a chapter and has no roster to track.
 SELECT s.id, s.name, s.level, s.city, s.status, s.billing_exempt,
        s.discount_cents, s.discount_reason, s.notes,
+       s.join_code, s.join_open,
        ss.delegates_active, ss.delegates_cancelled, ss.delegates_cancelled_paid,
        ss.adults_active, ss.adults_cancelled, ss.adults_cancelled_paid,
-       ss.delegates_complete, ss.adults_complete,
+       ss.delegates_complete, ss.adults_complete, ss.delegates_pending,
        ss.amount_owed_cents, ss.amount_paid_cents, ss.updated_at
 FROM schools s
 LEFT JOIN school_stats ss ON ss.school_id = s.id
@@ -186,7 +196,7 @@ ORDER BY s.name;
 -- today, more once "At Large" exists.
 SELECT s.id AS school_id, s.name AS school_name, s.level, s.city, s.kind,
        s.billing_exempt, s.status,
-       ss.delegates_active, ss.adults_active,
+       ss.delegates_active, ss.adults_active, ss.delegates_pending,
        ss.adults_sponsors, ss.adults_chaperones,
        ss.delegates_complete, ss.adults_complete,
        ss.meal_regular, ss.meal_vegetarian, ss.meal_gluten_free,

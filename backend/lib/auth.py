@@ -185,6 +185,11 @@ class Principal:
             "last_name": self.last_name,
             "person_type": self.person_type,
             "school_seq": self.school_seq,
+            # 'approved' for nearly everybody. 'pending' is a student who
+            # joined with the chapter's join code and has not been approved
+            # yet: they may do everything a delegate does, and the site says
+            # their registration is preliminary.
+            "approval": self.row.get("approval") or "approved",
             "school": {
                 "id": self.school_id,
                 "name": self.school_name,
@@ -290,6 +295,23 @@ def _check_rate_limits(tx: Tx, attempted_hmac: str, ip_hash: str) -> None:
 # Redeeming a code
 # ---------------------------------------------------------------------------
 
+def start_session(tx: Tx, person_id: int, *, ip_hash: str | None,
+                  user_agent: str | None) -> tuple[str, int]:
+    """Open a session for a person. Returns (raw_token, session_id).
+
+    Shared by signing in with a code and by joining a chapter with its join
+    code, which signs the new student in on the spot. The raw token is returned
+    once; only its hash is stored.
+    """
+    token = secrets.token_urlsafe(32)
+    session_id = tx.insert("auth.session_create", (
+        person_id, hash_token(token), None, 0,
+        clock.now_iso(), clock.now_iso(), clock.plus_days(SESSION_DAYS),
+        (user_agent or "")[:200], ip_hash,
+    ))
+    return token, session_id
+
+
 def redeem(
     db,
     raw_code: str,
@@ -349,13 +371,9 @@ def redeem(
     if person["school_status"] == "withdrawn":
         fail("That chapter is no longer registered. Ask your sponsor.")
 
-    token = secrets.token_urlsafe(32)
     with db.tx() as tx:
-        session_id = tx.insert("auth.session_create", (
-            person["id"], hash_token(token), None, 0,
-            clock.now_iso(), clock.now_iso(), clock.plus_days(SESSION_DAYS),
-            (user_agent or "")[:200], ip_hash,
-        ))
+        token, session_id = start_session(tx, person["id"], ip_hash=ip_hash,
+                                          user_agent=user_agent)
         tx.run("auth.attempt_record",
                (attempted, person["code_prefix"], ip_hash, 1, clock.now_iso()))
 
@@ -487,6 +505,7 @@ def authenticate(tx: Tx, token: str | None, *, touch: bool = True) -> Principal:
             "school_seq": session["school_seq"],
             "billing_exempt": session["billing_exempt"],
             "forms_unlocked": session["forms_unlocked"],
+            "approval": session["approval"],
             "latin_level": session["latin_level"],
             "grade": session["grade"],
             "latin_knowledge": session["latin_knowledge"],

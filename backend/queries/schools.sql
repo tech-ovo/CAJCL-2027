@@ -7,7 +7,7 @@
 -- name: schools.get
 SELECT id, name, level, kind, city, drive_folder_id, billing_exempt,
        discount_cents, discount_reason, status, notes, number,
-       created_at, updated_at
+       join_code, join_open, created_at, updated_at
 FROM schools WHERE id = ?;
 
 -- name: schools.all_ids
@@ -21,7 +21,7 @@ SELECT id FROM schools;
 -- every query: the previous version simply omitted the column, and the admin
 -- branch then raised KeyError trying to read it back.
 SELECT id, name, level, city, billing_exempt, discount_cents, discount_reason,
-       drive_folder_id, status, notes
+       drive_folder_id, status, notes, join_code, join_open
 FROM schools
 WHERE kind = 'chapter'
 ORDER BY name;
@@ -74,3 +74,17 @@ UPDATE schools SET checkin_note = ?, updated_at = ? WHERE id = ?;
 -- The chapter's own note, written by its sponsor. Separate from `checkin_note`,
 -- which the desk writes on the Friday about what actually turned up.
 UPDATE schools SET notes = ?, updated_at = ? WHERE id = ?;
+
+-- name: schools.by_join_code
+-- The join lookup. One indexed equality on idx_schools_join_code.
+SELECT id, name, level, kind, status, join_open, number
+FROM schools WHERE join_code = ?;
+
+-- name: schools.set_join_code
+-- Regenerating. A UNIQUE collision (about one in 10^12 per pair) is retried by
+-- the caller. The old code stops working this instant; students who already
+-- joined with it are untouched.
+UPDATE schools SET join_code = ?, updated_at = ? WHERE id = ?;
+
+-- name: schools.set_join_open
+UPDATE schools SET join_open = ?, updated_at = ? WHERE id = ?;

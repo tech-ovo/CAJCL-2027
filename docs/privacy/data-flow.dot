@@ -90,6 +90,9 @@ digraph cajcl_data_flow {
   api      -> mail    [label="② planned: 2FA code", style=dashed];
   sponsor  -> mail    [label="② email (adults, board)", style=dashed, dir=back];
 
+  // ③ join code: a student registers themselves into a chapter, pending
+  delegate -> browser [label="③ join code + own name,\ngrade, level (pending until\nthe sponsor approves)", constraint=false];
+
   // ③ roster and printed packet
   api      -> workers [label="③ print · ⑧ export"];
   sponsor  -> workers [label="③ packet: names + codes + QR", color="#b22222", fontcolor="#b22222", dir=back];

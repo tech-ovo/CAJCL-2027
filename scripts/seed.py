@@ -41,7 +41,7 @@ for _stream in (sys.stdout, sys.stderr):
     if hasattr(_stream, "reconfigure"):
         _stream.reconfigure(encoding="utf-8", errors="replace")
 
-from backend.lib import auth, clock, contests, settings, stats  # noqa: E402
+from backend.lib import auth, clock, contests, joining, settings, stats  # noqa: E402
 from backend.lib.db import connect  # noqa: E402
 from backend.lib import migrate as migrate_runner  # noqa: E402
 
@@ -288,6 +288,8 @@ class Seeder:
         self._seed_payment(uni, days_ago)
         step("pre-convention contests")
         self._seed_contests(uni, days_ago)
+        step("students waiting on a join code")
+        self._seed_pending(uni, days_ago)
         step("done")
         self._finish()
         return self.codes
@@ -674,8 +676,41 @@ class Seeder:
                          entity_id=slogan["item_id"], ts=when,
                          changed_fields=["places", "comment", "status"])
 
+    def _seed_pending(self, uni: int, days_ago) -> None:
+        """Three students who joined University High with its join code and are
+        still waiting for a sponsor: the state the sponsor's "Waiting for
+        approval" panel and the chairs' "preliminary" figures exist for."""
+        with self.db.tx() as tx:
+            for first, last, grade, level in [
+                    ("Noor", "Castellanos", 10, "HS-2"),
+                    ("Theo", "Abernathy", 9, "HS-1"),
+                    ("Priya", "Lindqvist", 11, "HS-3")]:
+                pid, code = self._person(
+                    tx, uni, first, "", last, role="delegate",
+                    created=days_ago(2), grade=grade, latin_level=level,
+                    raw=f"{first} {last}")
+                tx.run("people.set_approval", ("pending", days_ago(2), pid))
+                tx.audit("person.join",
+                         f"{first} {last} joined University High School with "
+                         f"its join code and is waiting for approval.",
+                         actor_person_id=pid, school_id=uni,
+                         entity_type="person", entity_id=pid, ts=days_ago(2))
+                self.codes[f"Preliminary delegate: {first} {last} "
+                           f"(University High School)"] = code
+
     def _finish(self) -> None:
         """Recompute every counter, and raise the demonstration-data marker."""
+        # Every chapter gets its join code, as a chapter made on the dashboard
+        # would. Shown beside the access codes: a presenter needs both.
+        with self.db.tx() as tx:
+            for school in tx.all("schools.all_including_organizations"):
+                if school["kind"] != "chapter":
+                    continue
+                code = joining.ensure_code(tx, dict(school))
+                self.codes[f"Join code: {school['name']}"] = joining.display(code)
+            tx.audit("school.join_code",
+                     "Demonstration join codes were created for every chapter.")
+
         with self.db.tx() as tx:
             tx.run("settings.update", ("1", clock.now_iso(), None, "ops.demo_mode"))
             tx.audit("settings.update",

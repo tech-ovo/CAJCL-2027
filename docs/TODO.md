@@ -37,6 +37,7 @@ gantt
 | **WeasyPrint Remote Smoke Test** | Workers | 0.5 | Eng | Modal Deployment | Execute one remote PDF generation run on Modal Debian worker container to confirm Pango/Cairo rendering. |
 | **Chapter & Sponsor Seeding** | Data | 2 | Ops | Official CAJCL Roster | Ingest 50 verified chapter institutions and primary sponsor profiles via `board.json` or dashboard. |
 | **Roster Ingestion Sanitization** | Privacy | 2 | Eng | None | Strip discarded email and phone strings from raw pasted roster text before persisting to `roster_imports`. |
+| **Join-Code Launch Check** | Product | 1 | Ops | Deployed migration 011 | Confirm each live chapter has a join code (Chapters → Join code), add it to the launch email, and decide the under-13 self-entry question in `docs/PRIVACY.md` §12 before sponsors print join sheets. Edit the printed prose in Settings → Printed wording (`join_instructions`). |
 | **Certamen Practice Hardening** | Security | 3 | Eng | Decision on Arena Lifespan | Hash user PINs, enforce rate limits on login, and restrict question batch-deletion endpoints. |
 
 ---

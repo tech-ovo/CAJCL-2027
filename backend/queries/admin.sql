@@ -115,7 +115,7 @@ WHERE pr.person_id = ?;
 -- walks the whole table.
 SELECT p.id, p.first_name, p.middle_name, p.last_name,
        p.person_type, p.adult_type, p.adult_type_other, p.board_title,
-       p.status,
+       p.status, p.approval,
        p.school_id, s.name AS school_name,
        -- The roles they already hold, so the picker can open straight into the
        -- same dialog the board table uses. Correlated over at most the 200

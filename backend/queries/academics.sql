@@ -25,13 +25,13 @@ SELECT c.name          AS category,
        (SELECT COUNT(*)
           FROM activity_selections s
           JOIN people p ON p.id = s.person_id
-         WHERE s.item_id = i.id AND p.status = 'active'
+         WHERE s.item_id = i.id AND p.status = 'active' AND p.approval = 'approved'
            AND p.activity_sheet_waived = 0)       AS chosen,
        (SELECT COUNT(*)
           FROM activity_selections s
           JOIN people p ON p.id = s.person_id
           JOIN schools sc ON sc.id = p.school_id
-         WHERE s.item_id = i.id AND p.status = 'active'
+         WHERE s.item_id = i.id AND p.status = 'active' AND p.approval = 'approved'
            AND p.activity_sheet_waived = 0
            AND sc.level = 'MS')                                AS chosen_ms,
        (SELECT COUNT(*)
@@ -53,7 +53,7 @@ SELECT sc.id AS school_id, sc.name AS school_name, sc.level,
 FROM activity_selections s
 JOIN people p  ON p.id = s.person_id
 JOIN schools sc ON sc.id = p.school_id
-WHERE s.item_id = ? AND p.status = 'active'
+WHERE s.item_id = ? AND p.status = 'active' AND p.approval = 'approved'
   AND p.activity_sheet_waived = 0
 GROUP BY sc.id
 ORDER BY sc.name;
@@ -66,7 +66,7 @@ SELECT p.id, p.first_name, p.middle_name, p.last_name, p.suffix,
 FROM activity_selections s
 JOIN people p   ON p.id = s.person_id
 JOIN schools sc ON sc.id = p.school_id
-WHERE s.item_id = ? AND p.status = 'active'
+WHERE s.item_id = ? AND p.status = 'active' AND p.approval = 'approved'
   AND p.activity_sheet_waived = 0
 ORDER BY sc.name, p.last_name, p.first_name;
 

@@ -210,3 +210,14 @@ WHERE id = ?;
 -- Revoke all assigned roles for a person. Uses idx_person_roles_person.
 DELETE FROM person_roles WHERE person_id = ?;
 
+
+-- name: people.set_approval
+-- pending -> approved, pending -> denied, and the join itself (approved ->
+-- pending, in the transaction that creates the row).
+UPDATE people SET approval = ?, updated_at = ? WHERE id = ?;
+
+-- name: people.pending_count
+-- How many students are waiting in a chapter, for the cap on a leaked code.
+-- Seeks the partial idx_people_approval, so it reads only the exceptions.
+SELECT COUNT(*) AS n FROM people
+WHERE school_id = ? AND approval = 'pending' AND status = 'active';

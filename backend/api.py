@@ -31,8 +31,8 @@ from fastapi import Body, Depends, FastAPI, Header, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
-from .lib import (auth, catalog, clock, codes, contests, drive, forms, printing,
-                  roster, settings, stats)
+from .lib import (auth, catalog, clock, codes, contests, drive, forms, joining,
+                  printing, roster, settings, stats)
 from .lib.db import connect
 
 # GitHub Pages plus the custom domain, and nothing else. The frontend never
@@ -327,6 +327,34 @@ def redeem(request: Request, payload: dict = Body(...)):
     # frame, rather than only after /auth/me is next called.
     body["registration_complete"] = _own_registration_complete(own)
     return {"token": token, "person": body}
+
+
+@app.post("/auth/join")
+def join_chapter(request: Request, payload: dict = Body(...)):
+    """Join a chapter with its join code. Public: the code is the credential.
+
+    Creates a PENDING delegate, signs them in, and returns their access code
+    ONCE -- the same kind of code a pasted roster produces, which is the only
+    way back in afterwards. They may fill in their forms at once; their sponsor
+    approves them later. See backend/lib/joining.py.
+    """
+    result = joining.join(
+        database(), payload.get("join_code") or "", payload,
+        ip=client_ip(request), user_agent=request.headers.get("User-Agent"))
+
+    with database().read() as tx:
+        demo = settings.get_bool(tx, "ops.demo_mode")
+    body = result.principal.to_public_dict()
+    body["demo_mode"] = demo
+    body["registration_complete"] = False
+    return {
+        "token": result.token,
+        "person": body,
+        "code": result.code,
+        "school": {"id": result.school["id"], "name": result.school["name"]},
+        "note": "This is the only time this access code is shown. Write it "
+                "down or take a screenshot: it is how you sign in again.",
+    }
 
 
 @app.get("/auth/me")
@@ -732,6 +760,75 @@ def regenerate_many(request: Request, payload: dict = Body(...),
         "note": "These codes are shown once. Print the sheets before leaving "
                 "this page.",
     }
+
+
+@app.post("/sponsor/people/{person_id}/approve")
+def approve_person(person_id: int, request: Request,
+                   principal: auth.Principal = guard("sponsor.people.approve",
+                                                     "sponsor", "registration",
+                                                     writes=True)):
+    """Accept a student who joined with the chapter's join code."""
+    with database().tx(request_id=request_id(request)) as tx:
+        person, school = _person_and_school(tx, principal, person_id)
+        roster.approve(tx, school, principal, person)
+    return {"ok": True}
+
+
+@app.post("/sponsor/people/{person_id}/deny")
+def deny_person(person_id: int, request: Request,
+                principal: auth.Principal = guard("sponsor.people.deny",
+                                                  "sponsor", "registration",
+                                                  writes=True)):
+    """Turn a joining student down. Removes ALL of their data; see roster.deny."""
+    with database().tx(request_id=request_id(request)) as tx:
+        person, school = _person_and_school(tx, principal, person_id)
+        roster.deny(tx, school, principal, person)
+    return {"ok": True}
+
+
+@app.post("/sponsor/approve-all")
+def approve_all(request: Request, payload: dict = Body(default={}),
+                principal: auth.Principal = guard("sponsor.approve_all",
+                                                  "sponsor", "registration",
+                                                  writes=True)):
+    """Approve everyone currently waiting in the chapter, in one transaction."""
+    with database().tx(request_id=request_id(request)) as tx:
+        school = _school_of(tx, principal, payload.get("school_id"))
+        waiting = [dict(r) for r in tx.all("roster.list", (school["id"],))
+                   if r["approval"] == "pending" and r["status"] == "active"]
+        for person in waiting:
+            roster.approve(tx, school, principal, person)
+    return {"ok": True, "approved": len(waiting)}
+
+
+@app.post("/sponsor/join/code")
+def regenerate_join_code(request: Request, payload: dict = Body(default={}),
+                         principal: auth.Principal = guard("sponsor.join.regenerate",
+                                                           "sponsor", "registration",
+                                                           writes=True)):
+    """Replace the chapter's join code. The old one stops working at once.
+
+    Not a secret like an access code, so it is returned and shown whenever it is
+    wanted. Students who already joined keep their own access codes.
+    """
+    with database().tx(request_id=request_id(request)) as tx:
+        school = _school_of(tx, principal, payload.get("school_id"))
+        code = joining.regenerate(tx, school, principal)
+    return {"join_code": code, "join_open": bool(school["join_open"])}
+
+
+@app.post("/sponsor/join/open")
+def set_join_open(request: Request, payload: dict = Body(...),
+                  principal: auth.Principal = guard("sponsor.join.open",
+                                                    "sponsor", "registration",
+                                                    writes=True)):
+    """Close or reopen joining without changing the code."""
+    is_open = bool(payload.get("open"))
+    with database().tx(request_id=request_id(request)) as tx:
+        school = _school_of(tx, principal, payload.get("school_id"))
+        code = joining.ensure_code(tx, school)
+        joining.set_open(tx, school, principal, is_open)
+    return {"join_code": code, "join_open": is_open}
 
 
 @app.post("/sponsor/people/{person_id}/chapter-leader")
@@ -1743,13 +1840,17 @@ def create_school(request: Request, payload: dict = Body(...),
             payload.get("discount_reason"),
             payload.get("notes"), now, now))
         tx.run("schools.stats_init", (school_id, now))
+        # EVERY NEW CHAPTER STARTS WITH A JOIN CODE, open, so the chair can put
+        # it in the welcome email the moment the chapter exists.
+        join_code = joining.ensure_code(tx, {"id": school_id, "join_code": None})
         tx.audit("school.create",
                  f"{principal.display_name} added {name} to the convention.",
                  actor_person_id=principal.person_id,
                  impersonator_person_id=principal.impersonator_person_id,
                  school_id=school_id, entity_type="school", entity_id=school_id)
         stats.recompute(tx, school_id, settings=settings.fee_settings(tx))
-    return {"id": school_id, "name": name, "level": level}
+    return {"id": school_id, "name": name, "level": level,
+            "join_code": join_code, "join_open": True}
 
 
 @app.patch("/admin/schools/{school_id}")
@@ -1813,6 +1914,7 @@ def create_sponsor(school_id: int, request: Request, payload: dict = Body(...),
         # a millisecond later, which worked and was one wasted write plus one
         # dead code per sponsor created.
         code = created["code"]
+        join_code = joining.ensure_code(tx, school)
         name = f"{created['first_name']} {created['last_name']}".strip()
         tx.audit("person.create",
                  f"{principal.display_name} created a sponsor account for {name} "
@@ -1822,8 +1924,11 @@ def create_sponsor(school_id: int, request: Request, payload: dict = Body(...),
                  school_id=school_id, entity_type="person", entity_id=created["id"])
         stats.recompute(tx, school_id, settings=settings.fee_settings(tx))
     return {**created, "code": code,
+            "join_code": join_code,
+            "join_open": bool(school.get("join_open")),
             "note": "This is the only time this code is shown. Send it to the "
-                    "sponsor from the official CAJCL account."}
+                    "sponsor from the official CAJCL account, together with "
+                    "the chapter's join code."}
 
 
 @app.get("/admin/schools/{school_id}/sponsors")
@@ -1967,6 +2072,9 @@ def chair_dashboard(principal: auth.Principal = guard("admin.registration",
             "delegates": sum(r["delegates_active"] or 0 for r in rows),
             "adults": sum(r["adults_active"] or 0 for r in rows),
             "delegates_complete": sum(r["delegates_complete"] or 0 for r in rows),
+            # Joined with a chapter code, not yet approved. Beside the figures
+            # above, never inside them.
+            "delegates_pending": sum(r["delegates_pending"] or 0 for r in rows),
             "outstanding_cents": outstanding,
             "collected_cents": sum(r["amount_paid_cents"] or 0 for r in rows),
         },
@@ -2185,6 +2293,7 @@ def registration_overview(principal: auth.Principal = guard("admin.overview",
     totals = {
         "chapters": 0, "chapters_started": 0, "chapters_paid": 0,
         "delegates": 0, "delegates_ms": 0, "delegates_hs": 0,
+        "delegates_pending": 0,
         "adults": 0, "sponsors": 0, "chaperones": 0,
         "other_adults": 0, "complete": 0, "people": 0,
         "meal_regular": 0, "meal_vegetarian": 0, "meal_gluten_free": 0,
@@ -2217,6 +2326,8 @@ def registration_overview(principal: auth.Principal = guard("admin.overview",
         # problem that cannot be solved.
         if is_chapter and (row["billing_exempt"] or row["balance_cents"] <= 0):
             totals["chapters_paid"] += 1
+
+        totals["delegates_pending"] += row["delegates_pending"] or 0
 
         for key in ("delegates_active", "adults_active", "adults_sponsors",
                     "adults_chaperones", "other_adults", "complete", "people",
@@ -3245,6 +3356,20 @@ def packet(school_id: int | None = Query(default=None),
             auth.require_person_in_scope(tx, principal, one)
         return HTMLResponse(printing.render_packet(
             tx, school, only_person=person_id, only_people=chosen))
+
+
+@app.get("/sponsor/join-sheet", response_class=HTMLResponse)
+def join_sheet(school_id: int | None = Query(default=None),
+               principal: auth.Principal = guard("sponsor.join_sheet", "sponsor",
+                                                 "registration")):
+    """The one-page handout carrying the chapter's join code, to print in bulk.
+
+    The same on every copy and personal to nobody, so unlike the access sheets
+    it needs no codes passed in and is a plain GET.
+    """
+    with database().read() as tx:
+        school = _school_of(tx, principal, school_id)
+        return HTMLResponse(printing.render_join_sheet(tx, school))
 
 
 @app.get("/admin/academics/item/{item_id}/sheet", response_class=HTMLResponse)

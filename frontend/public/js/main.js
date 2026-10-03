@@ -19,6 +19,7 @@ import { checkSymbolOk } from "./codes.js";
 
 import { welcomePage } from "./pages/welcome.js";
 import { signInPage } from "./pages/signin.js";
+import { joinPage } from "./pages/join.js";
 import { rosterPage } from "./pages/roster.js";
 import { importPage } from "./pages/import.js";
 import { resourcesPage } from "./pages/resources.js";
@@ -47,6 +48,9 @@ const ROUTES = [
   [/^\/?$/,                      welcomePage,       { public: true }],
   [/^\/enter\/(.+)$/,            magicLink,         { public: true }],
   [/^\/sign-in$/,                signInPage,        { public: true }],
+  // A student joining a chapter with its join code. The QR on the sponsor's
+  // handout opens #/join/<code>, so the code arrives already typed.
+  [/^\/join(?:\/(.+))?$/,         joinPage,          { public: true }],
   [/^\/resources$/,              resourcesPage,     { public: true }],
   // Kept so an old link, a bookmark or a printed sheet still lands
   // somewhere. The arena is now reached from Resources.
@@ -213,6 +217,14 @@ async function route() {
       if (stale()) return;
       if (!state.me) { location.hash = "#/sign-in"; return; }
 
+      // A student waiting for approval is told, the moment it happens, rather
+      // than whenever they next sign in. Only for them: everyone else's answer
+      // never changes while they are looking.
+      if (state.me.approval === "pending") {
+        await refreshApproval();
+        if (stale()) return;
+      }
+
       // THE NAV IS DRAWN FIRST, before anything can return early.
       //
       // It used to come after the scope check, so a signed-in person refused a
@@ -261,6 +273,13 @@ async function route() {
   }
 
   location.hash = "#/";
+}
+
+async function refreshApproval() {
+  try {
+    const fresh = await api.get("/auth/me");
+    if (state.me) state.me.approval = fresh.approval;
+  } catch (ignored) { /* the banner just stays as it was */ }
 }
 
 async function ensureSession({ quiet = false } = {}) {
@@ -648,6 +667,18 @@ function renderBanners() {
       el("span", { class: "banner__label" }, "Demonstration data"),
       el("span", {}, "Every chapter, delegate, and parent on this site is " +
                      "invented. No real student appears anywhere.")));
+  }
+
+  // A student who joined with the chapter's join code and has not been
+  // approved. Nothing is blocked for them; this only says why they are not yet
+  // counted.
+  if (state.me && state.me.approval === "pending") {
+    add(host, el("div", { class: "banner banner--info" },
+      el("span", { class: "banner__label" }, "Preliminary"),
+      el("span", {},
+        "Your sponsor has not approved your registration yet. You can fill in "
+        + "your forms now; you will be counted in your chapter's total once "
+        + "they do.")));
   }
 
   const impersonation = state.me && state.me.impersonation;

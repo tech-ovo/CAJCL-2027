@@ -354,6 +354,11 @@ def cancel(tx: Tx, school: dict, actor: auth.Principal, person: dict) -> str:
     Decided here, from the payment record, rather than asked of the sponsor --
     a sponsor should not have to know the billing policy to remove a student.
     """
+    if person.get("approval") == "pending":
+        raise RosterError(
+            "That student is still waiting for approval. Approve them to add "
+            "them to the roster, or deny them to remove them.")
+
     paid = tx.value("stats.paid_for_school", (school["id"],), default=0) or 0
     status = "cancelled_paid" if paid > 0 else "cancelled"
 
@@ -398,6 +403,51 @@ def restore(tx: Tx, school: dict, actor: auth.Principal, person: dict) -> None:
         changed_fields=["status"],
     )
     stats.recompute(tx, school["id"], settings=settings.fee_settings(tx))
+
+
+def approve(tx: Tx, school: dict, actor: auth.Principal, person: dict) -> None:
+    """A sponsor accepting a student who joined with the chapter's join code.
+
+    From this moment they are an ordinary registered delegate: billed, counted
+    on the public figure, fed. Nothing else about them changes, which is the
+    point -- they have been filling in their forms all along.
+    """
+    if person.get("approval") != "pending":
+        raise RosterError("That student is not waiting for approval.")
+    tx.run("people.set_approval", ("approved", clock.now_iso(), person["id"]))
+    name = f"{person['first_name']} {person['last_name']}".strip()
+    tx.audit(
+        "person.approve",
+        f"{actor.display_name} approved {name} at {school['name']}.",
+        actor_person_id=actor.person_id,
+        impersonator_person_id=actor.impersonator_person_id,
+        school_id=school["id"], entity_type="person", entity_id=person["id"],
+        changed_fields=["approval"],
+    )
+    stats.recompute(tx, school["id"], settings=settings.fee_settings(tx))
+
+
+def deny(tx: Tx, school: dict, actor: auth.Principal, person: dict) -> None:
+    """A sponsor turning a student down. ALL of their data is removed.
+
+    That is the existing redaction, not a new mechanism: every personal field,
+    their sessions, their code, their form answers and contest entries, and
+    their name in the audit log. What remains is an anonymous row, because the
+    audit log and other tables point at `people(id)` and the printed person
+    number must never be handed to somebody else.
+    """
+    if person.get("approval") != "pending":
+        raise RosterError("That student is not waiting for approval.")
+    redact(tx, school, actor, person)         # marks them 'denied'
+    tx.audit(
+        "person.deny",
+        f"{actor.display_name} denied attendee #{person['id']} at "
+        f"{school['name']}. Their details were removed.",
+        actor_person_id=actor.person_id,
+        impersonator_person_id=actor.impersonator_person_id,
+        school_id=school["id"], entity_type="person", entity_id=person["id"],
+        changed_fields=["approval"],
+    )
 
 
 def regenerate_code(tx: Tx, school: dict, actor: auth.Principal, person: dict) -> str:
@@ -473,7 +523,14 @@ def redact(tx: Tx, school: dict, actor: auth.Principal, person: dict) -> None:
     person_id = int(person["id"])
     now = clock.now_iso()
 
-    if person.get("status") == "active":
+    # A student who never got past "pending" was never billable, so redacting
+    # them must not leave a `cancelled_paid` row the invoice would still count.
+    # Redacting one IS denying them, whoever pressed the button.
+    pending = person.get("approval") == "pending"
+    if pending:
+        status = "cancelled"
+        tx.run("people.set_approval", ("denied", now, person_id))
+    elif person.get("status") == "active":
         paid = tx.value("stats.paid_for_school", (school["id"],), default=0) or 0
         status = "cancelled_paid" if paid > 0 else "cancelled"
     else:
