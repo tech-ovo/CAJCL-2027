@@ -67,6 +67,26 @@ rules), then `docs/design.md` for the visual rules.
   travel base64 in JSON (20 MB cap; the body-size middleware exempts only
   `POST /me/contests/{id}`). Settings: `deadline.contests`,
   `drive.contests_root`.
+- At-convention photo contest (migration 012): `lib/photos.py` (JPG/PNG
+  check from bytes, Exif/XMP/IPTC stripping, category validation, Drive names),
+  `queries/photos.sql`, tables `photo_categories` (name unique NOCASE,
+  `accepting` switch, cached `drive_folder_id`/`drive_thumbs_id`) and
+  `photo_entries` (one per delegate per category; replace on re-upload).
+  New role `activities_chair` → scope `activities`: global but NOT in
+  `auth.ADMIN_SCOPES` (like `judge`; it opens no roster). Endpoints:
+  `/me/photos[/{category_id}[/file?size=thumb]]` (delegates only, adults
+  refused, upload only while `accepting`, withdraw any time) and
+  `/admin/photos`, `/admin/photos/categories[/{id}]` (POST/PATCH/DELETE —
+  delete removes its photos), `/admin/photos/entries/{id}[/file]` (GET/DELETE
+  = take down). Files go through the same Drive puppet and root
+  (`drive.contests_root`) under `Photo Contest/<category>/` with thumbnails in
+  `Thumbnails/`. The browser (`js/pages/photos.js`) re-encodes each photo to a
+  ≤2400 px JPEG + 480 px thumbnail before sending (base64 in JSON; the
+  body-size middleware exempts `POST /me/photos/{id}` too). Pages: `#/photos`
+  (delegate nav "Photos") and `#/photo-contest[/categories]` (nav "Photo
+  contest" for `activities`); thumbnails lazy-load 4 at a time. Redaction
+  deletes a person's photos. Seed adds Marguerite Okonkwo (Activities chair)
+  and opens two categories, but writes no photos. Tests: `test_photos.py`.
 - `certamen-bot/` — Certamen practice arena, React 19 + Vite 6 (no Tailwind,
   no icon library). `npm run build` outputs to `frontend/public/certamen/`
   (committed). Connected to a separate Turso database via Modal endpoints (`/certamen/...`)

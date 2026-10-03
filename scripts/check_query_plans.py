@@ -52,6 +52,7 @@ SMALL_TABLES = {
     "schema_migrations": 50,
     "contests": 10,             # six pre-convention contests
     "contest_ballots": 200,     # judges x divisions x Publicity categories
+    "photo_categories": 20,     # a handful of photo contest categories a year
 }
 
 # Tables that WILL exceed 200 rows and must always be reached by an index.
@@ -62,6 +63,7 @@ BIG_TABLES = {
     "paper_forms", "activity_selections", "activity_selection_options",
     "adult_role_selections", "chapter_entries", "payments", "person_roles",
     "contest_entries", "contest_ballot_places", "scores",
+    "photo_entries",            # up to one per delegate per photo category
 }
 
 # Queries allowed to scan a large table, each with the reason. Keep this list

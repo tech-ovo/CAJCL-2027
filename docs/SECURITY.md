@@ -63,6 +63,7 @@ person_roles  ──>  roles  ──>  role_scopes  ──>  [Route Guard Evalua
   - `sponsor`, `delegate`, and `chapter` scopes are strictly constrained by the caller's assigned `school_id`. Cross-chapter data access is rejected with HTTP 403 Forbidden.
   - Administrative scopes (`registration`, `academics`, `awards`, `*`) are restricted to verified Convention Board members.
   - `judge` scope permits evaluation of contest submissions blinded as `Entry N`. Author names, school affiliations, and source filenames are programmatically stripped. Users holding `academics` scope are barred from holding `judge` roles to prevent bias.
+  - `activities` scope (role `activities_chair`) runs the at-convention photo contest: categories, and every photo with its delegate and chapter. Like `judge` it is global but NOT administrative (`auth.ADMIN_SCOPES`), so it reaches no roster. Uploaded photos are type-checked from their bytes (JPG/PNG only), re-encoded by the browser, and stripped server-side of Exif/XMP/IPTC metadata (location) before they reach Drive.
 
 ---
 

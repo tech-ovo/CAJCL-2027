@@ -32,7 +32,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from .lib import (auth, catalog, clock, codes, contests, drive, forms, joining,
-                  printing, roster, settings, stats)
+                  photos, printing, roster, settings, stats)
 from .lib.db import connect
 
 # GitHub Pages plus the custom domain, and nothing else. The frontend never
@@ -58,12 +58,13 @@ app = FastAPI(title="CAJCL 2027 Convention",
 # mistake or a probe, and either way the answer is the same.
 MAX_BODY_BYTES = 1_048_576
 
-# THE ONE EXCEPTION: a pre-convention contest entry, which carries its file
-# base64-encoded. contests.MAX_FILE_BYTES is the real limit and is checked on
-# the decoded bytes; this is that, plus base64's third, plus room for the rest
-# of the form. Only the one path, and only POST.
-MAX_UPLOAD_BODY_BYTES = contests.MAX_FILE_BYTES * 4 // 3 + 262_144
-_UPLOAD_PATH = re.compile(r"^/me/contests/\d+$")
+# THE TWO EXCEPTIONS: a pre-convention contest entry and a photo contest
+# entry, which carry their file base64-encoded. contests.MAX_FILE_BYTES is the
+# real limit and is checked on the decoded bytes; this is that, plus base64's
+# third, plus room for the rest of the form and a photo's thumbnail. Only
+# those two paths, and only POST.
+MAX_UPLOAD_BODY_BYTES = contests.MAX_FILE_BYTES * 4 // 3 + 1_048_576
+_UPLOAD_PATH = re.compile(r"^/me/(?:contests|photos)/\d+$")
 
 
 @app.middleware("http")
@@ -1153,8 +1154,8 @@ def _own_entry_view(row) -> dict:
     }
 
 
-def _decode_upload(payload: dict) -> tuple[str, bytes] | None:
-    upload = payload.get("file")
+def _decode_upload(payload: dict, key: str = "file") -> tuple[str, bytes] | None:
+    upload = payload.get(key)
     if not upload:
         return None
     if not isinstance(upload, dict):
@@ -1792,6 +1793,398 @@ def update_contest(item_id: int, request: Request, payload: dict = Body(...),
                      impersonator_person_id=principal.impersonator_person_id,
                      entity_type="contest", entity_id=item_id,
                      changed_fields=changed)
+    return {"ok": True}
+
+
+# ===========================================================================
+# The photo contest
+# ===========================================================================
+#
+# During convention, delegates upload a photo for each category the Activities
+# chair has opened -- "Best flower photo", "Best stuffed animal photo" -- from
+# their phones. The chair sees every photo, with whose it is, and runs the
+# categories.
+#
+#   /me/photos      a delegate's own photos, one per category
+#   /admin/photos   every photo, and the categories. Scope `activities` only.
+#
+# The same Drive connection and root as contest entries, under
+# "Photo Contest/<category>", with a small thumbnail beside each photo so the
+# chair's page does not pull a hundred full-size photos through Apps Script.
+# As with a contest file, Drive first and the row second, never in one
+# transaction; a row that fails to write puts its files in Drive's trash.
+
+def _photo_error(message: str) -> catalog.ValidationError:
+    return catalog.ValidationError([message])
+
+
+def _photo_category(tx, category_id: int) -> dict:
+    row = tx.one("photos.category_get", (category_id,))
+    if row is None:
+        raise _photo_error("There is no such photo category. It may have just "
+                           "been deleted; reload the page.")
+    return dict(row)
+
+
+def _category_view(row) -> dict:
+    return {"id": row["id"], "name": row["name"],
+            "description": row["description"],
+            "accepting": bool(row["accepting"]),
+            "sort_order": row["sort_order"]}
+
+
+def _own_photo_view(row) -> dict | None:
+    if row is None:
+        return None
+    return {"id": row["id"], "caption": row["caption"],
+            "original_name": row["original_name"],
+            "size_bytes": row["size_bytes"],
+            "has_thumb": bool(row["drive_thumb_id"]),
+            "submitted_at": row["submitted_at"],
+            "updated_at": row["updated_at"]}
+
+
+def _photo_file_response(row, size: str) -> Response:
+    """The photo, or its thumbnail when one was asked for and exists."""
+    thumb = size == "thumb" and bool(row["drive_thumb_id"])
+    data = drive.client().fetch(row["drive_thumb_id"] if thumb else row["drive_file_id"])
+    mime = "image/jpeg" if thumb else row["mime_type"]
+    extension = "png" if mime == "image/png" else "jpg"
+    return Response(content=data, media_type=mime, headers={
+        "Content-Disposition": f'inline; filename="Photo {row["id"]}.{extension}"',
+        # A photo of somebody's child, on what may be a shared laptop.
+        "Cache-Control": "private, no-store",
+    })
+
+
+def _my_photo_category(tx, principal: auth.Principal, category_id: int):
+    person = _self(tx, principal)
+    if person["person_type"] != "delegate":
+        raise _photo_error("The photo contest is for delegates. Adults cannot enter.")
+    category = _photo_category(tx, category_id)
+    school = dict(tx.one("schools.get", (person["school_id"],)))
+    return person, school, category
+
+
+def _photo_folders(category: dict) -> tuple[str, str]:
+    """The category's photo and thumbnail folders in Drive, found or made."""
+    if category["drive_folder_id"] and category["drive_thumbs_id"]:
+        return category["drive_folder_id"], category["drive_thumbs_id"]
+    with database().read() as tx:
+        configured = settings.get(tx, "drive.contests_root")
+    store = drive.client()
+    top = store.mkdir(drive.root_folder(configured), photos.ROOT_FOLDER)
+    folder = store.mkdir(top, category["name"])
+    return folder, store.mkdir(folder, photos.THUMBS_FOLDER)
+
+
+@app.get("/me/photos")
+def my_photos(principal: auth.Principal = guard("me.photos", "delegate",
+                                                school_rule="self")):
+    with database().read() as tx:
+        person = _self(tx, principal)
+        mine = {row["category_id"]: row
+                for row in tx.all("photos.entries_for_person", (person["id"],))}
+        listed = []
+        for row in tx.all("photos.categories"):
+            view = _category_view(row)
+            view["entry"] = _own_photo_view(mine.get(row["id"]))
+            listed.append(view)
+    return {"can_enter": person["person_type"] == "delegate",
+            "max_photo_bytes": photos.MAX_PHOTO_BYTES,
+            "categories": listed}
+
+
+@app.post("/me/photos/{category_id}")
+def submit_my_photo(category_id: int, request: Request, payload: dict = Body(...),
+                    principal: auth.Principal = guard("me.photos.submit", "delegate",
+                                                      school_rule="self", writes=True)):
+    """`{photo: {name, data}, thumbnail, caption}`, base64. Without a photo,
+    an existing entry keeps its photo and takes the new caption."""
+    with database().read() as tx:
+        person, school, category = _my_photo_category(tx, principal, category_id)
+        existing = tx.one("photos.entry_for_person", (person["id"], category_id))
+    if not category["accepting"]:
+        raise _photo_error(f"“{category['name']}” is not taking photos right now.")
+    if person["status"] != "active":
+        raise _photo_error("Your registration is cancelled, so you cannot enter.")
+    caption = photos.check_caption(payload)
+
+    upload = _decode_upload(payload, "photo")
+    uploaded: list[str] = []
+    if upload is None:
+        if existing is None:
+            raise _photo_error("Choose the photo to upload.")
+        files = {k: existing[k] for k in ("drive_file_id", "drive_thumb_id",
+                                          "original_name", "mime_type", "size_bytes")}
+        folders = None
+    else:
+        name, data = upload
+        extension, mime, data = photos.check_photo(name, data)
+        thumbnail = None
+        if payload.get("thumbnail"):
+            try:
+                thumbnail = base64.b64decode(str(payload["thumbnail"]), validate=True)
+            except (binascii.Error, ValueError):
+                raise _photo_error("That photo did not arrive intact. Try again.") from None
+            thumbnail = photos.check_thumbnail(thumbnail)
+
+        folders = _photo_folders(category)
+        store = drive.client()
+        file_name = photos.drive_name(person, school, extension)
+        files = {"drive_file_id": store.upload(folders[0], file_name, mime, data),
+                 "drive_thumb_id": None, "original_name": name[:200],
+                 "mime_type": mime, "size_bytes": len(data)}
+        uploaded.append(files["drive_file_id"])
+        if thumbnail:
+            try:
+                files["drive_thumb_id"] = store.upload(
+                    folders[1], photos.drive_name(person, school, "jpg", thumbnail=True),
+                    "image/jpeg", thumbnail)
+                uploaded.append(files["drive_thumb_id"])
+            except drive.DriveUnavailable:
+                pass    # the chair's page falls back to the photo itself
+
+    now = clock.now_iso()
+    replaced: list[str] = []
+    try:
+        with database().tx(request_id=request_id(request)) as tx:
+            # Read again inside the write: the chair may have closed or deleted
+            # the category while the photo was on its way to Drive.
+            category = _photo_category(tx, category_id)
+            if not category["accepting"]:
+                raise _photo_error(f"“{category['name']}” stopped taking photos "
+                                   "while yours was uploading.")
+            if folders and not category["drive_folder_id"]:
+                tx.run("photos.category_set_folders", (*folders, category_id))
+            current = tx.one("photos.entry_for_person", (person["id"], category_id))
+            columns = (caption, files["drive_file_id"], files["drive_thumb_id"],
+                       files["original_name"], files["mime_type"], files["size_bytes"])
+            if current is None:
+                entry_id = tx.insert("photos.entry_create", (
+                    category_id, person["id"], school["id"], *columns, now, now))
+                action, verb = "photo.submit", "submitted"
+            else:
+                entry_id = current["id"]
+                tx.run("photos.entry_replace", (*columns, now, entry_id))
+                replaced = [f for f in (current["drive_file_id"], current["drive_thumb_id"])
+                            if f and f not in (files["drive_file_id"], files["drive_thumb_id"])]
+                action, verb = "photo.replace", "replaced"
+            tx.audit(action,
+                     f"{principal.display_name} {verb} "
+                     + ("their" if person["id"] == principal.person_id
+                        else f"{person['first_name']} {person['last_name']}'s")
+                     + f" photo for {category['name']}.",
+                     actor_person_id=principal.person_id,
+                     impersonator_person_id=principal.impersonator_person_id,
+                     school_id=school["id"], entity_type="photo_entry",
+                     entity_id=entry_id,
+                     changed_fields=["caption"] + (["photo"] if uploaded else []))
+            row = tx.one("photos.entry_get", (entry_id,))
+    except Exception as error:
+        for file_id in uploaded:
+            _trash_quietly(file_id)
+        if "unique" in str(error).lower():
+            raise _photo_error("That photo was just submitted from somewhere "
+                               "else. Reload the page to see it.") from None
+        raise
+    for file_id in replaced:
+        _trash_quietly(file_id)
+    return {"ok": True, "entry": _own_photo_view(row)}
+
+
+@app.delete("/me/photos/{category_id}")
+def withdraw_my_photo(category_id: int, request: Request,
+                      principal: auth.Principal = guard("me.photos.withdraw",
+                                                        "delegate", school_rule="self",
+                                                        writes=True)):
+    """Allowed whether or not the category is still taking photos: it is the
+    delegate's photo, and taking it back is always theirs to do."""
+    with database().tx(request_id=request_id(request)) as tx:
+        person, school, category = _my_photo_category(tx, principal, category_id)
+        existing = tx.one("photos.entry_for_person", (person["id"], category_id))
+        if existing is None:
+            raise _photo_error("There is no photo to withdraw.")
+        tx.run("photos.entry_delete", (existing["id"],))
+        tx.audit("photo.withdraw",
+                 f"{principal.display_name} withdrew "
+                 + ("their" if person["id"] == principal.person_id
+                    else f"{person['first_name']} {person['last_name']}'s")
+                 + f" photo for {category['name']}.",
+                 actor_person_id=principal.person_id,
+                 impersonator_person_id=principal.impersonator_person_id,
+                 school_id=school["id"], entity_type="photo_entry",
+                 entity_id=existing["id"])
+    _trash_quietly(existing["drive_file_id"])
+    _trash_quietly(existing["drive_thumb_id"])
+    return {"ok": True}
+
+
+@app.get("/me/photos/{category_id}/file")
+def my_photo_file(category_id: int, size: str = Query(default="full"),
+                  principal: auth.Principal = guard("me.photos.file", "delegate",
+                                                    school_rule="self")):
+    with database().read() as tx:
+        person, _, _ = _my_photo_category(tx, principal, category_id)
+        row = tx.one("photos.entry_for_person", (person["id"], category_id))
+    if row is None:
+        raise auth.ForbiddenError("there is no photo")
+    return _photo_file_response(row, size)
+
+
+# -- the Activities chair ------------------------------------------------------
+
+@app.get("/admin/photos")
+def photo_overview(principal: auth.Principal = guard("admin.photos", "activities",
+                                                     school_rule="any")):
+    """Every category and every photo in it, with the delegate and chapter."""
+    with database().read() as tx:
+        categories, entries = [], []
+        for category in tx.all("photos.categories"):
+            rows = tx.all("photos.entries_for_category", (category["id"],))
+            categories.append({**_category_view(category), "photos": len(rows)})
+            for r in rows:
+                entries.append({
+                    "id": r["id"], "category_id": r["category_id"],
+                    "category": category["name"], "caption": r["caption"],
+                    "original_name": r["original_name"],
+                    "size_bytes": r["size_bytes"], "has_thumb": bool(r["drive_thumb_id"]),
+                    "submitted_at": r["submitted_at"], "updated_at": r["updated_at"],
+                    "person_id": r["person_id"], "first_name": r["first_name"],
+                    "last_name": r["last_name"], "school_seq": r["school_seq"],
+                    "person_status": r["person_status"], "approval": r["approval"],
+                    "school_id": r["school_id"], "school_name": r["school_name"],
+                    "school_number": r["school_number"],
+                })
+    return {"categories": categories, "entries": entries,
+            "max_name": photos.MAX_NAME, "max_description": photos.MAX_DESCRIPTION}
+
+
+def _save_category(tx, fields: dict, category_id=None) -> int:
+    now = clock.now_iso()
+    columns = (fields["name"], fields["description"], fields["accepting"],
+               fields["sort_order"])
+    try:
+        if category_id is None:
+            category_id = tx.insert("photos.category_create", (*columns, now, now))
+        else:
+            tx.run("photos.category_update", (*columns, now, category_id))
+    except Exception as error:
+        if "unique" in str(error).lower():
+            raise _photo_error(
+                f"There is already a category called “{fields['name']}”.") from None
+        raise
+    return category_id
+
+
+@app.post("/admin/photos/categories")
+def create_photo_category(request: Request, payload: dict = Body(...),
+                          principal: auth.Principal = guard(
+                              "admin.photos.categories.create", "activities",
+                              school_rule="any", writes=True)):
+    fields = photos.check_category(payload)
+    with database().tx(request_id=request_id(request)) as tx:
+        if "sort_order" not in payload:
+            # New categories go at the end.
+            fields["sort_order"] = 10 + max(
+                (r["sort_order"] for r in tx.all("photos.categories")), default=0)
+        category_id = _save_category(tx, fields)
+        tx.audit("photo_category.create",
+                 f"{principal.display_name} added the photo category {fields['name']}.",
+                 actor_person_id=principal.person_id,
+                 impersonator_person_id=principal.impersonator_person_id,
+                 entity_type="photo_category", entity_id=category_id)
+        row = tx.one("photos.category_get", (category_id,))
+    return {"ok": True, "category": {**_category_view(row), "photos": 0}}
+
+
+@app.patch("/admin/photos/categories/{category_id}")
+def update_photo_category(category_id: int, request: Request, payload: dict = Body(...),
+                          principal: auth.Principal = guard(
+                              "admin.photos.categories.update", "activities",
+                              school_rule="any", writes=True)):
+    """Rename, reword, reorder, or open and close a category. Photos already
+    in it stay where they are."""
+    with database().tx(request_id=request_id(request)) as tx:
+        current = _photo_category(tx, category_id)
+        fields = photos.check_category(payload, current)
+        changed = [k for k in fields if fields[k] != current[k]]
+        if changed:
+            _save_category(tx, fields, category_id)
+            if changed == ["accepting"]:
+                summary = (f"{principal.display_name} "
+                           + ("opened" if fields["accepting"] else "closed")
+                           + f" the photo category {fields['name']}.")
+            else:
+                summary = (f"{principal.display_name} changed the photo category "
+                           f"{fields['name']}.")
+            tx.audit("photo_category.update", summary,
+                     actor_person_id=principal.person_id,
+                     impersonator_person_id=principal.impersonator_person_id,
+                     entity_type="photo_category", entity_id=category_id,
+                     changed_fields=changed)
+        row = tx.one("photos.category_get", (category_id,))
+    return {"ok": True, "category": _category_view(row)}
+
+
+@app.delete("/admin/photos/categories/{category_id}")
+def delete_photo_category(category_id: int, request: Request,
+                          principal: auth.Principal = guard(
+                              "admin.photos.categories.delete", "activities",
+                              school_rule="any", writes=True)):
+    """The category and every photo in it. The files go to Drive's trash,
+    where they can be recovered for thirty days."""
+    with database().tx(request_id=request_id(request)) as tx:
+        category = _photo_category(tx, category_id)
+        rows = tx.all("photos.entries_for_category", (category_id,))
+        tx.run("photos.entries_delete_for_category", (category_id,))
+        tx.run("photos.category_delete", (category_id,))
+        tx.audit("photo_category.delete",
+                 f"{principal.display_name} deleted the photo category "
+                 f"{category['name']}"
+                 + (f" and the {len(rows)} photo{'' if len(rows) == 1 else 's'} in it."
+                    if rows else "."),
+                 actor_person_id=principal.person_id,
+                 impersonator_person_id=principal.impersonator_person_id,
+                 entity_type="photo_category", entity_id=category_id)
+    for r in rows:
+        _trash_quietly(r["drive_file_id"])
+        _trash_quietly(r["drive_thumb_id"])
+    return {"ok": True, "removed": len(rows)}
+
+
+@app.get("/admin/photos/entries/{entry_id}/file")
+def photo_entry_file(entry_id: int, size: str = Query(default="full"),
+                     principal: auth.Principal = guard("admin.photos.file",
+                                                       "activities", school_rule="any")):
+    with database().read() as tx:
+        row = tx.one("photos.entry_get", (entry_id,))
+    if row is None:
+        raise auth.ForbiddenError("no such photo")
+    return _photo_file_response(row, size)
+
+
+@app.delete("/admin/photos/entries/{entry_id}")
+def remove_photo_entry(entry_id: int, request: Request,
+                       principal: auth.Principal = guard("admin.photos.entries.delete",
+                                                         "activities", school_rule="any",
+                                                         writes=True)):
+    """Take down one photo: one that breaks the rules, or one a delegate or
+    their sponsor has asked to be removed."""
+    with database().tx(request_id=request_id(request)) as tx:
+        row = tx.one("photos.entry_get", (entry_id,))
+        if row is None:
+            raise _photo_error("That photo has already been removed.")
+        category = _photo_category(tx, row["category_id"])
+        tx.run("photos.entry_delete", (entry_id,))
+        tx.audit("photo.remove",
+                 f"{principal.display_name} removed a photo from {category['name']}.",
+                 actor_person_id=principal.person_id,
+                 impersonator_person_id=principal.impersonator_person_id,
+                 school_id=row["school_id"], entity_type="photo_entry",
+                 entity_id=entry_id)
+    _trash_quietly(row["drive_file_id"])
+    _trash_quietly(row["drive_thumb_id"])
     return {"ok": True}
 
 

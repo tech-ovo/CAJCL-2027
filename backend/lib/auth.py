@@ -18,7 +18,8 @@ SCOPES REACH A PERSON ONLY THROUGH ROLES
     Four scopes are ADMINISTRATIVE and global: `registration`, `academics`,
     `awards`, and `*` which subsumes everything. Three are IDENTITY scopes
     carried by ordinary accounts and ALWAYS school-limited: `sponsor`,
-    `delegate`, and `chapter`.
+    `delegate`, and `chapter`. Two more are global but NARROW, and open no
+    roster: `judge` (contest judging) and `activities` (the photo contest).
 """
 
 from __future__ import annotations
@@ -45,7 +46,11 @@ IDENTITY_SCOPES = frozenset({"sponsor", "delegate", "chapter"})
 # own scores, and that is all. NOT an administrative scope -- `require_school`
 # must never treat a judge as able to reach any chapter.
 JUDGING_SCOPES = frozenset({"judge"})
-ALL_SCOPES = ADMIN_SCOPES | IDENTITY_SCOPES | JUDGING_SCOPES
+# The same kind of narrow global scope: the Activities chair sees every photo
+# contest entry with its name and chapter, and runs the categories. Nothing
+# else -- `require_school` must never treat it as reaching a roster.
+ACTIVITY_SCOPES = frozenset({"activities"})
+ALL_SCOPES = ADMIN_SCOPES | IDENTITY_SCOPES | JUDGING_SCOPES | ACTIVITY_SCOPES
 
 
 class AuthError(Exception):

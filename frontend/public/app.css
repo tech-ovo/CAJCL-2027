@@ -978,6 +978,43 @@ th[aria-sort] { color: var(--text); }
 }
 .entry-preview--document { width: 100%; height: 70vh; }
 
+/* The photo contest.
+ *
+ * Square frames, cropped to fill, so a grid of portrait and landscape photos
+ * still reads as a grid. The whole photo, uncropped, is one click away. */
+.photo-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: var(--space-5); margin: var(--space-3) 0 var(--space-6);
+}
+.photo-card { margin: 0; display: grid; gap: var(--space-2); align-content: start; }
+.photo-card__frame {
+  display: block; width: 100%; aspect-ratio: 1 / 1; padding: 0;
+  border: var(--border); background: var(--panel-bg); overflow: hidden;
+}
+button.photo-card__frame { cursor: zoom-in; }
+.photo-card__frame:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.photo-card__frame[hidden] { display: none; }
+.photo-card__img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.photo-card__img[aria-busy="true"] { visibility: hidden; }
+.photo-card__body { display: grid; gap: 2px; font-family: var(--font-sans); }
+.photo-card__body .btn-row { margin-top: var(--space-1); }
+.photo-mine {
+  display: grid; grid-template-columns: 10rem 1fr; gap: var(--space-5);
+  align-items: start; margin: var(--space-4) 0;
+}
+.photo-preview { max-width: 16rem; margin-bottom: var(--space-4); }
+.photo-full {
+  display: block; max-width: 100%; max-height: 70vh; margin: 0 auto var(--space-3);
+  border: var(--border);
+}
+.photo-description { display: block; white-space: pre-line; }
+
+@media (max-width: 40rem) {
+  .photo-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+  .photo-mine { grid-template-columns: 1fr; }
+  .photo-mine .photo-card__frame { max-width: 16rem; }
+}
+
 /* A judge's place picker sits in a table column and only ever says "12th";
  * N itself is a number of the same size. */
 .place-picker { width: auto; min-width: 6rem; }

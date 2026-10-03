@@ -202,6 +202,19 @@ ROUTES = [
     ("admin.contests.submissions", "GET", "/admin/contests/submissions", None),
     ("admin.contests.results", "GET", "/admin/contests/1/results", None),
     ("admin.contests.update", "PUT", "/admin/contests/1", {"rules_md": "x", "places": 3}),
+
+    ("me.photos", "GET", "/me/photos", None),
+    ("me.photos.submit", "POST", "/me/photos/1", {"caption": "A rose"}),
+    ("me.photos.withdraw", "DELETE", "/me/photos/1", None),
+    ("me.photos.file", "GET", "/me/photos/1/file", None),
+    ("admin.photos", "GET", "/admin/photos", None),
+    ("admin.photos.categories.create", "POST", "/admin/photos/categories",
+     {"name": "Best stuffed animal photo"}),
+    ("admin.photos.categories.update", "PATCH", "/admin/photos/categories/1",
+     {"accepting": True}),
+    ("admin.photos.categories.delete", "DELETE", "/admin/photos/categories/1", None),
+    ("admin.photos.file", "GET", "/admin/photos/entries/{entry}/file", None),
+    ("admin.photos.entries.delete", "DELETE", "/admin/photos/entries/{entry}", None),
 ]
 
 
@@ -294,6 +307,7 @@ def test_no_route_is_accidentally_public():
                        .replace("{entry_id}", "{entry}") \
                        .replace("{item_id}", "1") \
                        .replace("{option_id}", "1") \
+                       .replace("{category_id}", "1") \
                        .replace("{announcement_id}", "1") \
                        .replace("{key}", "welcome_body")
         assert template in guarded_paths, f"{path} has no declared guard"

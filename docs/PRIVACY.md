@@ -60,6 +60,7 @@ graph LR
 3a. **Self-Registration by Join Code (preferred):** Each chapter has a join code distributed on a printed handout. A student types it with their own first and last name, grade, and Latin level; the site creates a *pending* delegate in that chapter and shows the student their access code once. The sponsor then approves the student (who joins the roster, invoice and totals) or denies them (the existing redaction runs: every personal field, session, form answer, contest entry and audit-log mention is removed, leaving an anonymous row). Until approved, the record is marked *preliminary*: it is visible to the sponsor and to registration chairs, and is excluded from billing, public statistics and caterer counts.
 4. **Digital Activity Sheets:** Delegates submit test selections and meal preferences. Drafts save to local browser storage; finalized records commit to Turso under transactional audit logs.
 5. **Digital Contest Uploads:** Pre-convention creative submissions (art, essays, poetry) transmit via Modal to Google Drive via an authenticated webhook puppet. Files are hashed and stored with anonymized identifiers.
+5a. **At-Convention Photo Contest:** During convention, delegates may upload one photo per category the Activities chair has opened (e.g. "Best flower photo"), with an optional caption, from their own phone. The browser re-draws each photo before sending it, which removes the location, camera and time data a phone embeds; the server strips any such metadata that survives. The photo and a small thumbnail go through the same signed Apps Script puppet to the restricted contest Drive folder (`Photo Contest/<category>/`, files named by chapter and student). Only the Activities chair (scope `activities`) and Convention Presidents see photos with names; judges, sponsors and the public do not. A photo is deleted (Drive trash) when the student withdraws it, when the chair takes it down or deletes its category, or when the student is redacted/denied.
 6. **Double-Blind Judging:** Evaluators access contest files anonymized as `Entry N`. Author names, school chapters, and source metadata are programmatically stripped from judging views.
 7. **Physical Medical Documentation (Zero-Ingestion Boundary):** Student/Adult medical records and signed liability forms are handled exclusively on paper and uploaded as PDF scans to a private Google Drive folder accessible solely by Convention Presidents. **No health records are stored in the application database.**
 8. **Post-Convention Data Purge:** Exactly 30 days post-convention (**April 12, 2027**), all identifying personal records are permanently expunged, retaining only a de-identified statistical archive.
@@ -72,6 +73,7 @@ graph LR
 | :--- | :--- | :--- | :--- | :--- |
 | **Directory Identification** | Full Legal Name, Academic Grade (6–12), Chapter Affiliation, Assigned Badge ID | Delegates, Adults, Sponsors | Sponsor Roster Input, or the student's own entry via the chapter join code | Purged April 12, 2027 (denied joiners: removed at once) |
 | **Academic & Event Data** | Latin Level, Testing Categories, Team Competition Selections, Contest Submissions | Delegates | Digital Student Form | Purged April 12, 2027 (De-identified counts archived) |
+| **Photo Contest Entries** | Photograph (may show other attendees), Optional Caption, Category, uploader's name and chapter in the Drive file name | Delegates | Student's own upload at convention; location/camera metadata removed before storage | Purged April 12, 2027 (Drive `Photo Contest` folder deleted); removed at once on withdrawal, take-down or redaction |
 | **Emergency Contact** | Parent/Guardian Name, Parent/Guardian Phone Number | Delegates | Sponsor Roster Input | Purged April 12, 2027 |
 | **Adult Contact Info** | Email Address, Mobile Phone, Chaperone Availability Notes | Sponsors, Chaperones | Adult Form | Purged April 12, 2027 |
 | **Cryptographic Auth** | Code HMAC, Session Token SHA-256 Hash, Hashed IP, User-Agent | All Registrants | Automated / System Generated | Purged April 12, 2027 (Tokens expire in 180 days) |
@@ -93,7 +95,7 @@ graph LR
 | **GitHub, Inc.** | Static CDN (Pages), CI/CD (Actions), Source Repo | SOC 1/2/3, ISO 27001 | Executed standard enterprise DPA | Static assets, visitor IP logs, CI encrypted secrets |
 | **Modal Labs, Inc.** | Serverless Compute Backend, Asynchronous Workers | SOC 2 Type II, TLS 1.3, Encrypted at Rest | Executed standard platform DPA | Ephemeral compute payloads, API execution context |
 | **Turso (ChiselStrike)**| Distributed libSQL (SQLite) Relational Database | SOC 2 Type II, AES-256 Volume Encryption | Executed standard platform DPA | Primary relational data, authentication HMACs |
-| **Google LLC** | Google Drive / Apps Script (Digital uploads & scans) | ISO 27001/27018, SOC 2/3 (Workspace infrastructure) | Google Cloud Data Processing Addendum (Workspace) | Contest digital files, scanned physical liability PDFs |
+| **Google LLC** | Google Drive / Apps Script (Digital uploads & scans) | ISO 27001/27018, SOC 2/3 (Workspace infrastructure) | Google Cloud Data Processing Addendum (Workspace) | Contest digital files, photo contest images and thumbnails, scanned physical liability PDFs |
 
 ---
 
@@ -129,6 +131,7 @@ Pursuant to COPPA § 312.10 and SOPIPA § 22584(d)(2), the platform adheres to a
 [Mandatory Complete Purge Date: April 12, 2027]
   • All identifying student data deleted from production databases.
   • Scanned medical and waiver PDF files deleted from Google Drive.
+  • Contest entry files and the Photo Contest folder deleted from Google Drive.
   • Ephemeral container logs and exports destroyed.
            │
            ▼
@@ -176,6 +179,7 @@ graph TD
 > CAJCL collects limited student information solely to coordinate registration, competition scheduling, academic test grading, and emergency safety at the 72nd Annual CAJCL State Convention.
 > 
 > - **Information We Collect:** Student legal name, grade level, Latin course level, competition selections, meal preference, and parent/guardian emergency contact numbers (collected through your school Latin teacher/sponsor). A student may also enter their own name, grade, and Latin level when joining their chapter with the join code on the handout their teacher gave them; if the teacher does not approve that registration, everything entered is deleted.
+> - **Convention Photo Contest (optional):** Students may upload photos they take at convention, with a caption, for fun categories. Location data is removed from each photo before it is stored. Photos are seen only by the Activities chair and Convention Presidents, and are deleted with everything else on April 12, 2027, or sooner on request.
 > - **Information We Never Collect:** We never ask for or store student email addresses, home street addresses, dates of birth, or credit card numbers.
 > - **Zero Commercial Use:** We never sell student data, never display commercial advertisements, and never build marketing profiles.
 > - **Data Deletion:** All identifying student records are permanently purged 30 days after convention (**April 12, 2027**).
@@ -213,6 +217,7 @@ When educational agencies participate in the CAJCL State Convention, CAJCL guara
 | :--- | :--- | :--- | :--- |
 | **Google Workspace Migration** | Transition Drive puppet and medical upload destination from personal Gmail to official `cajcl.org` Google Workspace for Education account. | Technology Commissioners | Prior to Sponsor Launch |
 | **Under-13 Join-Code Self-Entry** | Decide whether COPPA's school-authorization route (the sponsor acts as the school's agent and approves each joiner) is sufficient for middle-school students typing their own name, grade and Latin level before the parent waiver is signed, or whether joining must be limited to high-school chapters / gated on the signed waiver. Record the decision here and in the school authorization form (§10). | CAJCL Board of Directors | Prior to Sponsor Launch |
+| **Photo Contest: Other People in Photos** | Decide whether photo contest categories may include photos of other identifiable attendees (most are minors), or should be limited to objects, places and the photographer's own group. Today the upload page asks students to get permission before photographing anyone, and the Activities chair can take any photo down at once. Also decide whether winning photos may be shown publicly (e.g. at the awards assembly), which would need the photographer's and any pictured person's consent. | CAJCL Board of Directors | Prior to Convention |
 | **Privacy Officer Designation** | Formally name adult compliance coordinator and publish contact information across all legal notices. | CAJCL Board of Directors | Prior to Sponsor Launch |
 | **Automated Purge Tooling** | Deploy automated script `scripts/purge_convention_data.py` to execute zero-downtime deletion on April 12, 2027. | Backend Engineering | December 2026 |
 | **Certamen PIN Security Hardening**| Implement Argon2id or bcrypt hashing on Certamen practice arena PINs to align with primary authentication standards. | Backend Engineering | Prior to Public Launch |

@@ -37,6 +37,7 @@ import { accountPage } from "./pages/account.js";
 import { contestsPage, chapterContestsPage,
          contestSubmissionsPage } from "./pages/contests.js";
 import { judgingPage, contestResultsPage } from "./pages/judging.js";
+import { photosPage, photoContestPage } from "./pages/photos.js";
 
 export const state = {
   me: null,          // /auth/me, or null when signed out
@@ -97,6 +98,10 @@ const ROUTES = [
   [/^\/contest-submissions$/,    contestSubmissionsPage, { scope: ["registration", "academics", "awards"] }],
   [/^\/contest-results$/,        contestResultsPage, { scope: ["academics", "awards"] }],
   [/^\/contest-results\/(\d+)(?:\/(rules))?$/, contestResultsPage, { scope: ["academics", "awards"] }],
+  // The at-convention photo contest. Delegates send photos; the Activities
+  // chair sees them all and runs the categories.
+  [/^\/photos$/,                 photosPage,        { scope: "delegate" }],
+  [/^\/photo-contest(?:\/(categories))?$/, photoContestPage, { scope: "activities" }],
   [/^\/admin$/,                  adminPage,         { scope: "*" }],
   [/^\/audit$/,                  auditPage,         { scope: "*" }],
 ];
@@ -514,7 +519,8 @@ function renderNav() {
     };
 
     if (state.me.person_type === "delegate") {
-      add(nav, ownLink("#/activity-sheet"), link("#/contests", "Contests"));
+      add(nav, ownLink("#/activity-sheet"), link("#/contests", "Contests"),
+          link("#/photos", "Photos"));
     } else if (state.me.person_type === "adult") {
       // NOT gated on scope. This used to be hidden from anyone holding `*`,
       // on the assumption that an administrator is not an attendee -- but a
@@ -555,6 +561,9 @@ function renderNav() {
     // thereby a judge. The Contest Judge role is what makes somebody one.
     if (holdsRole("contest_judge")) {
       administrative.push(["#/judging", "Judging"]);
+    }
+    if (hasScope("activities")) {
+      administrative.push(["#/photo-contest", "Photo contest"]);
     }
     if (hasScope("*")) {
       administrative.push(["#/admin", "Settings"], ["#/audit", "Log"]);

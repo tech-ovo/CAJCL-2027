@@ -33,6 +33,7 @@ System permissions adhere to a strict Role-Based Access Control (RBAC) model:
 | **Registration Chair**| `registration_chair` | `registration` | State-wide roster management, check-in operations, ledger payment recording. |
 | **Academics Chair** | `academics_chair` | `academics` | Exam catalog configuration, contest management, test material preparations. |
 | **Contest Judge** | `judge` | `judge` | Blind evaluation of pre-convention contest submissions (`Entry N`). |
+| **Activities Chair** | `activities_chair` | `activities` | Photo contest: adds, edits, opens/closes and deletes categories; sees and takes down every photo (`#/photo-contest`). |
 | **Awards Chair** | `awards_chair` | `awards` | Score tabulation, sweepstakes calculation, award certificate generation. |
 | **Convention President**| `admin` | `*` (Superadmin) | Global system configuration, role provisioning, audit trail review, raw data export. |
 
@@ -150,6 +151,7 @@ $$\text{Total Invoice} = (\$140 \times \text{Delegates}) + \max(0, \$75 \times (
 2. **Double-Blind Evaluation:** Evaluators holding the `judge` role view submissions strictly as `Entry N`. Names, school affiliations, and metadata are stripped.
 3. **Separation of Duties:** Administrators holding `academics` scope are barred from holding `judge` roles to preserve competitive integrity.
 4. **Automated Tabulation:** Judges submit ranked ballots. Points calculate automatically based on placement weights, breaking ties via highest first-place finishes.
+5. **At-Convention Photo Contest:** Delegates upload one photo (plus optional caption) per open category from `#/photos` on their phones; a new upload replaces the old, and they may withdraw at any time. The browser re-encodes each photo to a ≤2400 px JPEG plus a 480 px thumbnail (dropping location metadata); both go to Drive under `Photo Contest/<category>` through the contest puppet. The Activities chair's `#/photo-contest` shows every photo in a grid with name, person number, chapter and caption (filter by category/chapter, full size on click, take down), and a Categories tab to add, edit, open/close and delete categories. Deleting a category deletes its photos (Drive trash). No judging workflow: the chair picks winners from the grid.
 
 ---
 

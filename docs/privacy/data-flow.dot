@@ -22,7 +22,7 @@ digraph cajcl_data_flow {
     delegate [label=<<b>Delegates (students)</b><br/>grades 6–12 · some under 13<br/>code DEL-…>];
     sponsor  [label=<<b>Sponsors (teachers)</b><br/>code SPO-… · own chapter only>];
     adult    [label=<<b>Chaperones / other adults</b><br/>code VOL-…>];
-    board    [label=<<b>Board / admins</b><br/>registration · academics · awards<br/>chairs · Presidents (scope *)>];
+    board    [label=<<b>Board / admins</b><br/>registration · academics · awards<br/>activities (photo contest) chairs<br/>Presidents (scope *)>];
     judge    [label=<<b>Contest judges</b><br/>scope judge · never sees names>];
     parent   [label=<<b>Parents / guardians</b><br/>paper only: waiver + medical form>, fillcolor="#fff4f4", color="#b22222"];
   }
@@ -55,7 +55,7 @@ digraph cajcl_data_flow {
   subgraph cluster_google {
     label=<<b>Google</b><br/><font point-size="9">personal Gmail today → cajcl.org Workspace later</font>>; style="rounded,filled"; fillcolor="#fdf5ea"; color="#c98a2e"; fontsize=11;
     gas    [label=<<b>Apps Script "puppet"</b><br/>upload · fetch · mkdir · trash<br/>HMAC-signed · 5-minute window>];
-    drive  [label=<<b>Drive: contest entries</b><br/>Contest / Chapter / Last, First.ext>];
+    drive  [label=<<b>Drive: contest entries + photos</b><br/>Contest / Chapter / Last, First.ext<br/>Photo Contest / Category / photo + thumbnail>];
     scans  [label=<<b>Drive: waiver + MEDICAL scans</b><br/>uploaded by hand · no code reads it<br/>Presidents only>, fillcolor="#fff4f4", color="#b22222", penwidth=1.8];
     mail   [label=<<b>Gmail (planned)</b><br/>2FA one-time codes<br/>adults + board only>, style="rounded,dashed,filled"];
     sheets [label=<<b>Sheets (planned)</b><br/>one results sheet per school<br/>shared with that sponsor only>, style="rounded,dashed,filled"];
@@ -100,7 +100,7 @@ digraph cajcl_data_flow {
   board    -> workers [label="⑧ export (scope *, audited)", dir=back];
 
   // ⑤ ⑥ contests
-  api      -> gas     [label="⑤ upload · ⑥ fetch\n(signed)", dir=both];
+  api      -> gas     [label="⑤ upload (entries, photos\nwithout location data)\n⑥ fetch (signed)", dir=both];
   gas      -> drive   [label="⑤"];
   judge    -> api     [label="⑥ \"Entry N\" — no names", style=dotted, dir=back];
 

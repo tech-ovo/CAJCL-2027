@@ -6,14 +6,14 @@
 <!-- Title: cajcl_data_flow Pages: 1 -->
 <svg width="756pt" height="531pt"
  viewBox="0.00 0.00 756.00 531.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
-<g id="graph0" class="graph" transform="scale(0.493489 0.493489) rotate(0) translate(10.8 1065.2)">
+<g id="graph0" class="graph" transform="scale(0.493127 0.493127) rotate(0) translate(10.8 1065.2)">
 <title>cajcl_data_flow</title>
-<polygon fill="white" stroke="none" points="-10.8,10.8 -10.8,-1065.2 1521.15,-1065.2 1521.15,10.8 -10.8,10.8"/>
-<text xml:space="preserve" text-anchor="start" x="570.3" y="-1036.2" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="16.00">CAJCL 2027 — where personal information goes</text>
-<text xml:space="preserve" text-anchor="start" x="512.55" y="-1025.9" font-family="Helvetica,sans-Serif" font-size="10.00">Solid: live (Sept 2026) · Dashed: planned · Red: most sensitive · ① – ⑫ are explained in docs/PRIVACY.md §1</text>
+<polygon fill="white" stroke="none" points="-10.8,10.8 -10.8,-1065.2 1522.28,-1065.2 1522.28,10.8 -10.8,10.8"/>
+<text xml:space="preserve" text-anchor="start" x="570.86" y="-1036.2" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="16.00">CAJCL 2027 — where personal information goes</text>
+<text xml:space="preserve" text-anchor="start" x="513.11" y="-1025.9" font-family="Helvetica,sans-Serif" font-size="10.00">Solid: live (Sept 2026) · Dashed: planned · Red: most sensitive · ① – ⑫ are explained in docs/PRIVACY.md §1</text>
 <g id="clust1" class="cluster">
 <title>cluster_people</title>
-<path fill="#f3f3f3" stroke="#999999" d="M164.33,-250C164.33,-250 302.48,-250 302.48,-250 308.48,-250 314.48,-256 314.48,-262 314.48,-262 314.48,-892 314.48,-892 314.48,-898 308.48,-904 302.48,-904 302.48,-904 164.33,-904 164.33,-904 158.33,-904 152.33,-898 152.33,-892 152.33,-892 152.33,-262 152.33,-262 152.33,-256 158.33,-250 164.33,-250"/>
+<path fill="#f3f3f3" stroke="#999999" d="M164.33,-240C164.33,-240 302.48,-240 302.48,-240 308.48,-240 314.48,-246 314.48,-252 314.48,-252 314.48,-892 314.48,-892 314.48,-898 308.48,-904 302.48,-904 302.48,-904 164.33,-904 164.33,-904 158.33,-904 152.33,-898 152.33,-892 152.33,-892 152.33,-252 152.33,-252 152.33,-246 158.33,-240 164.33,-240"/>
 <text xml:space="preserve" text-anchor="start" x="213.53" y="-889.6" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="12.00">People</text>
 </g>
 <g id="clust2" class="cluster">
@@ -30,22 +30,22 @@
 </g>
 <g id="clust4" class="cluster">
 <title>cluster_turso</title>
-<path fill="#f6f0fb" stroke="#7d5ba6" d="M1298.78,-516C1298.78,-516 1485.68,-516 1485.68,-516 1491.68,-516 1497.68,-522 1497.68,-528 1497.68,-528 1497.68,-836 1497.68,-836 1497.68,-842 1491.68,-848 1485.68,-848 1485.68,-848 1298.78,-848 1298.78,-848 1292.78,-848 1286.78,-842 1286.78,-836 1286.78,-836 1286.78,-528 1286.78,-528 1286.78,-522 1292.78,-516 1298.78,-516"/>
-<text xml:space="preserve" text-anchor="start" x="1377.6" y="-834.55" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="11.00">Turso</text>
-<text xml:space="preserve" text-anchor="start" x="1326.98" y="-825.45" font-family="Helvetica,sans-Serif" font-size="9.00">SOC 2 Type II · encrypted at rest</text>
+<path fill="#f6f0fb" stroke="#7d5ba6" d="M1299.9,-517C1299.9,-517 1486.8,-517 1486.8,-517 1492.8,-517 1498.8,-523 1498.8,-529 1498.8,-529 1498.8,-837 1498.8,-837 1498.8,-843 1492.8,-849 1486.8,-849 1486.8,-849 1299.9,-849 1299.9,-849 1293.9,-849 1287.9,-843 1287.9,-837 1287.9,-837 1287.9,-529 1287.9,-529 1287.9,-523 1293.9,-517 1299.9,-517"/>
+<text xml:space="preserve" text-anchor="start" x="1378.73" y="-835.55" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="11.00">Turso</text>
+<text xml:space="preserve" text-anchor="start" x="1328.1" y="-826.45" font-family="Helvetica,sans-Serif" font-size="9.00">SOC 2 Type II · encrypted at rest</text>
 </g>
 <g id="clust5" class="cluster">
 <title>cluster_google</title>
-<path fill="#fdf5ea" stroke="#c98a2e" d="M1295.1,-8C1295.1,-8 1490.35,-8 1490.35,-8 1496.35,-8 1502.35,-14 1502.35,-20 1502.35,-20 1502.35,-478 1502.35,-478 1502.35,-484 1496.35,-490 1490.35,-490 1490.35,-490 1295.1,-490 1295.1,-490 1289.1,-490 1283.1,-484 1283.1,-478 1283.1,-478 1283.1,-20 1283.1,-20 1283.1,-14 1289.1,-8 1295.1,-8"/>
-<text xml:space="preserve" text-anchor="start" x="1373.98" y="-476.55" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="11.00">Google</text>
-<text xml:space="preserve" text-anchor="start" x="1291.1" y="-467.45" font-family="Helvetica,sans-Serif" font-size="9.00">personal Gmail today → cajcl.org Workspace later</text>
+<path fill="#fdf5ea" stroke="#c98a2e" d="M1296.23,-8C1296.23,-8 1491.48,-8 1491.48,-8 1497.48,-8 1503.48,-14 1503.48,-20 1503.48,-20 1503.48,-480 1503.48,-480 1503.48,-486 1497.48,-492 1491.48,-492 1491.48,-492 1296.23,-492 1296.23,-492 1290.23,-492 1284.23,-486 1284.23,-480 1284.23,-480 1284.23,-20 1284.23,-20 1284.23,-14 1290.23,-8 1296.23,-8"/>
+<text xml:space="preserve" text-anchor="start" x="1375.1" y="-478.55" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="11.00">Google</text>
+<text xml:space="preserve" text-anchor="start" x="1292.23" y="-469.45" font-family="Helvetica,sans-Serif" font-size="9.00">personal Gmail today → cajcl.org Workspace later</text>
 </g>
 <!-- public -->
 <g id="node1" class="node">
 <title>public</title>
-<path fill="#ffffff" stroke="#444444" d="M264.6,-520C264.6,-520 202.2,-520 202.2,-520 196.2,-520 190.2,-514 190.2,-508 190.2,-508 190.2,-496 190.2,-496 190.2,-490 196.2,-484 202.2,-484 202.2,-484 264.6,-484 264.6,-484 270.6,-484 276.6,-490 276.6,-496 276.6,-496 276.6,-508 276.6,-508 276.6,-514 270.6,-520 264.6,-520"/>
-<text xml:space="preserve" text-anchor="start" x="218.4" y="-503.5" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="10.00">Public</text>
-<text xml:space="preserve" text-anchor="start" x="197.4" y="-493.5" font-family="Helvetica,sans-Serif" font-size="10.00">anyone, no code</text>
+<path fill="#ffffff" stroke="#444444" d="M264.6,-510C264.6,-510 202.2,-510 202.2,-510 196.2,-510 190.2,-504 190.2,-498 190.2,-498 190.2,-486 190.2,-486 190.2,-480 196.2,-474 202.2,-474 202.2,-474 264.6,-474 264.6,-474 270.6,-474 276.6,-480 276.6,-486 276.6,-486 276.6,-498 276.6,-498 276.6,-504 270.6,-510 264.6,-510"/>
+<text xml:space="preserve" text-anchor="start" x="218.4" y="-493.5" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="10.00">Public</text>
+<text xml:space="preserve" text-anchor="start" x="197.4" y="-483.5" font-family="Helvetica,sans-Serif" font-size="10.00">anyone, no code</text>
 </g>
 <!-- pages -->
 <g id="node8" class="node">
@@ -60,9 +60,9 @@
 <!-- public&#45;&gt;pages -->
 <g id="edge8" class="edge">
 <title>public&#45;&gt;pages</title>
-<path fill="none" stroke="#555555" d="M263.14,-483.62C286.65,-469.73 321.32,-451.81 354.48,-444.25 396.03,-434.78 442.96,-434.3 483.37,-436.92"/>
-<polygon fill="#555555" stroke="#555555" points="483.2,-439.02 489.33,-437.34 483.49,-434.83 483.2,-439.02"/>
-<text xml:space="preserve" text-anchor="middle" x="402.48" y="-448.93" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#333333">① open site</text>
+<path fill="none" stroke="#555555" d="M267.1,-473.58C290.59,-461.44 323.46,-446.65 354.48,-440.25 396.15,-431.65 443,-432 483.32,-435.29"/>
+<polygon fill="#555555" stroke="#555555" points="483.11,-437.38 489.26,-435.81 483.47,-433.2 483.11,-437.38"/>
+<text xml:space="preserve" text-anchor="middle" x="402.48" y="-444.93" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#333333">① open site</text>
 </g>
 <!-- delegate -->
 <g id="node2" class="node">
@@ -99,22 +99,22 @@
 <!-- sponsor -->
 <g id="node3" class="node">
 <title>sponsor</title>
-<path fill="#ffffff" stroke="#444444" d="M299.1,-286C299.1,-286 167.7,-286 167.7,-286 161.7,-286 155.7,-280 155.7,-274 155.7,-274 155.7,-262 155.7,-262 155.7,-256 161.7,-250 167.7,-250 167.7,-250 299.1,-250 299.1,-250 305.1,-250 311.1,-256 311.1,-262 311.1,-262 311.1,-274 311.1,-274 311.1,-280 305.1,-286 299.1,-286"/>
-<text xml:space="preserve" text-anchor="start" x="186.9" y="-269.5" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="10.00">Sponsors (teachers)</text>
-<text xml:space="preserve" text-anchor="start" x="162.9" y="-259.5" font-family="Helvetica,sans-Serif" font-size="10.00">code SPO&#45;… · own chapter only</text>
+<path fill="#ffffff" stroke="#444444" d="M299.1,-276C299.1,-276 167.7,-276 167.7,-276 161.7,-276 155.7,-270 155.7,-264 155.7,-264 155.7,-252 155.7,-252 155.7,-246 161.7,-240 167.7,-240 167.7,-240 299.1,-240 299.1,-240 305.1,-240 311.1,-246 311.1,-252 311.1,-252 311.1,-264 311.1,-264 311.1,-270 305.1,-276 299.1,-276"/>
+<text xml:space="preserve" text-anchor="start" x="186.9" y="-259.5" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="10.00">Sponsors (teachers)</text>
+<text xml:space="preserve" text-anchor="start" x="162.9" y="-249.5" font-family="Helvetica,sans-Serif" font-size="10.00">code SPO&#45;… · own chapter only</text>
 </g>
 <!-- sponsor&#45;&gt;delegate -->
 <g id="edge23" class="edge">
 <title>sponsor&#45;&gt;delegate</title>
-<path fill="none" stroke="#555555" stroke-dasharray="1,5" d="M215.51,-286.5C197.8,-305.52 170.73,-336.59 152.33,-367 115.64,-427.59 104.04,-444.22 89.88,-513.62 81.65,-553.96 57.91,-612.61 152.33,-729 159.55,-737.9 169.03,-745.34 178.95,-751.43"/>
-<polygon fill="#555555" stroke="#555555" points="177.61,-753.08 183.86,-754.29 179.73,-749.45 177.61,-753.08"/>
-<text xml:space="preserve" text-anchor="middle" x="89.08" y="-518.3" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#333333">③ hands out</text>
+<path fill="none" stroke="#555555" stroke-dasharray="1,5" d="M215.44,-276.45C197.67,-295.44 170.55,-326.48 152.33,-357 114.95,-419.57 104.03,-437.13 89.88,-508.62 70.12,-608.49 88.46,-649.72 152.33,-729 159.52,-737.93 168.98,-745.37 178.9,-751.47"/>
+<polygon fill="#555555" stroke="#555555" points="177.57,-753.12 183.81,-754.32 179.68,-749.49 177.57,-753.12"/>
+<text xml:space="preserve" text-anchor="middle" x="89.08" y="-513.3" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#333333">③ hands out</text>
 </g>
 <!-- sponsor&#45;&gt;browser -->
 <g id="edge12" class="edge">
 <title>sponsor&#45;&gt;browser</title>
-<path fill="none" stroke="#555555" d="M254.94,-286.15C274.08,-304.45 301.55,-334.55 314.48,-367 356.63,-472.82 275.38,-796.04 354.48,-878 386.86,-911.56 437.33,-919.84 482.54,-918.95"/>
-<polygon fill="#555555" stroke="#555555" points="482.59,-921.05 488.52,-918.77 482.46,-916.85 482.59,-921.05"/>
+<path fill="none" stroke="#555555" d="M255.31,-276.5C274.44,-294.82 301.65,-324.75 314.48,-357 357.37,-464.91 273.9,-794.38 354.48,-878 386.84,-911.59 437.31,-919.87 482.51,-918.97"/>
+<polygon fill="#555555" stroke="#555555" points="482.57,-921.07 488.5,-918.79 482.44,-916.87 482.57,-921.07"/>
 </g>
 <!-- workers -->
 <g id="node13" class="node">
@@ -127,54 +127,54 @@
 <!-- sponsor&#45;&gt;workers -->
 <g id="edge22" class="edge">
 <title>sponsor&#45;&gt;workers</title>
-<path fill="none" stroke="#b22222" d="M256.31,-291.42C273.57,-310.69 297.49,-339.25 314.48,-367 337.32,-404.34 322.81,-426.78 354.48,-457 401.4,-501.79 429.76,-487.16 490.48,-510 572.52,-540.86 594.63,-544.35 675.88,-577.25 781.8,-620.14 903.94,-676.84 965.53,-705.96"/>
-<polygon fill="#b22222" stroke="#b22222" points="258.22,-290.41 252.64,-287.36 255.1,-293.22 258.22,-290.41"/>
+<path fill="none" stroke="#b22222" d="M256.92,-281.61C274.32,-300.78 298.12,-329.11 314.48,-357 338.69,-398.29 320.48,-423.3 354.48,-457 400.55,-502.67 429.76,-487.16 490.48,-510 572.52,-540.86 594.63,-544.35 675.88,-577.25 781.8,-620.14 903.94,-676.84 965.53,-705.96"/>
+<polygon fill="#b22222" stroke="#b22222" points="258.81,-280.57 253.21,-277.57 255.72,-283.41 258.81,-280.57"/>
 <text xml:space="preserve" text-anchor="middle" x="583.18" y="-581.92" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#b22222">③ packet: names + codes + QR</text>
 </g>
 <!-- scans -->
 <g id="node20" class="node">
 <title>scans</title>
-<path fill="#fff4f4" stroke="#b22222" stroke-width="1.8" d="M1465.05,-136.6C1465.05,-136.6 1319.4,-136.6 1319.4,-136.6 1313.4,-136.6 1307.4,-130.6 1307.4,-124.6 1307.4,-124.6 1307.4,-111.4 1307.4,-111.4 1307.4,-105.4 1313.4,-99.4 1319.4,-99.4 1319.4,-99.4 1465.05,-99.4 1465.05,-99.4 1471.05,-99.4 1477.05,-105.4 1477.05,-111.4 1477.05,-111.4 1477.05,-124.6 1477.05,-124.6 1477.05,-130.6 1471.05,-136.6 1465.05,-136.6"/>
-<text xml:space="preserve" text-anchor="start" x="1317.6" y="-124.5" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="10.00">Drive: waiver + MEDICAL scans</text>
-<text xml:space="preserve" text-anchor="start" x="1314.6" y="-114.5" font-family="Helvetica,sans-Serif" font-size="10.00">uploaded by hand · no code reads it</text>
-<text xml:space="preserve" text-anchor="start" x="1358.48" y="-104.5" font-family="Helvetica,sans-Serif" font-size="10.00">Presidents only</text>
+<path fill="#fff4f4" stroke="#b22222" stroke-width="1.8" d="M1466.18,-136.6C1466.18,-136.6 1320.53,-136.6 1320.53,-136.6 1314.53,-136.6 1308.53,-130.6 1308.53,-124.6 1308.53,-124.6 1308.53,-111.4 1308.53,-111.4 1308.53,-105.4 1314.53,-99.4 1320.53,-99.4 1320.53,-99.4 1466.18,-99.4 1466.18,-99.4 1472.18,-99.4 1478.18,-105.4 1478.18,-111.4 1478.18,-111.4 1478.18,-124.6 1478.18,-124.6 1478.18,-130.6 1472.18,-136.6 1466.18,-136.6"/>
+<text xml:space="preserve" text-anchor="start" x="1318.73" y="-124.5" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="10.00">Drive: waiver + MEDICAL scans</text>
+<text xml:space="preserve" text-anchor="start" x="1315.73" y="-114.5" font-family="Helvetica,sans-Serif" font-size="10.00">uploaded by hand · no code reads it</text>
+<text xml:space="preserve" text-anchor="start" x="1359.6" y="-104.5" font-family="Helvetica,sans-Serif" font-size="10.00">Presidents only</text>
 </g>
 <!-- sponsor&#45;&gt;scans -->
 <g id="edge29" class="edge">
 <title>sponsor&#45;&gt;scans</title>
-<path fill="none" stroke="#b22222" d="M311.47,-251.96C325.75,-249.17 340.54,-246.4 354.48,-244 703.56,-183.93 790.68,-163.93 1143.28,-130 1194.79,-125.04 1252.53,-122.1 1299.32,-120.36"/>
-<polygon fill="#b22222" stroke="#b22222" points="1299.3,-122.47 1305.22,-120.15 1299.15,-118.27 1299.3,-122.47"/>
-<text xml:space="preserve" text-anchor="middle" x="792.75" y="-186.6" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#b22222">⑦ manual upload — not through our code</text>
+<path fill="none" stroke="#b22222" d="M311.5,-243.31C325.77,-240.76 340.56,-238.21 354.48,-236 703.83,-180.55 791.01,-162.1 1143.28,-130 1195.15,-125.27 1253.28,-122.34 1300.32,-120.56"/>
+<polygon fill="#b22222" stroke="#b22222" points="1300.35,-122.66 1306.27,-120.34 1300.19,-118.46 1300.35,-122.66"/>
+<text xml:space="preserve" text-anchor="middle" x="792.75" y="-183.31" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#b22222">⑦ manual upload — not through our code</text>
 </g>
 <!-- mail -->
 <g id="node21" class="node">
 <title>mail</title>
-<path fill="#ffffff" stroke="#444444" stroke-dasharray="5,2" d="M1430.55,-227.6C1430.55,-227.6 1353.9,-227.6 1353.9,-227.6 1347.9,-227.6 1341.9,-221.6 1341.9,-215.6 1341.9,-215.6 1341.9,-202.4 1341.9,-202.4 1341.9,-196.4 1347.9,-190.4 1353.9,-190.4 1353.9,-190.4 1430.55,-190.4 1430.55,-190.4 1436.55,-190.4 1442.55,-196.4 1442.55,-202.4 1442.55,-202.4 1442.55,-215.6 1442.55,-215.6 1442.55,-221.6 1436.55,-227.6 1430.55,-227.6"/>
-<text xml:space="preserve" text-anchor="start" x="1355.1" y="-215.5" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="10.00">Gmail (planned)</text>
-<text xml:space="preserve" text-anchor="start" x="1349.1" y="-205.5" font-family="Helvetica,sans-Serif" font-size="10.00">2FA one&#45;time codes</text>
-<text xml:space="preserve" text-anchor="start" x="1350.6" y="-195.5" font-family="Helvetica,sans-Serif" font-size="10.00">adults + board only</text>
+<path fill="#ffffff" stroke="#444444" stroke-dasharray="5,2" d="M1431.68,-227.6C1431.68,-227.6 1355.03,-227.6 1355.03,-227.6 1349.03,-227.6 1343.03,-221.6 1343.03,-215.6 1343.03,-215.6 1343.03,-202.4 1343.03,-202.4 1343.03,-196.4 1349.03,-190.4 1355.03,-190.4 1355.03,-190.4 1431.68,-190.4 1431.68,-190.4 1437.68,-190.4 1443.68,-196.4 1443.68,-202.4 1443.68,-202.4 1443.68,-215.6 1443.68,-215.6 1443.68,-221.6 1437.68,-227.6 1431.68,-227.6"/>
+<text xml:space="preserve" text-anchor="start" x="1356.23" y="-215.5" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="10.00">Gmail (planned)</text>
+<text xml:space="preserve" text-anchor="start" x="1350.23" y="-205.5" font-family="Helvetica,sans-Serif" font-size="10.00">2FA one&#45;time codes</text>
+<text xml:space="preserve" text-anchor="start" x="1351.73" y="-195.5" font-family="Helvetica,sans-Serif" font-size="10.00">adults + board only</text>
 </g>
 <!-- sponsor&#45;&gt;mail -->
 <g id="edge19" class="edge">
 <title>sponsor&#45;&gt;mail</title>
-<path fill="none" stroke="#555555" stroke-dasharray="5,2" d="M318.43,-263.71C544.67,-252.18 1161.66,-220.71 1341.44,-211.54"/>
-<polygon fill="#555555" stroke="#555555" points="318.6,-261.6 312.71,-264.01 318.81,-265.8 318.6,-261.6"/>
-<text xml:space="preserve" text-anchor="middle" x="792.75" y="-247.92" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#333333">② email (adults, board)</text>
+<path fill="none" stroke="#555555" stroke-dasharray="5,2" d="M318.52,-254.44C545.11,-244.85 1163.28,-218.69 1342.83,-211.1"/>
+<polygon fill="#555555" stroke="#555555" points="318.69,-252.33 312.79,-254.68 318.87,-256.53 318.69,-252.33"/>
+<text xml:space="preserve" text-anchor="middle" x="792.75" y="-242.12" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#333333">② email (adults, board)</text>
 </g>
 <!-- sheets -->
 <g id="node22" class="node">
 <title>sheets</title>
-<path fill="#ffffff" stroke="#444444" stroke-dasharray="5,2" d="M1451.55,-45.6C1451.55,-45.6 1332.9,-45.6 1332.9,-45.6 1326.9,-45.6 1320.9,-39.6 1320.9,-33.6 1320.9,-33.6 1320.9,-20.4 1320.9,-20.4 1320.9,-14.4 1326.9,-8.4 1332.9,-8.4 1332.9,-8.4 1451.55,-8.4 1451.55,-8.4 1457.55,-8.4 1463.55,-14.4 1463.55,-20.4 1463.55,-20.4 1463.55,-33.6 1463.55,-33.6 1463.55,-39.6 1457.55,-45.6 1451.55,-45.6"/>
-<text xml:space="preserve" text-anchor="start" x="1353.23" y="-33.5" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="10.00">Sheets (planned)</text>
-<text xml:space="preserve" text-anchor="start" x="1330.73" y="-23.5" font-family="Helvetica,sans-Serif" font-size="10.00">one results sheet per school</text>
-<text xml:space="preserve" text-anchor="start" x="1328.1" y="-13.5" font-family="Helvetica,sans-Serif" font-size="10.00">shared with that sponsor only</text>
+<path fill="#ffffff" stroke="#444444" stroke-dasharray="5,2" d="M1452.68,-45.6C1452.68,-45.6 1334.03,-45.6 1334.03,-45.6 1328.03,-45.6 1322.03,-39.6 1322.03,-33.6 1322.03,-33.6 1322.03,-20.4 1322.03,-20.4 1322.03,-14.4 1328.03,-8.4 1334.03,-8.4 1334.03,-8.4 1452.68,-8.4 1452.68,-8.4 1458.68,-8.4 1464.68,-14.4 1464.68,-20.4 1464.68,-20.4 1464.68,-33.6 1464.68,-33.6 1464.68,-39.6 1458.68,-45.6 1452.68,-45.6"/>
+<text xml:space="preserve" text-anchor="start" x="1354.35" y="-33.5" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="10.00">Sheets (planned)</text>
+<text xml:space="preserve" text-anchor="start" x="1331.85" y="-23.5" font-family="Helvetica,sans-Serif" font-size="10.00">one results sheet per school</text>
+<text xml:space="preserve" text-anchor="start" x="1329.23" y="-13.5" font-family="Helvetica,sans-Serif" font-size="10.00">shared with that sponsor only</text>
 </g>
 <!-- sponsor&#45;&gt;sheets -->
 <g id="edge33" class="edge">
 <title>sponsor&#45;&gt;sheets</title>
-<path fill="none" stroke="#555555" stroke-dasharray="5,2" d="M279.27,-246.45C301.58,-236.19 329.14,-224.18 354.48,-215 413.6,-193.59 429.27,-190.41 490.48,-176 795.96,-104.08 1167.73,-54.28 1320.51,-35.4"/>
-<polygon fill="#555555" stroke="#555555" points="278.46,-244.51 273.89,-248.94 280.22,-248.33 278.46,-244.51"/>
-<text xml:space="preserve" text-anchor="middle" x="792.75" y="-133.08" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#333333">⑩ permanent record</text>
+<path fill="none" stroke="#555555" stroke-dasharray="5,2" d="M282.74,-236.61C304.43,-227.45 330.49,-217.03 354.48,-209 413.77,-189.15 429.41,-186.44 490.48,-173 797.19,-105.49 1168.96,-55.07 1321.68,-35.69"/>
+<polygon fill="#555555" stroke="#555555" points="281.95,-234.67 277.25,-238.95 283.59,-238.53 281.95,-234.67"/>
+<text xml:space="preserve" text-anchor="middle" x="792.75" y="-132.44" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#333333">⑩ permanent record</text>
 </g>
 <!-- adult -->
 <g id="node4" class="node">
@@ -192,35 +192,36 @@
 <!-- board -->
 <g id="node5" class="node">
 <title>board</title>
-<path fill="#ffffff" stroke="#444444" d="M300.98,-701.6C300.98,-701.6 165.83,-701.6 165.83,-701.6 159.83,-701.6 153.83,-695.6 153.83,-689.6 153.83,-689.6 153.83,-676.4 153.83,-676.4 153.83,-670.4 159.83,-664.4 165.83,-664.4 165.83,-664.4 300.98,-664.4 300.98,-664.4 306.98,-664.4 312.98,-670.4 312.98,-676.4 312.98,-676.4 312.98,-689.6 312.98,-689.6 312.98,-695.6 306.98,-701.6 300.98,-701.6"/>
+<path fill="#ffffff" stroke="#444444" d="M300.98,-701.6C300.98,-701.6 165.83,-701.6 165.83,-701.6 159.83,-701.6 153.83,-695.6 153.83,-689.6 153.83,-689.6 153.83,-666.4 153.83,-666.4 153.83,-660.4 159.83,-654.4 165.83,-654.4 165.83,-654.4 300.98,-654.4 300.98,-654.4 306.98,-654.4 312.98,-660.4 312.98,-666.4 312.98,-666.4 312.98,-689.6 312.98,-689.6 312.98,-695.6 306.98,-701.6 300.98,-701.6"/>
 <text xml:space="preserve" text-anchor="start" x="197.4" y="-689.5" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="10.00">Board / admins</text>
 <text xml:space="preserve" text-anchor="start" x="161.03" y="-679.5" font-family="Helvetica,sans-Serif" font-size="10.00">registration · academics · awards</text>
-<text xml:space="preserve" text-anchor="start" x="171.53" y="-669.5" font-family="Helvetica,sans-Serif" font-size="10.00">chairs · Presidents (scope *)</text>
+<text xml:space="preserve" text-anchor="start" x="165.15" y="-669.5" font-family="Helvetica,sans-Serif" font-size="10.00">activities (photo contest) chairs</text>
+<text xml:space="preserve" text-anchor="start" x="189.15" y="-659.5" font-family="Helvetica,sans-Serif" font-size="10.00">Presidents (scope *)</text>
 </g>
 <!-- board&#45;&gt;browser -->
 <g id="edge14" class="edge">
 <title>board&#45;&gt;browser</title>
-<path fill="none" stroke="#555555" d="M283.68,-701.91C295.35,-708.54 306.66,-717.12 314.48,-728 370.17,-805.51 280.97,-878.12 354.48,-939 407.98,-983.31 493.71,-951.38 543.3,-926.27"/>
+<path fill="none" stroke="#555555" d="M286.65,-701.87C297.27,-708.91 307.35,-717.58 314.48,-728 368.37,-806.78 280.97,-878.12 354.48,-939 407.98,-983.31 493.71,-951.38 543.3,-926.27"/>
 <polygon fill="#555555" stroke="#555555" points="544.04,-928.25 548.41,-923.63 542.11,-924.51 544.04,-928.25"/>
 </g>
 <!-- board&#45;&gt;workers -->
 <g id="edge24" class="edge">
 <title>board&#45;&gt;workers</title>
-<path fill="none" stroke="#555555" d="M320.24,-703.61C442.25,-730.34 672.9,-771.36 869.63,-752 888.65,-750.13 908.95,-746.81 927.91,-743.14"/>
-<polygon fill="#555555" stroke="#555555" points="320.87,-701.6 314.55,-702.36 319.96,-705.7 320.87,-701.6"/>
-<text xml:space="preserve" text-anchor="middle" x="583.18" y="-759.19" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#333333">⑧ export (scope *, audited)</text>
+<path fill="none" stroke="#555555" d="M320.19,-699.72C442.15,-727.92 672.72,-771.38 869.63,-752 888.65,-750.13 908.95,-746.81 927.91,-743.14"/>
+<polygon fill="#555555" stroke="#555555" points="320.83,-697.71 314.51,-698.4 319.87,-701.8 320.83,-697.71"/>
+<text xml:space="preserve" text-anchor="middle" x="583.18" y="-758.56" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#333333">⑧ export (scope *, audited)</text>
 </g>
 <!-- judge -->
 <g id="node6" class="node">
 <title>judge</title>
-<path fill="#ffffff" stroke="#444444" d="M299.48,-610C299.48,-610 167.33,-610 167.33,-610 161.33,-610 155.33,-604 155.33,-598 155.33,-598 155.33,-586 155.33,-586 155.33,-580 161.33,-574 167.33,-574 167.33,-574 299.48,-574 299.48,-574 305.48,-574 311.48,-580 311.48,-586 311.48,-586 311.48,-598 311.48,-598 311.48,-604 305.48,-610 299.48,-610"/>
-<text xml:space="preserve" text-anchor="start" x="198.15" y="-593.5" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="10.00">Contest judges</text>
-<text xml:space="preserve" text-anchor="start" x="162.53" y="-583.5" font-family="Helvetica,sans-Serif" font-size="10.00">scope judge · never sees names</text>
+<path fill="#ffffff" stroke="#444444" d="M299.48,-600C299.48,-600 167.33,-600 167.33,-600 161.33,-600 155.33,-594 155.33,-588 155.33,-588 155.33,-576 155.33,-576 155.33,-570 161.33,-564 167.33,-564 167.33,-564 299.48,-564 299.48,-564 305.48,-564 311.48,-570 311.48,-576 311.48,-576 311.48,-588 311.48,-588 311.48,-594 305.48,-600 299.48,-600"/>
+<text xml:space="preserve" text-anchor="start" x="198.15" y="-583.5" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="10.00">Contest judges</text>
+<text xml:space="preserve" text-anchor="start" x="162.53" y="-573.5" font-family="Helvetica,sans-Serif" font-size="10.00">scope judge · never sees names</text>
 </g>
 <!-- judge&#45;&gt;browser -->
 <g id="edge15" class="edge">
 <title>judge&#45;&gt;browser</title>
-<path fill="none" stroke="#555555" d="M277.69,-610.34C326.49,-633.14 404.94,-676.56 450.48,-737 481.28,-777.88 458.41,-805.1 490.48,-845 502.3,-859.72 518.84,-871.93 534.62,-881.35"/>
+<path fill="none" stroke="#555555" d="M270.25,-600.47C284.35,-608.16 300.49,-617.51 314.48,-627 378.81,-670.64 405.13,-673.85 450.48,-737 480.33,-778.58 458.41,-805.1 490.48,-845 502.3,-859.72 518.84,-871.93 534.62,-881.35"/>
 <polygon fill="#555555" stroke="#555555" points="533.29,-883 539.53,-884.19 535.39,-879.37 533.29,-883"/>
 </g>
 <!-- api -->
@@ -236,23 +237,23 @@
 <!-- judge&#45;&gt;api -->
 <g id="edge27" class="edge">
 <title>judge&#45;&gt;api</title>
-<path fill="none" stroke="#555555" stroke-dasharray="1,5" d="M319.22,-596.56C369.08,-599.01 433.34,-601.77 490.48,-603 572.86,-604.77 593.55,-606.49 675.88,-603 754.62,-599.66 843.66,-591.85 909.32,-585.33"/>
-<polygon fill="#555555" stroke="#555555" points="319.58,-594.47 313.49,-596.27 319.38,-598.67 319.58,-594.47"/>
-<text xml:space="preserve" text-anchor="middle" x="583.18" y="-609.7" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#333333">⑥ &quot;Entry N&quot; — no names</text>
+<path fill="none" stroke="#555555" stroke-dasharray="1,5" d="M319.15,-590.7C368.97,-595.38 433.23,-600.66 490.48,-603 572.81,-606.37 593.55,-606.49 675.88,-603 754.62,-599.66 843.66,-591.85 909.32,-585.33"/>
+<polygon fill="#555555" stroke="#555555" points="319.58,-588.63 313.41,-590.16 319.18,-592.81 319.58,-588.63"/>
+<text xml:space="preserve" text-anchor="middle" x="583.18" y="-610.25" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#333333">⑥ &quot;Entry N&quot; — no names</text>
 </g>
 <!-- parent -->
 <g id="node7" class="node">
 <title>parent</title>
-<path fill="#fff4f4" stroke="#b22222" d="M302.48,-430C302.48,-430 164.33,-430 164.33,-430 158.33,-430 152.33,-424 152.33,-418 152.33,-418 152.33,-406 152.33,-406 152.33,-400 158.33,-394 164.33,-394 164.33,-394 302.48,-394 302.48,-394 308.48,-394 314.48,-400 314.48,-406 314.48,-406 314.48,-418 314.48,-418 314.48,-424 308.48,-430 302.48,-430"/>
-<text xml:space="preserve" text-anchor="start" x="188.03" y="-413.5" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="10.00">Parents / guardians</text>
-<text xml:space="preserve" text-anchor="start" x="159.53" y="-403.5" font-family="Helvetica,sans-Serif" font-size="10.00">paper only: waiver + medical form</text>
+<path fill="#fff4f4" stroke="#b22222" d="M302.48,-420C302.48,-420 164.33,-420 164.33,-420 158.33,-420 152.33,-414 152.33,-408 152.33,-408 152.33,-396 152.33,-396 152.33,-390 158.33,-384 164.33,-384 164.33,-384 302.48,-384 302.48,-384 308.48,-384 314.48,-390 314.48,-396 314.48,-396 314.48,-408 314.48,-408 314.48,-414 308.48,-420 302.48,-420"/>
+<text xml:space="preserve" text-anchor="start" x="188.03" y="-403.5" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="10.00">Parents / guardians</text>
+<text xml:space="preserve" text-anchor="start" x="159.53" y="-393.5" font-family="Helvetica,sans-Serif" font-size="10.00">paper only: waiver + medical form</text>
 </g>
 <!-- parent&#45;&gt;sponsor -->
 <g id="edge28" class="edge">
 <title>parent&#45;&gt;sponsor</title>
-<path fill="none" stroke="#b22222" d="M233.4,-393.91C233.4,-368.56 233.4,-322.36 233.4,-293.52"/>
-<polygon fill="#b22222" stroke="#b22222" points="235.5,-293.75 233.4,-287.75 231.3,-293.75 235.5,-293.75"/>
-<text xml:space="preserve" text-anchor="middle" x="224.03" y="-338.3" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#b22222">⑦ signed</text>
+<path fill="none" stroke="#b22222" d="M233.4,-383.91C233.4,-358.56 233.4,-312.36 233.4,-283.52"/>
+<polygon fill="#b22222" stroke="#b22222" points="235.5,-283.75 233.4,-277.75 231.3,-283.75 235.5,-283.75"/>
+<text xml:space="preserve" text-anchor="middle" x="224.03" y="-328.3" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#b22222">⑦ signed</text>
 </g>
 <!-- pages&#45;&gt;browser -->
 <g id="edge9" class="edge">
@@ -281,19 +282,19 @@
 <!-- maindb -->
 <g id="node15" class="node">
 <title>maindb</title>
-<path fill="#ffffff" stroke="#444444" d="M1485.68,-583.6C1485.68,-583.6 1298.78,-583.6 1298.78,-583.6 1292.78,-583.6 1286.78,-577.6 1286.78,-571.6 1286.78,-571.6 1286.78,-528.4 1286.78,-528.4 1286.78,-522.4 1292.78,-516.4 1298.78,-516.4 1298.78,-516.4 1485.68,-516.4 1485.68,-516.4 1491.68,-516.4 1497.68,-522.4 1497.68,-528.4 1497.68,-528.4 1497.68,-571.6 1497.68,-571.6 1497.68,-577.6 1491.68,-583.6 1485.68,-583.6"/>
-<text xml:space="preserve" text-anchor="start" x="1358.85" y="-571.5" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="10.00">Main database</text>
-<text xml:space="preserve" text-anchor="start" x="1319.48" y="-561.5" font-family="Helvetica,sans-Serif" font-size="10.00">names · grade · Latin level · meal</text>
-<text xml:space="preserve" text-anchor="start" x="1293.98" y="-551.5" font-family="Helvetica,sans-Serif" font-size="10.00">guardian name + phone · adult email + phone</text>
-<text xml:space="preserve" text-anchor="start" x="1319.1" y="-541.5" font-family="Helvetica,sans-Serif" font-size="10.00">event choices · contest entry text</text>
-<text xml:space="preserve" text-anchor="start" x="1297.35" y="-531.5" font-family="Helvetica,sans-Serif" font-size="10.00">HMAC of codes and IPs · hashed sessions</text>
-<text xml:space="preserve" text-anchor="start" x="1307.1" y="-521.5" font-family="Helvetica,sans-Serif" font-size="10.00">append&#45;only audit log (contains names)</text>
+<path fill="#ffffff" stroke="#444444" d="M1486.8,-584.6C1486.8,-584.6 1299.9,-584.6 1299.9,-584.6 1293.9,-584.6 1287.9,-578.6 1287.9,-572.6 1287.9,-572.6 1287.9,-529.4 1287.9,-529.4 1287.9,-523.4 1293.9,-517.4 1299.9,-517.4 1299.9,-517.4 1486.8,-517.4 1486.8,-517.4 1492.8,-517.4 1498.8,-523.4 1498.8,-529.4 1498.8,-529.4 1498.8,-572.6 1498.8,-572.6 1498.8,-578.6 1492.8,-584.6 1486.8,-584.6"/>
+<text xml:space="preserve" text-anchor="start" x="1359.98" y="-572.5" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="10.00">Main database</text>
+<text xml:space="preserve" text-anchor="start" x="1320.6" y="-562.5" font-family="Helvetica,sans-Serif" font-size="10.00">names · grade · Latin level · meal</text>
+<text xml:space="preserve" text-anchor="start" x="1295.1" y="-552.5" font-family="Helvetica,sans-Serif" font-size="10.00">guardian name + phone · adult email + phone</text>
+<text xml:space="preserve" text-anchor="start" x="1320.23" y="-542.5" font-family="Helvetica,sans-Serif" font-size="10.00">event choices · contest entry text</text>
+<text xml:space="preserve" text-anchor="start" x="1298.48" y="-532.5" font-family="Helvetica,sans-Serif" font-size="10.00">HMAC of codes and IPs · hashed sessions</text>
+<text xml:space="preserve" text-anchor="start" x="1308.23" y="-522.5" font-family="Helvetica,sans-Serif" font-size="10.00">append&#45;only audit log (contains names)</text>
 </g>
 <!-- actions&#45;&gt;maindb -->
 <g id="edge35" class="edge">
 <title>actions&#45;&gt;maindb</title>
-<path fill="none" stroke="#555555" d="M609.28,-323.92C631.03,-341.89 661.25,-371.02 675.88,-404 716.94,-496.58 641.18,-789.6 715.88,-858 766.27,-904.15 819.33,-904.26 869.63,-858 948.04,-785.88 843.03,-463.41 909.63,-380.25 1005.48,-260.56 1128.88,-208.95 1246.78,-307 1314.89,-363.65 1227.95,-433.67 1283.1,-503 1285.49,-506 1288.11,-508.82 1290.91,-511.46"/>
-<polygon fill="#555555" stroke="#555555" points="1289.1,-512.67 1295,-515.03 1291.86,-509.5 1289.1,-512.67"/>
+<path fill="none" stroke="#555555" d="M609.28,-323.92C631.03,-341.89 661.25,-371.02 675.88,-404 716.94,-496.58 641.18,-789.6 715.88,-858 766.27,-904.15 819.33,-904.26 869.63,-858 948.04,-785.88 843.19,-463.54 909.63,-380.25 1005.3,-260.3 1128.67,-208.05 1246.78,-306 1316.05,-363.45 1227.83,-434.87 1284.23,-505 1286.35,-507.64 1288.66,-510.14 1291.11,-512.49"/>
+<polygon fill="#555555" stroke="#555555" points="1289.32,-513.71 1295.21,-516.12 1292.11,-510.57 1289.32,-513.71"/>
 <text xml:space="preserve" text-anchor="middle" x="1006.45" y="-384.93" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#333333">⑪ read counts</text>
 </g>
 <!-- browser&#45;&gt;api -->
@@ -331,36 +332,37 @@
 <!-- api&#45;&gt;maindb -->
 <g id="edge17" class="edge">
 <title>api&#45;&gt;maindb</title>
-<path fill="none" stroke="#555555" d="M1103.68,-578.75C1147.42,-579.49 1199.79,-579.04 1246.78,-575 1257.38,-574.09 1268.38,-572.81 1279.36,-571.3"/>
-<polygon fill="#555555" stroke="#555555" points="1279.42,-573.41 1285.07,-570.49 1278.83,-569.26 1279.42,-573.41"/>
-<text xml:space="preserve" text-anchor="middle" x="1195.03" y="-618.19" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#333333">② HMAC(code) → session</text>
-<text xml:space="preserve" text-anchor="middle" x="1195.03" y="-605.44" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#333333">③ roster · ④ activity sheets</text>
-<text xml:space="preserve" text-anchor="middle" x="1195.03" y="-592.69" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#333333">⑤ entries · audit rows</text>
-<text xml:space="preserve" text-anchor="middle" x="1195.03" y="-579.94" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#333333">(TLS · parameterised SQL)</text>
+<path fill="none" stroke="#555555" d="M1103.58,-569.01C1157.18,-565.66 1224.2,-561.48 1280.18,-557.99"/>
+<polygon fill="#555555" stroke="#555555" points="1280.28,-560.09 1286.14,-557.62 1280.02,-555.9 1280.28,-560.09"/>
+<text xml:space="preserve" text-anchor="middle" x="1195.03" y="-605.03" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#333333">② HMAC(code) → session</text>
+<text xml:space="preserve" text-anchor="middle" x="1195.03" y="-592.28" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#333333">③ roster · ④ activity sheets</text>
+<text xml:space="preserve" text-anchor="middle" x="1195.03" y="-579.53" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#333333">⑤ entries · audit rows</text>
+<text xml:space="preserve" text-anchor="middle" x="1195.03" y="-566.78" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#333333">(TLS · parameterised SQL)</text>
 </g>
 <!-- gas -->
 <g id="node18" class="node">
 <title>gas</title>
-<path fill="#ffffff" stroke="#444444" d="M1459.43,-318.6C1459.43,-318.6 1325.03,-318.6 1325.03,-318.6 1319.03,-318.6 1313.03,-312.6 1313.03,-306.6 1313.03,-306.6 1313.03,-293.4 1313.03,-293.4 1313.03,-287.4 1319.03,-281.4 1325.03,-281.4 1325.03,-281.4 1459.43,-281.4 1459.43,-281.4 1465.43,-281.4 1471.43,-287.4 1471.43,-293.4 1471.43,-293.4 1471.43,-306.6 1471.43,-306.6 1471.43,-312.6 1465.43,-318.6 1459.43,-318.6"/>
-<text xml:space="preserve" text-anchor="start" x="1342.35" y="-306.5" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="10.00">Apps Script &quot;puppet&quot;</text>
-<text xml:space="preserve" text-anchor="start" x="1330.73" y="-296.5" font-family="Helvetica,sans-Serif" font-size="10.00">upload · fetch · mkdir · trash</text>
-<text xml:space="preserve" text-anchor="start" x="1320.23" y="-286.5" font-family="Helvetica,sans-Serif" font-size="10.00">HMAC&#45;signed · 5&#45;minute window</text>
+<path fill="#ffffff" stroke="#444444" d="M1460.55,-318.6C1460.55,-318.6 1326.15,-318.6 1326.15,-318.6 1320.15,-318.6 1314.15,-312.6 1314.15,-306.6 1314.15,-306.6 1314.15,-293.4 1314.15,-293.4 1314.15,-287.4 1320.15,-281.4 1326.15,-281.4 1326.15,-281.4 1460.55,-281.4 1460.55,-281.4 1466.55,-281.4 1472.55,-287.4 1472.55,-293.4 1472.55,-293.4 1472.55,-306.6 1472.55,-306.6 1472.55,-312.6 1466.55,-318.6 1460.55,-318.6"/>
+<text xml:space="preserve" text-anchor="start" x="1343.48" y="-306.5" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="10.00">Apps Script &quot;puppet&quot;</text>
+<text xml:space="preserve" text-anchor="start" x="1331.85" y="-296.5" font-family="Helvetica,sans-Serif" font-size="10.00">upload · fetch · mkdir · trash</text>
+<text xml:space="preserve" text-anchor="start" x="1321.35" y="-286.5" font-family="Helvetica,sans-Serif" font-size="10.00">HMAC&#45;signed · 5&#45;minute window</text>
 </g>
 <!-- api&#45;&gt;gas -->
 <g id="edge25" class="edge">
 <title>api&#45;&gt;gas</title>
-<path fill="none" stroke="#555555" d="M1054.29,-547.27C1103.39,-517.65 1182.23,-468.51 1246.78,-421 1289.75,-389.37 1336.61,-348.92 1364.95,-323.73"/>
-<polygon fill="#555555" stroke="#555555" points="1053.21,-545.47 1049.15,-550.36 1055.38,-549.06 1053.21,-545.47"/>
-<polygon fill="#555555" stroke="#555555" points="1366.16,-325.47 1369.24,-319.91 1363.36,-322.34 1366.16,-325.47"/>
-<text xml:space="preserve" text-anchor="middle" x="1195.03" y="-505.18" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#333333">⑤ upload · ⑥ fetch</text>
-<text xml:space="preserve" text-anchor="middle" x="1195.03" y="-492.43" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#333333">(signed)</text>
+<path fill="none" stroke="#555555" d="M1046.87,-546.84C1123.18,-492.31 1289.77,-373.29 1360.05,-323.08"/>
+<polygon fill="#555555" stroke="#555555" points="1045.83,-545 1042.17,-550.2 1048.27,-548.42 1045.83,-545"/>
+<polygon fill="#555555" stroke="#555555" points="1360.85,-325.08 1364.51,-319.89 1358.41,-321.67 1360.85,-325.08"/>
+<text xml:space="preserve" text-anchor="middle" x="1195.03" y="-496.64" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#333333">⑤ upload (entries, photos</text>
+<text xml:space="preserve" text-anchor="middle" x="1195.03" y="-483.89" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#333333">without location data)</text>
+<text xml:space="preserve" text-anchor="middle" x="1195.03" y="-474.89" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#333333">⑥ fetch (signed)</text>
 </g>
 <!-- api&#45;&gt;mail -->
 <g id="edge18" class="edge">
 <title>api&#45;&gt;mail</title>
-<path fill="none" stroke="#555555" stroke-dasharray="5,2" d="M1033.03,-550.93C1053.55,-530.8 1082.31,-500.67 1103.28,-471 1125.25,-439.91 1120.75,-425.94 1143.28,-395.25 1195.54,-324.03 1209.82,-303.32 1283.1,-254 1298.81,-243.43 1317.4,-234.59 1334.7,-227.63"/>
-<polygon fill="#555555" stroke="#555555" points="1335.28,-229.65 1340.1,-225.51 1333.74,-225.74 1335.28,-229.65"/>
-<text xml:space="preserve" text-anchor="middle" x="1195.03" y="-399.93" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#333333">② planned: 2FA code</text>
+<path fill="none" stroke="#555555" stroke-dasharray="5,2" d="M1034.05,-550.94C1054.89,-531.04 1083.56,-501.23 1103.28,-471 1127.57,-433.74 1117.15,-415.25 1143.28,-379.25 1192.49,-311.42 1213.24,-298.55 1284.23,-254 1300.19,-243.98 1318.77,-235.32 1335.98,-228.34"/>
+<polygon fill="#555555" stroke="#555555" points="1336.54,-230.38 1341.34,-226.21 1334.99,-226.48 1336.54,-230.38"/>
+<text xml:space="preserve" text-anchor="middle" x="1195.03" y="-383.93" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#333333">② planned: 2FA code</text>
 </g>
 <!-- secrets -->
 <g id="node12" class="node">
@@ -380,55 +382,56 @@
 <!-- certdb -->
 <g id="node17" class="node">
 <title>certdb</title>
-<path fill="#ffffff" stroke="#444444" d="M1442.55,-819.6C1442.55,-819.6 1341.9,-819.6 1341.9,-819.6 1335.9,-819.6 1329.9,-813.6 1329.9,-807.6 1329.9,-807.6 1329.9,-794.4 1329.9,-794.4 1329.9,-788.4 1335.9,-782.4 1341.9,-782.4 1341.9,-782.4 1442.55,-782.4 1442.55,-782.4 1448.55,-782.4 1454.55,-788.4 1454.55,-794.4 1454.55,-794.4 1454.55,-807.6 1454.55,-807.6 1454.55,-813.6 1448.55,-819.6 1442.55,-819.6"/>
-<text xml:space="preserve" text-anchor="start" x="1347.6" y="-807.5" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="10.00">Certamen database</text>
-<text xml:space="preserve" text-anchor="start" x="1337.1" y="-797.5" font-family="Helvetica,sans-Serif" font-size="10.00">username · PIN · chapter</text>
-<text xml:space="preserve" text-anchor="start" x="1362.6" y="-787.5" font-family="Helvetica,sans-Serif" font-size="10.00">answers · XP</text>
+<path fill="#ffffff" stroke="#444444" d="M1443.68,-820.6C1443.68,-820.6 1343.03,-820.6 1343.03,-820.6 1337.03,-820.6 1331.03,-814.6 1331.03,-808.6 1331.03,-808.6 1331.03,-795.4 1331.03,-795.4 1331.03,-789.4 1337.03,-783.4 1343.03,-783.4 1343.03,-783.4 1443.68,-783.4 1443.68,-783.4 1449.68,-783.4 1455.68,-789.4 1455.68,-795.4 1455.68,-795.4 1455.68,-808.6 1455.68,-808.6 1455.68,-814.6 1449.68,-820.6 1443.68,-820.6"/>
+<text xml:space="preserve" text-anchor="start" x="1348.73" y="-808.5" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="10.00">Certamen database</text>
+<text xml:space="preserve" text-anchor="start" x="1338.23" y="-798.5" font-family="Helvetica,sans-Serif" font-size="10.00">username · PIN · chapter</text>
+<text xml:space="preserve" text-anchor="start" x="1363.73" y="-788.5" font-family="Helvetica,sans-Serif" font-size="10.00">answers · XP</text>
 </g>
 <!-- certapi&#45;&gt;certdb -->
 <g id="edge31" class="edge">
 <title>certapi&#45;&gt;certdb</title>
-<path fill="none" stroke="#555555" d="M1079.64,-813.18C1149.19,-810.46 1253.68,-806.38 1322.16,-803.7"/>
-<polygon fill="#555555" stroke="#555555" points="1322.07,-805.8 1327.99,-803.47 1321.91,-801.61 1322.07,-805.8"/>
-<text xml:space="preserve" text-anchor="middle" x="1195.03" y="-814.96" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#333333">⑨</text>
+<path fill="none" stroke="#555555" d="M1079.4,-813.38C1149.2,-810.84 1254.4,-807.02 1323.23,-804.51"/>
+<polygon fill="#555555" stroke="#555555" points="1323.17,-806.62 1329.09,-804.3 1323.02,-802.42 1323.17,-806.62"/>
+<text xml:space="preserve" text-anchor="middle" x="1195.03" y="-815.34" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#333333">⑨</text>
 </g>
 <!-- archive -->
 <g id="node16" class="node">
 <title>archive</title>
-<path fill="#ffffff" stroke="#444444" stroke-dasharray="5,2" d="M1482.68,-728.6C1482.68,-728.6 1301.78,-728.6 1301.78,-728.6 1295.78,-728.6 1289.78,-722.6 1289.78,-716.6 1289.78,-716.6 1289.78,-703.4 1289.78,-703.4 1289.78,-697.4 1295.78,-691.4 1301.78,-691.4 1301.78,-691.4 1482.68,-691.4 1482.68,-691.4 1488.68,-691.4 1494.68,-697.4 1494.68,-703.4 1494.68,-703.4 1494.68,-716.6 1494.68,-716.6 1494.68,-722.6 1488.68,-728.6 1482.68,-728.6"/>
-<text xml:space="preserve" text-anchor="start" x="1327.35" y="-716.5" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="10.00">Archive — from 12 Apr 2027</text>
-<text xml:space="preserve" text-anchor="start" x="1313.1" y="-706.5" font-family="Helvetica,sans-Serif" font-size="10.00">person no. + chapter + grade + level</text>
-<text xml:space="preserve" text-anchor="start" x="1296.98" y="-696.5" font-family="Helvetica,sans-Serif" font-size="10.00">+ placements · NO names (pseudonymous)</text>
+<path fill="#ffffff" stroke="#444444" stroke-dasharray="5,2" d="M1483.8,-729.6C1483.8,-729.6 1302.9,-729.6 1302.9,-729.6 1296.9,-729.6 1290.9,-723.6 1290.9,-717.6 1290.9,-717.6 1290.9,-704.4 1290.9,-704.4 1290.9,-698.4 1296.9,-692.4 1302.9,-692.4 1302.9,-692.4 1483.8,-692.4 1483.8,-692.4 1489.8,-692.4 1495.8,-698.4 1495.8,-704.4 1495.8,-704.4 1495.8,-717.6 1495.8,-717.6 1495.8,-723.6 1489.8,-729.6 1483.8,-729.6"/>
+<text xml:space="preserve" text-anchor="start" x="1328.48" y="-717.5" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="10.00">Archive — from 12 Apr 2027</text>
+<text xml:space="preserve" text-anchor="start" x="1314.23" y="-707.5" font-family="Helvetica,sans-Serif" font-size="10.00">person no. + chapter + grade + level</text>
+<text xml:space="preserve" text-anchor="start" x="1298.1" y="-697.5" font-family="Helvetica,sans-Serif" font-size="10.00">+ placements · NO names (pseudonymous)</text>
 </g>
 <!-- maindb&#45;&gt;archive -->
 <g id="edge34" class="edge">
 <title>maindb&#45;&gt;archive</title>
-<path fill="none" stroke="#555555" stroke-dasharray="5,2" d="M1392.23,-583.93C1392.23,-613.78 1392.23,-656.61 1392.23,-683.87"/>
-<polygon fill="#555555" stroke="#555555" points="1390.13,-683.6 1392.23,-689.6 1394.33,-683.6 1390.13,-683.6"/>
-<text xml:space="preserve" text-anchor="middle" x="1378.35" y="-640.3" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#333333">⑫ 12 Apr 2027: keep</text>
-<text xml:space="preserve" text-anchor="middle" x="1378.35" y="-627.55" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#333333">no names, destroy the rest</text>
+<path fill="none" stroke="#555555" stroke-dasharray="5,2" d="M1393.35,-584.93C1393.35,-614.78 1393.35,-657.61 1393.35,-684.87"/>
+<polygon fill="#555555" stroke="#555555" points="1391.25,-684.6 1393.35,-690.6 1395.45,-684.6 1391.25,-684.6"/>
+<text xml:space="preserve" text-anchor="middle" x="1379.48" y="-641.3" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#333333">⑫ 12 Apr 2027: keep</text>
+<text xml:space="preserve" text-anchor="middle" x="1379.48" y="-628.55" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#333333">no names, destroy the rest</text>
 </g>
 <!-- maindb&#45;&gt;sheets -->
 <g id="edge32" class="edge">
 <title>maindb&#45;&gt;sheets</title>
-<path fill="none" stroke="#555555" stroke-dasharray="5,2" d="M1297.2,-516.12C1292.04,-512.2 1287.28,-507.84 1283.1,-503 1229.08,-440.41 1153.94,-216.73 1190.6,-142.62 1214.34,-94.63 1267.64,-65.33 1313.47,-48.23"/>
-<polygon fill="#555555" stroke="#555555" points="1314.12,-50.23 1319.04,-46.21 1312.69,-46.28 1314.12,-50.23"/>
+<path fill="none" stroke="#555555" stroke-dasharray="5,2" d="M1297.35,-517.24C1292.57,-513.56 1288.14,-509.5 1284.23,-505 1229.61,-442.29 1153.74,-217.08 1190.79,-142.62 1214.77,-94.44 1268.46,-65.12 1314.54,-48.06"/>
+<polygon fill="#555555" stroke="#555555" points="1315.21,-50.05 1320.15,-46.05 1313.79,-46.1 1315.21,-50.05"/>
 <text xml:space="preserve" text-anchor="middle" x="1195.03" y="-147.3" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#333333">⑩ results by school</text>
 </g>
 <!-- drive -->
 <g id="node19" class="node">
 <title>drive</title>
-<path fill="#ffffff" stroke="#444444" d="M1461.3,-462C1461.3,-462 1323.15,-462 1323.15,-462 1317.15,-462 1311.15,-456 1311.15,-450 1311.15,-450 1311.15,-438 1311.15,-438 1311.15,-432 1317.15,-426 1323.15,-426 1323.15,-426 1461.3,-426 1461.3,-426 1467.3,-426 1473.3,-432 1473.3,-438 1473.3,-438 1473.3,-450 1473.3,-450 1473.3,-456 1467.3,-462 1461.3,-462"/>
-<text xml:space="preserve" text-anchor="start" x="1342.73" y="-445.5" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="10.00">Drive: contest entries</text>
-<text xml:space="preserve" text-anchor="start" x="1318.35" y="-435.5" font-family="Helvetica,sans-Serif" font-size="10.00">Contest / Chapter / Last, First.ext</text>
+<path fill="#ffffff" stroke="#444444" d="M1487.93,-463.6C1487.93,-463.6 1298.78,-463.6 1298.78,-463.6 1292.78,-463.6 1286.78,-457.6 1286.78,-451.6 1286.78,-451.6 1286.78,-438.4 1286.78,-438.4 1286.78,-432.4 1292.78,-426.4 1298.78,-426.4 1298.78,-426.4 1487.93,-426.4 1487.93,-426.4 1493.93,-426.4 1499.93,-432.4 1499.93,-438.4 1499.93,-438.4 1499.93,-451.6 1499.93,-451.6 1499.93,-457.6 1493.93,-463.6 1487.93,-463.6"/>
+<text xml:space="preserve" text-anchor="start" x="1321.73" y="-451.5" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="10.00">Drive: contest entries + photos</text>
+<text xml:space="preserve" text-anchor="start" x="1319.48" y="-441.5" font-family="Helvetica,sans-Serif" font-size="10.00">Contest / Chapter / Last, First.ext</text>
+<text xml:space="preserve" text-anchor="start" x="1293.98" y="-431.5" font-family="Helvetica,sans-Serif" font-size="10.00">Photo Contest / Category / photo + thumbnail</text>
 </g>
 <!-- gas&#45;&gt;drive -->
 <!-- gas&#45;&gt;drive -->
 <g id="edge26" class="edge">
 <title>gas&#45;&gt;drive</title>
-<path fill="none" stroke="#555555" d="M1392.23,-318.83C1392.23,-344.3 1392.23,-389.84 1392.23,-418.4"/>
-<polygon fill="#555555" stroke="#555555" points="1390.13,-418.11 1392.23,-424.11 1394.33,-418.11 1390.13,-418.11"/>
-<text xml:space="preserve" text-anchor="middle" x="1382.85" y="-370.6" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#333333">⑤</text>
+<path fill="none" stroke="#555555" d="M1393.35,-318.96C1393.35,-344.47 1393.35,-389.96 1393.35,-418.75"/>
+<polygon fill="#555555" stroke="#555555" points="1391.25,-418.53 1393.35,-424.53 1395.45,-418.53 1391.25,-418.53"/>
+<text xml:space="preserve" text-anchor="middle" x="1383.98" y="-370.8" font-family="Helvetica,sans-Serif" font-size="8.50" fill="#333333">⑤</text>
 </g>
 <!-- drive&#45;&gt;scans -->
 <!-- mail&#45;&gt;sheets -->

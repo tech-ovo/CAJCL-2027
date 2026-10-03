@@ -515,6 +515,7 @@ def redact(tx: Tx, school: dict, actor: auth.Principal, person: dict) -> None:
     - Invalidates credentials (code HMAC randomized, sessions revoked).
     - Clears roles and sponsor grants.
     - Unranks and redacts contest entries, quietly trashing associated Drive files.
+    - Deletes photo contest entries, quietly trashing the photos and thumbnails.
     - Redacts historical audit log sentences mentioning the person by name.
     - Redacts occurrences in original roster imports.
     - Records an audited 'person.redact' action with no personal details.
@@ -563,6 +564,19 @@ def redact(tx: Tx, school: dict, actor: auth.Principal, person: dict) -> None:
                 pass
     if contest_entries:
         tx.run("contests.redact_for_person", (now, person_id))
+
+    # 3b. Photo contest entries: a photo may show their face, and its name in
+    # Drive is theirs. Both files are trashed and the rows deleted outright.
+    photo_entries = tx.all("photos.entries_for_person", (person_id,))
+    for entry in photo_entries:
+        for file_id in (entry.get("drive_file_id"), entry.get("drive_thumb_id")):
+            if file_id:
+                try:
+                    drive.client().trash(file_id)
+                except Exception:
+                    pass
+    if photo_entries:
+        tx.run("photos.entries_delete_for_person", (person_id,))
 
     # 4. Roster imports: scrub raw text if imported from a paste
     import_id = person.get("roster_import_id")

@@ -134,7 +134,7 @@ CREATE TABLE roles (
 
 CREATE TABLE role_scopes (
   role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
-  scope   TEXT NOT NULL CHECK (scope IN ('*','registration','academics','awards','sponsor','delegate','chapter','judge')),
+  scope   TEXT NOT NULL CHECK (scope IN ('*','registration','academics','awards','sponsor','delegate','chapter','judge','activities')),
   PRIMARY KEY (role_id, scope)
 );
 
@@ -482,6 +482,51 @@ CREATE INDEX idx_scores_school ON scores (school_id);
 CREATE INDEX idx_scores_item   ON scores (item_id);
 ```
 
+### 2.6 At-Convention Photo Contest
+
+Delegates upload one photo per category from their phones during convention;
+the Activities chair (role `activities_chair`, scope `activities` — global but
+narrow, NOT in `auth.ADMIN_SCOPES`) adds, edits, opens/closes and deletes
+categories and sees every photo with its delegate and chapter (migration 012).
+No image bytes are stored: the photo and a browser-made 480 px thumbnail live
+in Drive under `drive.contests_root` → `Photo Contest/<category>` (thumbnails
+in a `Thumbnails` subfolder), through the same Apps Script puppet as contest
+entries. The browser re-encodes each photo (dropping location/camera
+metadata); `lib/photos.py` strips any Exif/XMP/IPTC that survives. The two
+folder ids are cached on the category after its first photo.
+
+```sql
+CREATE TABLE photo_categories (
+  id               INTEGER PRIMARY KEY,
+  name             TEXT NOT NULL,
+  description      TEXT,
+  accepting        INTEGER NOT NULL DEFAULT 1 CHECK (accepting IN (0, 1)),
+  sort_order       INTEGER NOT NULL DEFAULT 0,
+  drive_folder_id  TEXT,
+  drive_thumbs_id  TEXT,
+  created_at       TEXT NOT NULL,
+  updated_at       TEXT NOT NULL
+);
+CREATE UNIQUE INDEX idx_photo_categories_name ON photo_categories (name COLLATE NOCASE);
+
+CREATE TABLE photo_entries (
+  id               INTEGER PRIMARY KEY,
+  category_id      INTEGER NOT NULL REFERENCES photo_categories(id),
+  person_id        INTEGER NOT NULL REFERENCES people(id),
+  school_id        INTEGER NOT NULL REFERENCES schools(id),
+  caption          TEXT,
+  drive_file_id    TEXT NOT NULL,
+  drive_thumb_id   TEXT,
+  original_name    TEXT NOT NULL,
+  mime_type        TEXT NOT NULL,
+  size_bytes       INTEGER NOT NULL,
+  submitted_at     TEXT NOT NULL,
+  updated_at       TEXT NOT NULL
+);
+CREATE UNIQUE INDEX idx_photo_entries_person   ON photo_entries (person_id, category_id);
+CREATE INDEX        idx_photo_entries_category ON photo_entries (category_id, submitted_at);
+```
+
 ---
 
 ## 3. Natural Language Name Parser Specification
@@ -543,6 +588,9 @@ The ingestion engine processes raw unstructured text from chapter sponsors via `
 | `PUT` | `/me/activity-sheet` | `delegate` | Replaces exam and event selections atomically; rejects post-deadline. |
 | `GET/PUT`| `/me/adult-sheet` | `delegate` (adult)| Manages adult contact details, Latin knowledge, and volunteer roles. |
 | `POST` | `/me/contests/{id}` | `delegate` | Ingests creative contest submission (file, text, or link); passes to Drive. |
+| `GET` | `/me/photos` | `delegate` | Lists photo contest categories with the caller's own photo in each. |
+| `POST/DELETE` | `/me/photos/{category_id}` | `delegate` | Uploads (or replaces, or re-captions) / withdraws the caller's photo; only while the category is accepting. Body carries the photo and thumbnail base64. |
+| `GET` | `/me/photos/{category_id}/file?size=thumb` | `delegate` | Streams the caller's own photo or thumbnail. |
 
 ### 4.4 Double-Blind Judging
 | Method | Route | Required Scope | Summary |
@@ -561,4 +609,8 @@ The ingestion engine processes raw unstructured text from chapter sponsors via `
 | `POST` | `/admin/people/{id}/unlock-forms` | `registration` | Grants temporary post-deadline form modification access. |
 | `GET/PUT`| `/admin/settings` | `*` | Updates global convention parameters (fees, deadlines, venue). |
 | `GET` | `/admin/audit` | `*` | Queries paginated, filterable immutable system audit trail. |
+| `GET` | `/admin/photos` | `activities` | Every photo category with its count, and every photo with delegate and chapter. |
+| `POST` | `/admin/photos/categories` | `activities` | Adds a photo category (name, description, accepting). |
+| `PATCH/DELETE` | `/admin/photos/categories/{id}` | `activities` | Edits / opens / closes a category; deletes it with all its photos (files trashed in Drive). |
+| `GET/DELETE` | `/admin/photos/entries/{id}[/file?size=thumb]` | `activities` | Streams a photo or its thumbnail; takes a photo down. |
 | `POST` | `/admin/export` | `*` | Generates full or anonymized SQL/Excel system backups. |

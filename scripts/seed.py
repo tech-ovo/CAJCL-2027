@@ -290,6 +290,8 @@ class Seeder:
         self._seed_contests(uni, days_ago)
         step("students waiting on a join code")
         self._seed_pending(uni, days_ago)
+        step("the photo contest")
+        self._seed_photos(uni, days_ago)
         step("done")
         self._finish()
         return self.codes
@@ -697,6 +699,35 @@ class Seeder:
                          entity_type="person", entity_id=pid, ts=days_ago(2))
                 self.codes[f"Preliminary delegate: {first} {last} "
                            f"(University High School)"] = code
+
+    def _seed_photos(self, uni: int, days_ago) -> None:
+        """An Activities chair, and the photo contest open with two categories.
+
+        No photos: every photo is a file in Drive, and the seed writes none.
+        Upload one from a delegate's Photos page with DRIVE_LOCAL_DIR set."""
+        with self.db.tx() as tx:
+            _, code = self._person(
+                tx, uni, "Marguerite", "", "Okonkwo", person_type="adult",
+                adult_type="other", role="activities_chair", created=days_ago(30),
+                email="marguerite.okonkwo@example.org", latin_knowledge="novice",
+                meal="regular")
+            self.codes["Activities chair: Marguerite Okonkwo (runs the photo contest)"] = code
+            flower = next(r for r in tx.all("photos.categories")
+                          if r["name"] == "Best flower photo")
+            tx.run("photos.category_update", (
+                flower["name"], flower["description"], 1, flower["sort_order"],
+                days_ago(1), flower["id"]))
+            plush_id = tx.insert("photos.category_create", (
+                "Best stuffed animal photo",
+                "A stuffed animal at convention. Bonus points for a toga.",
+                1, 20, days_ago(1), days_ago(1)))
+            tx.audit("photo_category.update",
+                     "Marguerite Okonkwo opened the photo category Best flower photo.",
+                     entity_type="photo_category", entity_id=flower["id"], ts=days_ago(1),
+                     changed_fields=["accepting"])
+            tx.audit("photo_category.create",
+                     "Marguerite Okonkwo added the photo category Best stuffed animal photo.",
+                     entity_type="photo_category", entity_id=plush_id, ts=days_ago(1))
 
     def _finish(self) -> None:
         """Recompute every counter, and raise the demonstration-data marker."""
