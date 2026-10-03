@@ -140,7 +140,7 @@ Secrets reside exclusively in **Modal Secrets** (`cajcl-2027`) and **GitHub Acti
 
 | Secret Key | Description | Critical Operational Impact |
 | :--- | :--- | :--- |
-| `CODE_PEPPER` | Cryptographic HMAC pepper for access codes. | **FATAL IF CHANGED:** Invalidates all existing access codes system-wide. Requires full credential reissuance. |
+| `CODE_PEPPER` | Cryptographic HMAC pepper for login tokens. | **FATAL IF CHANGED:** Invalidates all existing login tokens system-wide. Requires full credential reissuance. |
 | `TURSO_DATABASE_URL` | TLS endpoint for libSQL database. | Direct database connectivity failure if incorrect. |
 | `TURSO_AUTH_TOKEN` | Bearer token for database read/write. | Authentication failure to database layer. |
 | `MODAL_TOKEN_ID` / `_SECRET`| CI/CD deployment credentials. | GitHub Actions deployment failure. |
@@ -205,7 +205,7 @@ Roles bundle functional permission scopes. Scopes are never assigned to individu
 | `activities` | Photo contest categories and every photo, with names (`#/photo-contest`) | Global, but opens no roster |
 
 *Multi-Chapter Sponsor Association:*  
-If a single teacher manages multiple institutions (e.g., MS and HS delegations), navigate to **Chapters → Select Second Chapter → Use Existing Sponsor**. Adds access scope without duplicating attendee records or access codes.
+If a single teacher manages multiple institutions (e.g., MS and HS delegations), navigate to **Chapters → Select Second Chapter → Use Existing Sponsor**. Adds access scope without duplicating attendee records or login tokens.
 
 ---
 
@@ -237,7 +237,7 @@ Exceeding row read quotas triggers a hard database block. To prevent runaway sca
 | **`WSServerHandshakeError: 400`** | Deprecated `libsql-client` package installed. | Run `pip uninstall libsql-client && pip install libsql`. |
 | **Missing Timezone Database on Windows** | `ZoneInfoNotFoundError: America/Los_Angeles`. | Windows lacks native Olson timezone data. Run `pip install tzdata`. |
 | **GitHub Pages 404 Error** | Workflow execution failed or custom DNS misconfigured. | 1. Review GitHub Actions workflow status.<br>2. Ensure repository secrets (`MODAL_TOKEN_ID`, etc.) are configured.<br>3. Verify `frontend/CNAME` matches DNS records. |
-| **Global Authentication Failure** | Access codes rejected system-wide. | Verify `CODE_PEPPER` in Modal Secrets matches the deployment key. |
+| **Global Authentication Failure** | Login tokens rejected system-wide. | Verify `CODE_PEPPER` in Modal Secrets matches the deployment key. |
 | **Venue Connectivity Outage** | Internet failure at convention site. | Launch local standalone instance (`uvicorn backend.api:app --port 8000` + static file server). All local SQLite features function offline. |
 | **Emergency Notice Requirement** | Need to broadcast critical alert while backend is down. | Edit `frontend/public/announcement.json` directly via GitHub web UI (`"active": true`). Displays across the static shell within 60 seconds without backend dependencies. |
 

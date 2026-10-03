@@ -22,7 +22,7 @@ rules), then `docs/design.md` for the visual rules.
   alphabet, plaintext, NOT a secret) and `join_open`; every new chapter gets one
   (`create_school`), existing ones were backfilled. Student: `#/join[/CODE]`
   (`js/pages/join.js`) → `POST /auth/join` (`lib/joining.py`) creates a delegate
-  with `people.approval = 'pending'`, signs them in, returns the access code
+  with `people.approval = 'pending'`, signs them in, returns the login token
   once. Pending ≠ blocked (they fill in forms) but they are in NO invoice,
   public count, meal, completion, academics or whole-packet figure: every SUM in
   `stats.count_school` carries `approval = 'approved'`; `school_stats.delegates_pending`
@@ -40,6 +40,18 @@ rules), then `docs/design.md` for the visual rules.
   attendees (`public_stats_cache`) and 3 pending delegates seeded at Uni. Open
   question (PRIVACY.md §12): under-13 self-entry before the parent waiver is
   signed.
+- Terminology: a **join code** is the chapter's `XXXX-XXXX`; a **login token**
+  is a person's own sign-in `ABC-XXXXX-XXXXX` (previously "access code" in the
+  UI, docs and printed sheets; code identifiers, the `access_code` field names
+  and the old migrations keep the old word). Never call either one just "code".
+  `joinCodePanel` takes `forChair` (copy for someone who is not approving),
+  `onDone` (adds its own Close, for popups) and `margin`. Dashboard popups sit
+  in a wrapper with `margin-bottom: var(--space-7)`.
+- Audit log (`js/pages/audit.js`): names appear inline as "Name (#id)" linking
+  to `#/roster/{school}/person/{id}`; the roster highlights that row (`.is-target`,
+  `table(..., {rowId})`) and un-hides cancelled people. `audit.recent*` queries
+  join the subject person for `entity_first_name`/`entity_last_name`. A second
+  `#` in a route never matches, so deep links use path segments.
 - Pre-convention contests (migrations 008, 009): `lib/contests.py` (rules, divisions,
   word counts, ballots, ranking), `lib/drive.py` (Apps Script puppet client, or
   `DRIVE_LOCAL_DIR` folder stand-in locally/tests), `queries/contests.sql`,

@@ -68,7 +68,12 @@ export async function dashboardPage(host) {
           onclick: () => { panel = { kind: "school" }; render(); },
         })),
 
-      panel ? renderPanel() : null,
+      // Room under the popup before the table starts. Every popup here ends in
+      // a button row, and a button row's own bottom margin is dropped when it is
+      // the last thing in its container, so the table sat flush against it.
+      panel
+        ? el("div", { style: "margin-bottom:var(--space-7)" }, renderPanel())
+        : null,
 
       table(columns(), rows, {
         sort,
@@ -166,15 +171,14 @@ export async function dashboardPage(host) {
       // panel must show the new one rather than the row it was opened with.
       const fresh = data.schools.find((s) => s.id === panel.school.id)
         || panel.school;
-      return el("div", {},
-        joinCodePanel({
-          school: fresh,
-          reload,
-          print: () => openPrintView(`/sponsor/join-sheet?school_id=${fresh.id}`),
-        }),
-        el("div", { class: "btn-row" },
-          button("Close", { variant: "btn--quiet",
-                            onclick: () => { panel = null; render(); } })));
+      return joinCodePanel({
+        school: fresh,
+        reload,
+        print: () => openPrintView(`/sponsor/join-sheet?school_id=${fresh.id}`),
+        forChair: true,
+        onDone: () => { panel = null; render(); },
+        margin: "0",
+      });
     }
     if (panel.kind === "payment") return paymentPanel(panel.school);
     if (panel.kind === "records") return recordsPanel(panel.school);
@@ -197,7 +201,7 @@ export async function dashboardPage(host) {
         + "again."),
       el("p", { class: "small muted" },
         "Next: open the chapter's roster and use Add the sponsor, then send "
-        + "them their access code and this join code together."),
+        + "them their login token and this join code together."),
       el("div", { class: "btn-row" },
         el("a", { class: "btn btn--primary", href: `#/roster/${created.id}` },
           "Open the roster"),
@@ -427,7 +431,7 @@ export async function dashboardPage(host) {
         el("p", { class: "muted" },
           editing
             ? "Changing the name changes it everywhere, including on sheets "
-              + "printed from now on. Nobody's access code is affected."
+              + "printed from now on. Nobody's login token is affected."
             : "A chapter sending both middle and high school delegates "
               + "registers twice, as two chapters with two sponsors."),
         errors.length ? errorSummary(errors) : null,

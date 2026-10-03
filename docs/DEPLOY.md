@@ -81,7 +81,7 @@ pip install modal
    ```bash
    modal setup
    ```
-2. Generate an immutable cryptographic pepper (used for access code HMACs):
+2. Generate an immutable cryptographic pepper (used for login token HMACs):
    ```bash
    export CODE_PEPPER="$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')"
    # Securely record CODE_PEPPER in a team password manager
@@ -150,7 +150,7 @@ pip install modal
    ```bash
    modal run backend/app.py::board --create-schools
    ```
-3. Credentials are saved to `board-codes.txt`. Distribute these access codes directly to board officers.
+3. Credentials are saved to `board-codes.txt`. Distribute these login tokens directly to board officers.
 
 *Account Recovery & Maintenance Utility:*
 - To regenerate `board.json` from the live database: `modal run backend/app.py::recover_board`
@@ -202,7 +202,7 @@ Execute these validation tests prior to announcing registration availability:
 - [ ] **Health Probe:** `curl -sSf https://<modal-endpoint>/health` returns `{"ok": true}`.
 - [ ] **Public Telemetry:** `curl -sSf https://<modal-endpoint>/public/stats` returns initialized integer values.
 - [ ] **DNS & TLS:** `https://state.uhsjcl.org` resolves securely over HTTPS without SSL warnings.
-- [ ] **Administrative Authentication:** Lead administrator logs in successfully via their designated access code.
+- [ ] **Administrative Authentication:** Lead administrator logs in successfully via their designated login token.
 - [ ] **Roster Ingestion Test:** Ingest a sample 3-person roster on a test chapter, preview output, confirm commit.
 - [ ] **Credential Generation:** Verify packet generation, QR encoding, and print stylesheet formatting.
 - [ ] **Mobile Sign-In:** Confirm QR code scans on iOS and Android devices, successfully authenticating into the portal.

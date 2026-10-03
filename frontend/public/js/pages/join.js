@@ -3,10 +3,10 @@
  * WHO THIS IS FOR
  *   A student holding a handout from their sponsor. No account, no code of
  *   their own yet: they type the chapter's join code with their name, grade
- *   and Latin level, and are signed in and given an access code of their own.
+ *   and Latin level, and are signed in and given a login token of their own.
  *   The QR on the handout opens this page with the join code filled in.
  *
- * THE ACCESS CODE IS SHOWN ONCE
+ * THE LOGIN TOKEN IS SHOWN ONCE
  *   It is stored scrambled and nothing can read it back, so the screen that
  *   shows it asks to be told it has been saved before it lets them go on. A
  *   student who loses it is not stuck -- their sponsor can issue another -- but
@@ -117,12 +117,12 @@ export async function joinPage(host, params = []) {
         el("div", { class: "rail__item" },
           el("p", { class: "label label--ink" }, "What happens next"),
           el("p", { class: "small muted" },
-            "You get an access code of your own, and can fill in your forms "
+            "You get a login token of your own, and can fill in your forms "
             + "straight away. Your sponsor then approves you.")),
         el("div", { class: "rail__item" },
           el("p", { class: "label label--ink" }, "Already registered?"),
           el("p", { class: "small muted" },
-            el("a", { href: "#/sign-in" }, "Sign in with your access code"),
+            el("a", { href: "#/sign-in" }, "Sign in with your login token"),
             "."))),
       el("div", {},
         el("h1", {}, "Join your chapter"),
@@ -132,7 +132,7 @@ export async function joinPage(host, params = []) {
         form)));
   }
 
-  /* The one screen where the access code can be read. */
+  /* The one screen where the login token can be read. */
   function showCode(result) {
     clear(host);
     const saved = el("input", { type: "checkbox", id: "join-saved" });
@@ -150,7 +150,7 @@ export async function joinPage(host, params = []) {
       el("h1", {}, `Welcome, ${result.person.first_name}`),
       el("p", { class: "lede" },
         `You have joined ${result.school.name}.`),
-      el("p", { class: "label" }, "Your access code"),
+      el("p", { class: "label" }, "Your login token"),
       el("p", { class: "tabula__code mono", style: "font-size:1.75rem" },
         result.code),
       el("p", {},
@@ -165,7 +165,7 @@ export async function joinPage(host, params = []) {
       el("label", { class: "choice" }, saved,
         el("span", {},
           el("span", { class: "choice__name" },
-            "I have saved my access code"))),
+            "I have saved my login token"))),
       el("div", { class: "btn-row" },
         button("Copy my code", {
           onclick: async () => {

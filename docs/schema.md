@@ -555,8 +555,8 @@ The ingestion engine processes raw unstructured text from chapter sponsors via `
 ### 4.1 Authentication & Sessions
 | Method | Route | Required Scope | Summary |
 | :--- | :--- | :--- | :--- |
-| `POST` | `/auth/redeem` | *Public* | Validates access code; returns session token and persona profile. Rate limited. |
-| `POST` | `/auth/join` | *Public* | Chapter join code + name, grade, Latin level. Creates a **pending** delegate, signs them in, returns their access code once. Wrong codes rate limited apart from sign-in failures. |
+| `POST` | `/auth/redeem` | *Public* | Validates login token; returns session token and persona profile. Rate limited. |
+| `POST` | `/auth/join` | *Public* | Chapter join code + name, grade, Latin level. Creates a **pending** delegate, signs them in, returns their login token once. Wrong codes rate limited apart from sign-in failures. |
 | `GET` | `/auth/me` | *Any Session* | Returns active identity, assigned roles, scopes, and chapter metadata. |
 | `POST` | `/auth/logout` | *Any Session* | Revokes current session token server-side. |
 | `POST` | `/auth/impersonate`| `*` | Step-up authentication creating a 30-minute read-only support session. |
@@ -567,10 +567,10 @@ The ingestion engine processes raw unstructured text from chapter sponsors via `
 | `GET` | `/sponsor/roster` | `sponsor` | Retrieves single-query consolidated chapter roster and form completion statuses. |
 | `POST` | `/sponsor/roster/parse`| `sponsor` | Executes in-memory parsing; returns preview array and signed idempotency token. |
 | `POST` | `/sponsor/roster/commit`| `sponsor` | Commits previewed roster to database within an audited transaction. |
-| `POST` | `/sponsor/people` | `sponsor` | Provisions single attendee and outputs initial access code. |
+| `POST` | `/sponsor/people` | `sponsor` | Provisions single attendee and outputs initial login token. |
 | `PATCH` | `/sponsor/people/{id}`| `sponsor` | Updates attendee directory fields (name, phone, grade). |
 | `POST` | `/sponsor/people/{id}/cancel` | `sponsor` | Executes soft-cancellation; recalculates invoice and statistics. |
-| `POST` | `/sponsor/people/{id}/regenerate-code` | `sponsor` | Reissues access code and revokes existing sessions. |
+| `POST` | `/sponsor/people/{id}/regenerate-code` | `sponsor` | Reissues login token and revokes existing sessions. |
 | `POST` | `/sponsor/people/{id}/approve` | `sponsor` | Approves a pending (join-code) student; they move into the invoice, public count and meal totals. |
 | `POST` | `/sponsor/people/{id}/deny` | `sponsor` | Denies a pending student: runs the full redaction and leaves an anonymous `denied` row. |
 | `POST` | `/sponsor/approve-all` | `sponsor` | Approves everyone currently pending in the chapter. |

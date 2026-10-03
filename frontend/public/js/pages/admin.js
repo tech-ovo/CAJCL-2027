@@ -980,7 +980,7 @@ export async function adminPage(host) {
       body: "You will see exactly what they see, read-only, for thirty "
           + "minutes. Both names appear in a banner on every page, and this is "
           + "recorded in the log.",
-      label: "Your own access code",
+      label: "Your own login token",
       confirmLabel: "Sign in as them",
       secret: true,
     });

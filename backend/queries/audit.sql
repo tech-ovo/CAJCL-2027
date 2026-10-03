@@ -24,10 +24,14 @@ SELECT a.id, a.ts_utc, a.action, a.summary, a.entity_type, a.entity_id,
        actor.last_name   AS actor_last_name,
        imp.first_name    AS impersonator_first_name,
        imp.last_name     AS impersonator_last_name,
+       subject.first_name AS entity_first_name,
+       subject.last_name  AS entity_last_name,
        s.name            AS school_name
 FROM audit_log a
 LEFT JOIN people  actor ON actor.id = a.actor_person_id
 LEFT JOIN people  imp   ON imp.id   = a.impersonator_person_id
+-- The person an entry is ABOUT, so the log can name them beside their number.
+LEFT JOIN people  subject ON a.entity_type = 'person' AND subject.id = a.entity_id
 LEFT JOIN schools s     ON s.id     = a.school_id
 WHERE a.id < ?
 ORDER BY a.id DESC
@@ -42,10 +46,14 @@ SELECT a.id, a.ts_utc, a.action, a.summary, a.entity_type, a.entity_id,
        actor.last_name  AS actor_last_name,
        imp.first_name   AS impersonator_first_name,
        imp.last_name    AS impersonator_last_name,
+       subject.first_name AS entity_first_name,
+       subject.last_name  AS entity_last_name,
        s.name           AS school_name
 FROM audit_log a
 LEFT JOIN people  actor ON actor.id = a.actor_person_id
 LEFT JOIN people  imp   ON imp.id   = a.impersonator_person_id
+-- The person an entry is ABOUT, so the log can name them beside their number.
+LEFT JOIN people  subject ON a.entity_type = 'person' AND subject.id = a.entity_id
 LEFT JOIN schools s     ON s.id     = a.school_id
 WHERE a.school_id = ? AND a.id < ?
 ORDER BY a.id DESC

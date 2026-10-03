@@ -31,7 +31,7 @@ uvicorn backend.api:app --reload --port 8000
 python -m http.server 8080 --directory frontend/public
 ```
 
-Open <http://localhost:8080>. The seed prints the access codes you need.
+Open <http://localhost:8080>. The seed prints the login tokens you need.
 
 Run the tests with `python -m pytest backend/tests -q`.
 

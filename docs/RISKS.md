@@ -36,10 +36,10 @@ Risks are categorized across severity, likelihood, and mitigation state:
 
 | Risk Scenario | Impact | Severity | Status | Mitigation & Architectural Defense |
 | :--- | :--- | :--- | :--- | :--- |
-| **Session Invalidation Desync** | Attendee maintains active sessions after credential reissuance. | High | **MITIGATED** | Access code regeneration executes an atomic transaction revoking all active sessions derived from the predecessor credential, returning HTTP 401 on subsequent requests. |
-| **Unusable Paper Reprints** | Sponsors generate printed sheets missing raw access codes. | Medium | **MITIGATED** | Since plaintext codes are never persisted, the portal forbids generic full-roster packet reprints. Replacement requires invoking the **Issue New Codes** workflow, which surfaces plaintext credentials once alongside a dedicated print link. |
+| **Session Invalidation Desync** | Attendee maintains active sessions after credential reissuance. | High | **MITIGATED** | Login token regeneration executes an atomic transaction revoking all active sessions derived from the predecessor credential, returning HTTP 401 on subsequent requests. |
+| **Unusable Paper Reprints** | Sponsors generate printed sheets missing raw login tokens. | Medium | **MITIGATED** | Since plaintext codes are never persisted, the portal forbids generic full-roster packet reprints. Replacement requires invoking the **Issue New Codes** workflow, which surfaces plaintext credentials once alongside a dedicated print link. |
 | **Shared Terminal Exposure** | Students abandon active sessions on shared school computers. | Medium | **PARTIAL** | Prominent global sign-out immediately revokes sessions server-side. Account dashboard permits selective remote revocation. 180-day default longevity accepted to accommodate young students lacking persistent devices. |
-| **Keyspace Enumeration** | Brute-force guessing attacks targeting 13-character access codes. | Critical | **MITIGATED** | 44.6 bits of entropy combined with keyed `HMAC-SHA256(CODE_PEPPER, code)`. Enforces dual-layer rate limiting: 5 failed attempts per code/hour; 10 failed attempts per IP/15 minutes. |
+| **Keyspace Enumeration** | Brute-force guessing attacks targeting 13-character login tokens. | Critical | **MITIGATED** | 44.6 bits of entropy combined with keyed `HMAC-SHA256(CODE_PEPPER, code)`. Enforces dual-layer rate limiting: 5 failed attempts per code/hour; 10 failed attempts per IP/15 minutes. |
 | **Checksum False Positives** | Keyboard input confusion passing Luhn/checksum checks. | Medium | **MITIGATED** | Alphabet excludes ambiguous symbols (`I`, `L`, `O`, `Z`). Check character represents a position-weighted modulo-31 checksum over exactly 31 distinct characters. |
 
 ---

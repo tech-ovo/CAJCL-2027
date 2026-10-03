@@ -85,7 +85,7 @@ def _pepper() -> bytes:
     if not raw:
         if os.environ.get("CAJCL_ENV") == "production":
             raise RuntimeError(
-                "CODE_PEPPER is not set. Every access code in the database was "
+                "CODE_PEPPER is not set. Every login token in the database was "
                 "hashed with it; without it nobody can log in. See docs/RUNBOOK.md."
             )
         raw = "development-pepper-not-for-production"
@@ -98,7 +98,7 @@ def hash_ip(ip: str | None) -> str:
     PEPPERED, NOT PLAIN. An unpeppered SHA-256 of an IP address is barely a
     hash at all: IPv4 is 2^32 addresses, so anybody holding the database can
     recover every one of them by hashing the whole space, which is minutes of
-    ordinary hardware. That is the same argument the access codes are peppered
+    ordinary hardware. That is the same argument the login tokens are peppered
     for, and it applies here with far more force -- a code has 44.6 bits of
     entropy and an IP has 32 at the very most.
 

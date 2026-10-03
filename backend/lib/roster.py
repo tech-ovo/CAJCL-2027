@@ -458,14 +458,14 @@ def regenerate_code(tx: Tx, school: dict, actor: auth.Principal, person: dict) -
     whose QR no longer works, with no obvious way to produce a new one.
     """
     if person.get("first_name") == "REDACTED":
-        raise RosterError("A redacted attendee cannot have their access code reissued.")
+        raise RosterError("A redacted attendee cannot have their login token reissued.")
     new_code = auth.issue_code(tx, person["id"], person["code_prefix"])
     tx.run("auth.session_revoke_all_for_person", (clock.now_iso(), person["id"]))
 
     name = f"{person['first_name']} {person['last_name']}".strip()
     tx.audit(
         "person.code_regenerate",
-        f"{actor.display_name} issued a new access code for {name}. "
+        f"{actor.display_name} issued a new login token for {name}. "
         f"The previous code and every device signed in with it stopped working.",
         actor_person_id=actor.person_id,
         impersonator_person_id=actor.impersonator_person_id,

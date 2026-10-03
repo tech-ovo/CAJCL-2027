@@ -2,7 +2,7 @@
 
 The promises worth pinning down:
 
-  * a student joins, is signed in, and holds a working access code -- all
+  * a student joins, is signed in, and holds a working login token -- all
     without a sponsor lifting a finger;
   * until approved they are in NO money or meal figure, and approval moves them
     into all of it;
@@ -70,7 +70,7 @@ def test_a_student_joins_is_signed_in_and_holds_a_working_code(fx, client):
     # The session works...
     me = client.get("/auth/me", headers=bearer(body["token"])).json()
     assert me["approval"] == "pending"
-    # ...and so does the access code, on a fresh sign-in.
+    # ...and so does the login token, on a fresh sign-in.
     again = client.post("/auth/redeem", json={"code": body["code"]})
     assert again.status_code == 200
     assert again.json()["person"]["approval"] == "pending"
@@ -375,7 +375,7 @@ def test_wrong_join_codes_are_limited_but_never_block_signing_in(fx, client):
     assert limited.status_code == 429
 
     # The real code is limited too -- the cost of a flood from one network --
-    # but signing in with an access code is a separate limiter entirely.
+    # but signing in with an login token is a separate limiter entirely.
     assert join(client, fx).status_code == 429
     assert client.post("/auth/redeem",
                        json={"code": fx.codes["delegate"]}).status_code == 200

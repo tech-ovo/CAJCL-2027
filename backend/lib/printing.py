@@ -333,7 +333,7 @@ def render_packet(tx: Tx, school: dict, *, only_person: int | None = None,
         people = [wanted[i] for i in only_people if i in wanted]
     else:
         # THE WHOLE PACKET IS APPROVED PEOPLE ONLY. A student waiting for
-        # approval already holds their own access code, shown to them once
+        # approval already holds their own login token, shown to them once
         # when they joined, so there is no readable code to print for them.
         # Asking for one by name (a reissue) is a different matter and is
         # honoured above.
@@ -424,8 +424,8 @@ def _person_number(school: dict, person: dict) -> str:
     site. The old number was `people.id` padded to four digits, which is a row
     id and reads like one.
 
-    NOT A SECRET, and it must never become one. It is printed beside the access
-    code and is deliberately guessable, like a seat number. The code itself
+    NOT A SECRET, and it must never become one. It is printed beside the login
+    token and is deliberately guessable, like a seat number. The code itself
     stays nine random characters and encodes nothing about who holds it.
     """
     chapter = _field(school, "number") or 0

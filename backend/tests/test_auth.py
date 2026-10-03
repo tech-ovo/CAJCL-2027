@@ -373,7 +373,7 @@ def test_an_ip_hash_cannot_be_reversed_by_hashing_the_whole_address_space():
 
     Anybody holding the database could recover every IP it stores by hashing
     the entire space -- minutes on ordinary hardware -- which is the same
-    argument the access codes are peppered for, applying with more force: a
+    argument the login tokens are peppered for, applying with more force: a
     code has 44.6 bits of entropy and an IP has at most 32.
 
     The check is that the stored value depends on the pepper, so the space

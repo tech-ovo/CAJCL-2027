@@ -8,7 +8,7 @@
 
 ## 1. System Overview & Authentication
 
-The CAJCL Registration Platform operates entirely without conventional username/password pairs. Access control uses deterministic, cryptographically hashed access codes.
+The CAJCL Registration Platform operates entirely without conventional username/password pairs. Access control uses deterministic, cryptographically hashed login tokens.
 
 ### Credential Format
 Every attendee is provisioned a unique 13-character identifier formatted as `PPP-XXXXX-XXXXX`:
@@ -54,8 +54,8 @@ Navigate to **Chapters → Add a chapter**:
 ### Assigning Chapter Sponsors
 1. Once a chapter record is created, click **Add Sponsor**.
 2. Complete the legal name and adult profile.
-3. **Record the Access Code:** The generated `SPO-...` code is displayed **once**. Transmit this credential securely to the chapter sponsor via the official launch template.
-4. **Forward the Join Code:** Every chapter has an 8-character join code (shown on the confirmation after *Add a chapter*, in the *Add Sponsor* confirmation, and any time from **Chapters → Join code**). Put it in the same email. Unlike the access code it is **not** a secret and can be viewed again.
+3. **Record the Login Token:** The generated `SPO-...` code is displayed **once**. Transmit this credential securely to the chapter sponsor via the official launch template.
+4. **Forward the Join Code:** Every chapter has an 8-character join code (shown on the confirmation after *Add a chapter*, in the *Add Sponsor* confirmation, and any time from **Chapters → Join code**). Put it in the same email. Unlike the login token it is **not** a secret and can be viewed again.
 
 ---
 
@@ -71,14 +71,14 @@ salvē [Sponsor Name],
 Registration is officially open for the 72nd California Junior Classical League State Convention, held March 12–13, 2027, hosted jointly by University High School and Woodbridge High School.
 
 Access the digital registration platform at: https://state.uhsjcl.org
-Your Chapter Access Code: [SPO-XXXXX-XXXXX]
+Your Chapter Login Token: [SPO-XXXXX-XXXXX]
 Your Chapter Join Code:   [XXXX-XXXX]
 
 ======================================================================
 OPERATIONAL WORKFLOW
 ======================================================================
-1. Access the Portal: Sign in using your unique sponsor access code above.
-2. Print the Join Sheet: On your Roster page choose "Print the join sheet" and print one copy for every student you expect, with the paper waiver and medical forms behind it. Students go to the site, choose "Join your chapter", and type the join code (or scan the QR) with their name, grade and Latin level. They receive their own access code and can fill in their forms immediately.
+1. Access the Portal: Sign in using your unique sponsor login token above.
+2. Print the Join Sheet: On your Roster page choose "Print the join sheet" and print one copy for every student you expect, with the paper waiver and medical forms behind it. Students go to the site, choose "Join your chapter", and type the join code (or scan the QR) with their name, grade and Latin level. They receive their own login token and can fill in their forms immediately.
 3. Approve Students: Joined students appear under "Waiting for approval" on your Roster. Approve each one (or all at once); until you do, their registration is preliminary and is not on your invoice. Deny anyone who should not be there: all of their data is removed.
 4. Prefer to type a list? You can still paste your roster (names only) into the Roster Import tool and hand out individual access sheets; those students are approved automatically.
 5. Digital Activity Sheets: Attendees sign in individually to submit their test and workshop preferences.
@@ -160,13 +160,13 @@ From **Chapters → Roster**, administrators execute attendee-level intervention
 | Operation | Trigger & Standard Procedure |
 | :--- | :--- |
 | **Paste Roster** | Ingest new batch of attendees for a chapter. Supports additive uploads without overwriting existing entries. |
-| **Add Person** | Provision a single delegate or adult. Generates and surfaces the access code once. |
+| **Add Person** | Provision a single delegate or adult. Generates and surfaces the login token once. |
 | **Join Code** | Shown on every roster and under **Chapters → Join code**. Print the join sheet, close/reopen joining, or replace the code (old one stops working at once). |
 | **Approve / Deny** | Students who joined by code wait in the roster's *Waiting for approval* panel, marked **Preliminary**. The sponsor approves or denies; a chair can see them (and their separate count on Chapters and Overview) but must sign in as the sponsor to decide. Denial removes all of the student's data. |
-| **Edit Profile** | Correct spelling, suffix, or emergency guardian contact info. Does not alter access codes or invalidate sessions. |
+| **Edit Profile** | Correct spelling, suffix, or emergency guardian contact info. Does not alter login tokens or invalidate sessions. |
 | **Administrative Submission** | Populate an attendee's digital form on their behalf; logged with administrative actor attribution. |
 | **Team Athletics Entry** | Register chapter rosters for aggregate activities (Kickball, Ultimate Frisbee, etc.). |
-| **Reissue Access Code** | Regenerates access code on loss. Immediately invalidates former credential and active sessions. |
+| **Reissue Login Token** | Regenerates login token on loss. Immediately invalidates former credential and active sessions. |
 | **Reopen Form** | Bypasses deadline lock for an individual registrant, allowing post-deadline modifications. |
 | **Waive Activity Sheet** | Applies exclusively to walk-on attendees registered at the Friday desk, removing completion blockers. |
 | **Cancel Attendee** | Soft-deletes attendee from active headcounts while retaining billing audit integrity. Fully reversible. |
@@ -179,7 +179,7 @@ From **Chapters → Roster**, administrators execute attendee-level intervention
 | :--- | :--- | :--- |
 | **Lost Credentials** | Attendee misplaced paper credential sheet. | Open chapter roster, locate individual, click **New Code**. Instruct sponsor to print replacement sheet immediately. Old code is voided. |
 | **Authentication Rejection** | User receiving "Code Not Recognized". | 1. Confirm code has not been superseded by a newer reissuance.<br>2. Check for temporary rate limit (5 failed attempts within 60 minutes triggers lockout).<br>3. Verify input against Crockford Base32 characters (system auto-corrects `O` to `0`, but check character validates structure). |
-| **Attendee Profile Correction** | Name misspelled or incorrect grade. | Click **Edit** on roster row. Access code remains unchanged; printout remains valid. |
+| **Attendee Profile Correction** | Name misspelled or incorrect grade. | Click **Edit** on roster row. Login token remains unchanged; printout remains valid. |
 | **Form Revisions Post-Deadline** | Delegate requires category/test adjustment after February 13 lock. | Click **Reopen Form**. Delegate edits directly. Click **Close Form** upon resolution (form lock re-engages). |
 | **Payment Ledger Discrepancy** | Check amount entered incorrectly. | Post an offsetting adjustment transaction with sign inverted (`-` or `+`) and detailed ledger memo. |
 | **Invoice Variance** | Chapter claims fee calculation is inaccurate. | 1. Compare against live web roster rather than historical PDF printouts.<br>2. Verify adult-to-delegate ratio (1 free adult per 10 delegates; 11th delegate unlocks 2nd free adult).<br>3. Check if manual discounts were properly logged. |

@@ -132,6 +132,10 @@ a:hover { text-decoration-thickness: 2px; }
 
 .lede { font-size: var(--size-md); color: var(--text); }
 .muted { color: var(--text-muted); }
+/* A name the page borrows from the interface -- a button or a link the reader
+ * is being told to find -- set in the interface's own face so it can be matched
+ * against the screen. */
+.term { font-family: var(--font-sans); font-weight: var(--weight-semi); color: var(--text); }
 .small { font-size: var(--size-sm); }
 
 hr.rule { border: 0; border-top: var(--border-strong); margin: var(--space-6) 0; }
@@ -603,7 +607,7 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); opacity: 1
 .form-errors h2 { font-family: var(--font-sans); font-size: var(--size-sm); margin-bottom: var(--space-2); }
 .form-errors ul { margin: 0; padding-left: var(--space-5); }
 
-/* The access code, one character per box.
+/* The login token, one character per box.
  *
  * The dashes are DRAWN, not typed. A single field looked like it wanted them,
  * and typing one into a field that strips and re-inserts them made the caret
@@ -735,6 +739,10 @@ legend { padding: 0; }
  * being printed in black and white. The row also carries the word
  * "Cancelled", so nothing depends on the styling. */
 .table tbody tr.is-inactive td { font-style: italic; }
+/* The row a link pointed at. A wash and a rule, so it holds up in both themes
+ * and for a reader who cannot tell the two tints apart. */
+.table tbody tr.is-target td { background: var(--tint); }
+.table tbody tr.is-target td:first-child { box-shadow: inset 3px 0 0 var(--link); }
 
 /* A right-aligned column must keep its right padding. Without it the heading
  * of the NEXT column starts at the exact pixel this one ends, and "Grade"

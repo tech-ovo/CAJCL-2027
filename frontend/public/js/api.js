@@ -141,7 +141,7 @@ export async function getText(path) {
 /* The same, for a print view whose input will not fit in a URL.
  *
  * The packet is posted rather than fetched because the request body carries
- * access codes. In a query string they would sit in the browser's history, in
+ * login tokens. In a query string they would sit in the browser's history, in
  * the referrer of anything the printed page links to, and in every access log
  * between here and Modal. */
 export async function postText(path, body) {

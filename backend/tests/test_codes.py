@@ -1,4 +1,4 @@
-"""Access code generation and the check symbol.
+"""Login token generation and the check symbol.
 
 The check symbol's only job is to catch a typing mistake before it reaches the
 rate limiter. These tests prove it catches the two mistakes people actually

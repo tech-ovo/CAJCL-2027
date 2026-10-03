@@ -7,7 +7,7 @@ THE PROBLEM THIS SOLVES
     one. Pasting a roster up front made them collect every name twice.
 
     So a chapter has a JOIN CODE. A student types it, gives their name, grade
-    and Latin level, and is handed an ordinary access code -- the same kind a
+    and Latin level, and is handed an ordinary login token -- the same kind a
     sponsor-pasted roster produces, hashed the same way, used to sign in the
     same way. The only difference is that the student is PENDING until their
     sponsor approves them.
@@ -19,7 +19,7 @@ PENDING IS NOT BLOCKED
     caterer's meal totals (see stats.sql). Approval moves them into all of it.
     Denial removes them -- roster.deny -- and leaves only an anonymous row.
 
-THE JOIN CODE IS NOT A SECRET IN THE WAY AN ACCESS CODE IS
+THE JOIN CODE IS NOT A SECRET IN THE WAY AN LOGIN TOKEN IS
     It is printed on every packet and shown on the sponsor's screen, so it is
     stored as-is rather than hashed. The most it can do is create one more
     PENDING delegate in one chapter. What bounds that:
@@ -63,14 +63,14 @@ LATIN_LEVELS = ("MS-1", "MS-2", "MS-3", "HS-1", "HS-2", "HS-3", "HS-Adv")
 # ---------------------------------------------------------------------------
 
 def generate() -> str:
-    """Eight characters from the access-code alphabet. Stored without a dash."""
+    """Eight characters from the login-token alphabet. Stored without a dash."""
     return "".join(secrets.choice(codes.ALPHABET) for _ in range(CODE_LENGTH))
 
 
 def normalize(raw: str) -> str:
     """What a student typed -> what is stored. Raises ValueError if it cannot be.
 
-    Forgiving in the same ways the access code is: case, dashes, spaces, and
+    Forgiving in the same ways the login token is: case, dashes, spaces, and
     the letters that look like digits.
     """
     stripped = "".join(str(raw or "").split()).replace("-", "").replace("–", "").upper()
@@ -145,7 +145,7 @@ def set_open(tx: Tx, school: dict, actor: auth.Principal, is_open: bool) -> None
 class Joined:
     token: str
     principal: auth.Principal
-    code: str                 # the access code, readable ONCE
+    code: str                 # the login token, readable ONCE
     school: dict
 
 
@@ -251,7 +251,7 @@ def join(db, raw_code: str, payload: dict, *, ip: str | None = None,
         first, last, grade, level = _clean_basics(school, payload)
 
         # THE SAME NAME TWICE IS ALMOST ALWAYS THE SAME PERSON joining again
-        # after losing their access code -- and a second account for them is a
+        # after losing their login token -- and a second account for them is a
         # row the sponsor then has to find and deny. Stopped with the real
         # remedy instead. Two genuinely identical names are rare enough for the
         # sponsor to add one by hand.
@@ -261,7 +261,7 @@ def join(db, raw_code: str, payload: dict, *, ip: str | None = None,
                     (row["last_name"] or "").casefold()) == wanted:
                 raise catalog.ValidationError([
                     "Someone with that name has already joined this chapter. "
-                    "If that was you and you lost your access code, ask your "
+                    "If that was you and you lost your login token, ask your "
                     "sponsor to issue you a new one."])
 
         waiting = tx.value("people.pending_count", (school["id"],), default=0)

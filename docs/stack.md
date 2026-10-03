@@ -84,11 +84,11 @@ Exceeding Turso read limits yields an unrecoverable `BLOCKED` status. To guarant
 ### Credential Design & Entropy
 - **Format:** `PPP-XXXXX-XXXXX` (3-character role prefix + 9 Crockford Base32 characters + 1 modulo-31 checksum).
 - **Entropy Calculation:** $9 \times \log_2(31) \approx 44.6\text{ bits}$ ($\approx 2.6 \times 10^{13}$ unique keyspace).
-- **Salted Hash Persistence:** Access codes are stored exclusively as `HMAC-SHA256(CODE_PEPPER, code)`. The pepper is isolated in Modal Secrets; database compromise does not reveal raw access codes.
+- **Salted Hash Persistence:** Login tokens are stored exclusively as `HMAC-SHA256(CODE_PEPPER, code)`. The pepper is isolated in Modal Secrets; database compromise does not reveal raw login tokens.
 - **Session Tokens:** 256-bit cryptographically secure pseudorandom values stored as plain SHA-256 hashes on the server.
 
 ### URL Fragment Credential Delivery (Magic Links)
-- Attendee printouts feature QR codes encoding the access code within the URL fragment:  
+- Attendee printouts feature QR codes encoding the login token within the URL fragment:  
   `https://state.uhsjcl.org/#/enter/DEL-XXXXX-XXXXX`
 - **Security Boundary:** URL fragments are processed client-side and never transmitted in HTTP requests, access logs, or `Referer` headers. Client JavaScript redeems the fragment for a session token and invokes `history.replaceState()` to expunge the credential from browser history.
 

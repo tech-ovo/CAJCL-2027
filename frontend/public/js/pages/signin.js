@@ -99,7 +99,7 @@ export async function signInPage(host) {
 
     const codeInput = el("div",
       { class: "code-boxes", role: "group",
-        "aria-label": "Your access code, thirteen characters" },
+        "aria-label": "Your login token, thirteen characters" },
       ...boxes.slice(0, 3),
       el("span", { class: "code-boxes__dash", "aria-hidden": "true" }, "–"),
       ...boxes.slice(3, 8),
@@ -145,7 +145,7 @@ export async function signInPage(host) {
     add(form, 
       error ? errorSummary([error]) : null,
       el("div", { class: "field field--wide" },
-        el("p", { class: "field__label label label--ink" }, "Your access code"),
+        el("p", { class: "field__label label label--ink" }, "Your login token"),
         codeInput,
         el("p", { class: "field__help" },
           "Printed on your registration sheet. Case does not matter, and you "

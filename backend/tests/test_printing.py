@@ -605,7 +605,7 @@ def test_the_pdf_endpoint_hands_back_the_bytes_it_was_given(fx, pdf_client,
 
 def test_the_codes_reach_the_renderer(fx, pdf_client, monkeypatch):
     """The bug that made this path pointless before it had a caller: the
-    packet rendered blocks where every access code belongs, because nothing
+    packet rendered blocks where every login token belongs, because nothing
     passed them down. A PDF full of blocks is not a reprint."""
     fake = FakeModal().install(monkeypatch)
 

@@ -9,7 +9,7 @@
 ## 1. Executive Summary & Security Principles
 
 The CAJCL convention platform security model is built on four core architectural principles:
-1. **Zero Cleartext Credentials:** The system stores zero plaintext passwords, access codes, or session tokens.
+1. **Zero Cleartext Credentials:** The system stores zero plaintext passwords, login tokens, or session tokens.
 2. **Strict Data Minimization:** High-risk elements (student emails, home addresses, dates of birth, payment cards, medical files) are never ingested into the digital database.
 3. **Role-Based Isolation (RBAC):** Every API endpoint enforces declarative permission scopes and strict institutional tenancy boundaries.
 4. **Automated Continuous Assurance:** Automated test suites validate that every API route enforces authentication and tenancy isolation before code merges.
@@ -29,7 +29,7 @@ graph TD
     IssueToken --> Client[Return Token to Browser localStorage]
 ```
 
-### Access Code Cryptographic Design
+### Login Token Cryptographic Design
 - **Credential Format:** `PPP-XXXXX-XXXXX` (3-character role prefix + 9 Crockford Base32 characters + 1 modulo checksum symbol).
 - **Entropy:** $9 \times \log_2(31) \approx 44.6\text{ bits}$ ($\approx 2.6 \times 10^{13}$ unique combinations).
 - **Storage Protection:** Stored strictly as `HMAC-SHA256(CODE_PEPPER, normalized_code)`. The `CODE_PEPPER` resides exclusively in Modal Secrets and is never exposed to client applications or the database engine.
@@ -39,7 +39,7 @@ graph TD
 
 | Protective Boundary | Threshold Limit | System Action | Threat Mitigated |
 | :--- | :--- | :--- | :--- |
-| **Per-Code Bucket** | 5 incorrect attempts per hour | Target access code temporarily disabled for 60 minutes. | Targeted guessing against a specific student or sponsor code. |
+| **Per-Code Bucket** | 5 incorrect attempts per hour | Target login token temporarily disabled for 60 minutes. | Targeted guessing against a specific student or sponsor code. |
 | **Per-IP Address Bucket** | 10 incorrect attempts per 15 minutes | Source IP locked out from authentication endpoints. | Automated distributed credential-stuffing sweeps. |
 
 | **Join-Code Failures (per IP)** | 30 incorrect join codes per 15 minutes | Source IP refused further join attempts. | Walking the 8-character join-code space. Counted apart from sign-in failures (stored with a leading `j`), so a classroom typing one printed code cannot lock anyone out of signing in. |
@@ -76,7 +76,7 @@ person_roles  ──>  roles  ──>  role_scopes  ──>  [Route Guard Evalua
 
 ### Deliberate Architectural Boundary: Unencrypted Directory Data
 - Database volume encryption protects data at rest against physical storage theft.
-- However, application-level column encryption is deliberately omitted for attendee names and emergency contact details to maintain high-performance SQL indexing, sorting, and reporting. Security relies on API route authorization, secret isolation, and access code hashing.
+- However, application-level column encryption is deliberately omitted for attendee names and emergency contact details to maintain high-performance SQL indexing, sorting, and reporting. Security relies on API route authorization, secret isolation, and login token hashing.
 
 ---
 
@@ -98,10 +98,10 @@ person_roles  ──>  roles  ──>  role_scopes  ──>  [Route Guard Evalua
 | :--- | :--- | :--- | :--- |
 | **Leaked Join Code** | Handout photographed or posted publicly. | Spam *pending* accounts in one chapter (never billed, counted or shown publicly; capped at 150). | Sponsor closes joining or replaces the code; denies spam entries (full redaction). |
 | **Misplaced Physical Packet** | Paper sheet left in classroom or photographed. | Exposure of 1 chapter roster (~30 delegate names). | Sponsor or admin clicks **Reissue Code**; voids former code and terminates active sessions immediately. |
-| **Administrative Credential Leak** | Board access code exposed. | State-wide roster and reporting access. | System admin revokes compromised board role; regenerates access code; audits transaction log for unauthorized actions. |
+| **Administrative Credential Leak** | Board login token exposed. | State-wide roster and reporting access. | System admin revokes compromised board role; regenerates login token; audits transaction log for unauthorized actions. |
 | **Shared Terminal Session Abandonment** | User forgets to sign out on a shared Chromebook. | Unauthorized access via active session. | Global sign-out control revokes session token server-side; account dashboard permits selective remote revocation. |
-| **Turso Database Token Exfiltration** | Database connection string compromised. | Relational database compromised; access codes remain protected by HMAC. | Immediately rotate `TURSO_AUTH_TOKEN` in Turso and update Modal Secret bundle. |
-| **Modal Secrets Exfiltration** | Complete secret bundle exposed (`CODE_PEPPER` + DB tokens). | Database access plus ability to brute-force access codes. | Critical incident: Regenerate pepper, rebuild database credentials, batch-reissue all convention credentials system-wide. |
+| **Turso Database Token Exfiltration** | Database connection string compromised. | Relational database compromised; login tokens remain protected by HMAC. | Immediately rotate `TURSO_AUTH_TOKEN` in Turso and update Modal Secret bundle. |
+| **Modal Secrets Exfiltration** | Complete secret bundle exposed (`CODE_PEPPER` + DB tokens). | Database access plus ability to brute-force login tokens. | Critical incident: Regenerate pepper, rebuild database credentials, batch-reissue all convention credentials system-wide. |
 
 ---
 

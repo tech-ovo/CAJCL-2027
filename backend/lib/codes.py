@@ -1,4 +1,4 @@
-"""Access codes: generation, normalization, the check symbol, and the HMAC.
+"""Login tokens: generation, normalization, the check symbol, and the HMAC.
 
 Pure functions. Nothing here touches the database or the network, so all of it
 is testable in isolation and none of it can leak.

@@ -14,7 +14,7 @@ these people rather than duplicating them.
 No student. No parent. No guardian. Not one.
 
 The whole thing is reproducible from a fixed seed, so re-running it produces the
-same schools, the same rosters, and the same spread of completion. Access codes
+same schools, the same rosters, and the same spread of completion. Login tokens
 are the deliberate exception: they come from `secrets`, never from the seeded
 generator, because a reproducible credential is not a credential. The script
 prints the ones a presenter needs and writes them to demo-codes.txt, which is
@@ -732,7 +732,7 @@ class Seeder:
     def _finish(self) -> None:
         """Recompute every counter, and raise the demonstration-data marker."""
         # Every chapter gets its join code, as a chapter made on the dashboard
-        # would. Shown beside the access codes: a presenter needs both.
+        # would. Shown beside the login tokens: a presenter needs both.
         with self.db.tx() as tx:
             for school in tx.all("schools.all_including_organizations"):
                 if school["kind"] != "chapter":
@@ -780,7 +780,7 @@ def main() -> int:
           f"({public['schools_ms']} middle school, {public['schools_hs']} high school)")
     print(f"  {public['delegates']} delegates, {public['adults']} adults")
     print()
-    print("ACCESS CODES FOR THE DEMO (also written to demo-codes.txt)")
+    print("LOGIN TOKENS FOR THE DEMO (also written to demo-codes.txt)")
     print("These are freshly generated every run: a reproducible code is not a code.")
     print()
     lines = [f"{label}\n    {code}" for label, code in codes.items()]
@@ -789,7 +789,7 @@ def main() -> int:
 
     out = pathlib.Path("demo-codes.txt")
     out.write_text(
-        "Demonstration access codes - fabricated data, safe to lose.\n"
+        "Demonstration login tokens - fabricated data, safe to lose.\n"
         "Regenerated every time scripts/seed.py runs.\n\n" + "\n".join(lines) + "\n",
         encoding="utf-8")
 

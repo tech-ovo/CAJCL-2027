@@ -57,7 +57,7 @@ graph LR
 1. **Public Browsing:** Anonymous visitors access pre-rendered HTML/CSS from GitHub Pages CDN. Public statistics (`/public/stats`) serve cached, pre-aggregated integer values without scanning identity tables.
 2. **Authentication:** Attendee enters code `PPP-XXXXX-XXXXX`. Modal validates against `HMAC-SHA256(pepper, code)` in Turso. On success, a 256-bit cryptographically secure session token is issued; only its SHA-256 hash is retained.
 3. **Roster Ingestion:** Chapter sponsors input student attendee rosters. Data parses in-memory with zero persistence during preview. Commits are enforced via signed idempotency keys.
-3a. **Self-Registration by Join Code (preferred):** Each chapter has a join code distributed on a printed handout. A student types it with their own first and last name, grade, and Latin level; the site creates a *pending* delegate in that chapter and shows the student their access code once. The sponsor then approves the student (who joins the roster, invoice and totals) or denies them (the existing redaction runs: every personal field, session, form answer, contest entry and audit-log mention is removed, leaving an anonymous row). Until approved, the record is marked *preliminary*: it is visible to the sponsor and to registration chairs, and is excluded from billing, public statistics and caterer counts.
+3a. **Self-Registration by Join Code (preferred):** Each chapter has a join code distributed on a printed handout. A student types it with their own first and last name, grade, and Latin level; the site creates a *pending* delegate in that chapter and shows the student their login token once. The sponsor then approves the student (who joins the roster, invoice and totals) or denies them (the existing redaction runs: every personal field, session, form answer, contest entry and audit-log mention is removed, leaving an anonymous row). Until approved, the record is marked *preliminary*: it is visible to the sponsor and to registration chairs, and is excluded from billing, public statistics and caterer counts.
 4. **Digital Activity Sheets:** Delegates submit test selections and meal preferences. Drafts save to local browser storage; finalized records commit to Turso under transactional audit logs.
 5. **Digital Contest Uploads:** Pre-convention creative submissions (art, essays, poetry) transmit via Modal to Google Drive via an authenticated webhook puppet. Files are hashed and stored with anonymized identifiers.
 5a. **At-Convention Photo Contest:** During convention, delegates may upload one photo per category the Activities chair has opened (e.g. "Best flower photo"), with an optional caption, from their own phone. The browser re-draws each photo before sending it, which removes the location, camera and time data a phone embeds; the server strips any such metadata that survives. The photo and a small thumbnail go through the same signed Apps Script puppet to the restricted contest Drive folder (`Photo Contest/<category>/`, files named by chapter and student). Only the Activities chair (scope `activities`) and Convention Presidents see photos with names; judges, sponsors and the public do not. A photo is deleted (Drive trash) when the student withdraws it, when the chair takes it down or deletes its category, or when the student is redacted/denied.
@@ -102,7 +102,7 @@ graph LR
 ## 5. Technical & Organizational Safeguards (TOMs)
 
 ### Authentication & Access Control
-- **Zero Cleartext Credentials:** Access codes are salted and hashed using `HMAC-SHA256(CODE_PEPPER, code)`. The pepper resides exclusively in Modal Secrets.
+- **Zero Cleartext Credentials:** Login tokens are salted and hashed using `HMAC-SHA256(CODE_PEPPER, code)`. The pepper resides exclusively in Modal Secrets.
 - **Session Security:** Bearer tokens represent 256 bits of cryptographically secure pseudorandom entropy (`secrets.token_urlsafe(32)`), verified via SHA-256 hashing.
 - **Brute-Force Rate Limiting:** Enforces maximum thresholds of 5 failed authentication attempts per code per hour, and 10 failed attempts per IP per 15 minutes before triggering an HTTP 429 lockout. Wrong chapter join codes are limited separately (30 per IP per 15 minutes).
 - **Join Codes Are Not Credentials:** A chapter's join code is stored in plaintext so the sponsor can read it, and can only create a pending delegate in that chapter. Sponsors can close or replace it at any time.
@@ -155,7 +155,7 @@ graph TD
 ```
 
 1. **Phase 1: Containment (Within 1 Hour)**
-   - Invalidate compromised access codes or session tokens via administrative revocation.
+   - Invalidate compromised login tokens or session tokens via administrative revocation.
    - If server credentials or the `CODE_PEPPER` are exposed, immediately rotate secrets via `modal secret create ... --force`.
 2. **Phase 2: Forensic Impact Assessment (Within 24 Hours)**
    - Audit immutable `audit_log` records to identify exact records viewed or exfiltrated.

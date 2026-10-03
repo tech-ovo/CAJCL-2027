@@ -189,7 +189,7 @@
    * Type
    *
    * Literata for headlines and body. IBM Plex Sans for labels, metadata,
-   * table headers, form labels, UI chrome. IBM Plex Mono for access codes,
+   * table headers, form labels, UI chrome. IBM Plex Mono for login tokens,
    * ID numbers, invoice amounts — anything a person reads aloud or transcribes.
    *
    * All three are self-hosted subsets in fonts/. The @font-face rules live in

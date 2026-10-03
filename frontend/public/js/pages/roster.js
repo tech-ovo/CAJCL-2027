@@ -22,6 +22,8 @@ export async function rosterPage(host, params = []) {
   // same question until a sponsor could cover a second chapter. Reaching that
   // one names it in the URL, and it is still their roster to work on.
   const asChair = schoolId !== null && hasScope("registration");
+  // A person to scroll to and highlight, named in the URL by the audit log.
+  const focusId = params[1] ? Number(params[1]) : null;
   const path = asChair ? `/sponsor/roster?school_id=${schoolId}` : "/sponsor/roster";
 
   let data = null;
@@ -35,7 +37,29 @@ export async function rosterPage(host, params = []) {
 
   add(host, loadingRows(8, "Loading the roster"));
   data = await api.get(path, { statusHost: host });
+  // A cancelled person is hidden until asked for; showing them is the only way
+  // a link to one can land anywhere.
+  if (focusId && data.people.some((p) => p.id === focusId
+                                   && p.approval !== "pending"
+                                   && p.status !== "active")) {
+    showCancelled = true;
+  }
   render();
+  if (focusId) showPerson(focusId);
+
+  function showPerson(id) {
+    const row = host.querySelector(`tr[data-id="${id}"]`);
+    if (!row) {
+      host.prepend(el("div", { class: "banner banner--info",
+                               style: "margin-bottom:1.5rem" },
+        el("span", { class: "banner__label" }, "Not on this roster"),
+        el("span", {}, `Person #${id} is not listed here. They may belong to `
+                     + "another chapter, or be an administrator.")));
+      return;
+    }
+    row.classList.add("is-target");
+    row.scrollIntoView({ block: "center" });
+  }
 
   async function reload() {
     data = await api.get(path);
@@ -135,6 +159,7 @@ export async function rosterPage(host, params = []) {
       joinCodePanel({
         school,
         reload,
+        forChair: asChair,
         print: () => openPrintView(asChair
           ? `/sponsor/join-sheet?school_id=${schoolId}`
           : "/sponsor/join-sheet"),
@@ -171,7 +196,7 @@ export async function rosterPage(host, params = []) {
             const ok = await check({
               title: "Preview the packet",
               body: ["This is a preview, not something to hand out.",
-                     "Access codes are stored scrambled and cannot be read "
+                     "Login tokens are stored scrambled and cannot be read "
                      + "back, so the sheets will show blocks where the codes "
                      + "would be.",
                      "To give somebody a working sheet, use Issue new codes "
@@ -214,6 +239,7 @@ export async function rosterPage(host, params = []) {
               };
               render();
             },
+            rowId: (row) => row.id,
             rowClass: (row) => [
               row.status !== "active" ? "is-inactive" : null,
               row.person_type === "adult" ? "is-adult" : null,
@@ -234,7 +260,7 @@ export async function rosterPage(host, params = []) {
   }
 
   /* Students who joined with the chapter's join code and are waiting for the
-   * sponsor. They have an access code, they can already fill in their forms,
+   * sponsor. They have a login token, they can already fill in their forms,
    * and nothing about them counts toward the invoice or the totals until they
    * are approved. Denying one removes ALL of their data.
    *
@@ -275,7 +301,8 @@ export async function rosterPage(host, params = []) {
                   variant: "btn--small btn--quiet",
                   onclick: () => regenerate(row),
                 })) },
-      ], rows, { caption: `Students waiting for approval at ${school.name}` }),
+      ], rows, { rowId: (row) => row.id,
+                 caption: `Students waiting for approval at ${school.name}` }),
       asChair || rows.length < 2
         ? null
         : el("div", { class: "btn-row" },
@@ -311,7 +338,7 @@ export async function rosterPage(host, params = []) {
   async function deny(row) {
     const ok = await check({
       title: `Deny ${fullName(row)}?`,
-      body: ["Everything they entered is removed, and their access code stops "
+      body: ["Everything they entered is removed, and their login token stops "
              + "working. This cannot be undone.",
              "If they still want to come they can join again with the code."],
       confirmLabel: "Deny and remove", cancelLabel: "Keep waiting",
@@ -357,7 +384,7 @@ export async function rosterPage(host, params = []) {
     const ok = await check({
       title: `Edit ${fullName(row)}`,
       body: [
-        el("p", {}, "Their access code does not change, and neither does "
+        el("p", {}, "Their login token does not change, and neither does "
                   + "anything they have filled in themselves."),
         field({ id: "edit-first", label: "First name", control: first, wide: true }),
         field({ id: "edit-middle", label: "Middle name", control: middle, wide: true }),
@@ -461,7 +488,7 @@ export async function rosterPage(host, params = []) {
     const ok = await check({
       title: `Add one person to ${school.name}`,
       body: [
-        el("p", {}, "This mints their access code, which you will see once on "
+        el("p", {}, "This mints their login token, which you will see once on "
                   + "the next screen. Everything else about them — grade, "
                   + "Latin level, meal — they fill in themselves."),
         field({ id: "person-first", label: "First name", control: first,
@@ -507,9 +534,9 @@ export async function rosterPage(host, params = []) {
   function showCode(name, code, note, personId = null) {
     clear(host);
     add(host, el("section", { class: "panel", role: "alertdialog",
-                              "aria-label": `Access code for ${name}` },
+                              "aria-label": `Login token for ${name}` },
       el("h2", {}, name),
-      el("p", { class: "label" }, "Access code"),
+      el("p", { class: "label" }, "Login token"),
       el("p", { class: "tabula__code mono", style: "font-size:1.5rem" }, code),
       el("p", {}, "This is the only time this code is shown, and nothing can "
                 + "recover it. " + note),
@@ -604,7 +631,7 @@ export async function rosterPage(host, params = []) {
           onclick: async () => {
             const ok = await check({
               title: `Remove ${row.first_name}'s access to ${school.name}?`,
-              body: "They keep their own chapter and their access code. This "
+              body: "They keep their own chapter and their login token. This "
                   + "only stops them seeing this one.",
               confirmLabel: "Remove access", danger: true,
             });
@@ -671,7 +698,7 @@ export async function rosterPage(host, params = []) {
     const ok = await check({
       title: `Add the sponsor for ${school.name}`,
       body: [
-        el("p", {}, "This creates their account and issues their access code. "
+        el("p", {}, "This creates their account and issues their login token. "
                   + "You will see the code once, on the next screen."),
         field({ id: "sponsor-first", label: "First name", required: true,
                 control: first, wide: true }),
@@ -821,9 +848,9 @@ export async function rosterPage(host, params = []) {
 
     clear(host);
     add(host, el("section", { class: "panel", role: "alertdialog",
-                              "aria-label": "New access codes" },
+                              "aria-label": "New login tokens" },
       el("h2", {}, result.issued.length === 1
-        ? "One new access code" : `${result.issued.length} new access codes`),
+        ? "One new login token" : `${result.issued.length} new login tokens`),
       el("p", {}, "This is the only time these are shown. Print the sheets "
                 + "now — nothing can recover a code after you leave this page."),
       el("table", { class: "table" },
@@ -1030,7 +1057,7 @@ export async function rosterPage(host, params = []) {
       body: "You will see exactly what they see, read-only, for thirty "
           + "minutes. Both names appear in a banner on every page, and this is "
           + "recorded in the log.",
-      label: "Your own access code",
+      label: "Your own login token",
       confirmLabel: "Sign in as them",
       secret: true,
     });
@@ -1201,7 +1228,7 @@ export async function rosterPage(host, params = []) {
     const result = await api.post(`/sponsor/people/${row.id}/regenerate-code`, {});
     const dialog = el("div", { class: "panel", role: "alertdialog",
                                "aria-label": `New code for ${name}` },
-      el("p", { class: "label" }, "New access code"),
+      el("p", { class: "label" }, "New login token"),
       el("p", { class: "tabula__code mono", style: "font-size:1.5rem" }, result.code),
       el("p", {},
         "This is the only time this code is shown. Print the new sheet now and " +

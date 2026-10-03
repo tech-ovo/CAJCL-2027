@@ -320,9 +320,10 @@ function inline(text) {
 /**
  * A sortable, responsive table. `columns` is
  *   { key, label, num?, render?, sortable? }
+ * `rowId(row)` puts a `data-id` on each row, for a page that has to find one.
  * Every cell carries data-label so the mobile row-group layout can name it.
  */
-export function table(columns, rows, { sort, onSort, rowClass, caption } = {}) {
+export function table(columns, rows, { sort, onSort, rowClass, rowId, caption } = {}) {
   const head = el("tr", {}, ...columns.map((column) => {
     const th = el("th", { class: column.num ? "num" : null, scope: "col" });
     if (column.sortable && onSort) {
@@ -341,7 +342,8 @@ export function table(columns, rows, { sort, onSort, rowClass, caption } = {}) {
   }));
 
   const body = el("tbody", {}, ...rows.map((row) =>
-    el("tr", { class: rowClass ? rowClass(row) : null },
+    el("tr", { class: rowClass ? rowClass(row) : null,
+               "data-id": rowId ? rowId(row) : null },
       ...columns.map((column) => el("td", {
         class: column.num ? "num" : null,
         "data-label": column.label,
@@ -556,7 +558,7 @@ export function tell({ title = "That did not work", body } = {}) {
  *
  * WHY NOT window.prompt
  *   `prompt()` renders a plain text field with no way to mask it, so an admin
- *   re-entering their own access code typed a live credential in the clear —
+ *   re-entering their own login token typed a live credential in the clear —
  *   visible over a shoulder, offered to the browser's autofill store, and kept
  *   in its history. It also cannot be styled, so it looked like a browser
  *   error rather than part of the site.

@@ -32,7 +32,7 @@ Every core entity across the platform (attendee, chapter, contest submission) is
 ```
 
 - **Geometry:** 1px solid outer border with a recessed 1px hairline rule inset 3px on top and bottom edges (echoing classical inscriptional double-ruling).
-- **Typography:** Classification labels rendered in letterspaced small capitals; entity titles set in Literata; cryptographic access codes and badge coordinates set in IBM Plex Mono.
+- **Typography:** Classification labels rendered in letterspaced small capitals; entity titles set in Literata; cryptographic login tokens and badge coordinates set in IBM Plex Mono.
 - **Usage:** Placed on printed attendee credential packets, portal credential headers, roster summaries, and formal competition invoices.
 
 ---
@@ -81,7 +81,7 @@ The color hierarchy bridges CAJCL’s traditional purple and gold with Universit
 | :--- | :--- | :--- |
 | **Literata** | Editorial headings, body copy, masthead quotes. | OFL, self-hosted WOFF2 |
 | **IBM Plex Sans** | Form labels, UI chrome, navigation, table headers. | OFL, self-hosted WOFF2 |
-| **IBM Plex Mono** | Access codes, IDs, monetary currency, tabular stats. | OFL, self-hosted WOFF2 |
+| **IBM Plex Mono** | Login tokens, IDs, monetary currency, tabular stats. | OFL, self-hosted WOFF2 |
 
 ### Latin Extended-A Subsetting Constraint
 - Convention copy requires Latin macrons: `ā ē ī ō ū`.

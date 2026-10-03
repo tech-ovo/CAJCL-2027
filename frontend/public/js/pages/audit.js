@@ -53,10 +53,10 @@ export async function auditPage(host) {
             { key: "summary", label: "What happened",
               render: (row) => el("span", {},
                 // The summary is prose written when the entry was made, so
-                // the names in it are text. What IS linkable is the person the
-                // entry is about and the person who did it — both carry an id.
-                row.summary,
-                who(row),
+                // the names in it are text. The two people it can be about
+                // each carry an id, and it is put beside their name where the
+                // sentence says it: "Jane Doe (number) made John Doe (number) a leader".
+                ...sentence(row),
                 row.impersonator_person_id
                   ? el("span", { class: "choice__why" },
                       `Done by ${row.impersonator_first_name} ` +
@@ -128,37 +128,80 @@ export async function auditPage(host) {
       `Changed: ${fields.map((f) => f.replace(/_/g, " ")).join(", ")}.`);
   }
 
-  /* Payments are the ONE action that records values, because money disputes are
-   * exactly when you need them. */
-  /* Who this entry is about, and who did it — as links into the chapter where
-   * that person can actually be seen.
+  /* The summary with each person's number beside their name, as a link to
+   * that person's row on the chapter's roster.
    *
-   * The roster is the page that answers "who is this and what have they got",
-   * so an id in the log becomes a click rather than a number to go and look
-   * up. An entry with no school -- a settings change, say -- has nowhere to
-   * send anybody and shows nothing.
+   * Names are found in the sentence by matching, because the sentence is text
+   * written at the time. A name that is not in it -- the actor was an
+   * administrator shown by a display name, say -- is not dropped: it follows
+   * the sentence on a line of its own, so no id is ever lost. An entry with no
+   * chapter has no roster to link to, and shows the number as plain text.
    */
-  function who(row) {
-    if (!row.school_id) return null;
-    const links = [];
-
-    if (row.entity_type === "person" && row.entity_id) {
-      links.push(["About", row.entity_id]);
+  function sentence(row) {
+    const people = [];
+    if (row.actor_person_id) {
+      people.push({ id: row.actor_person_id, label: "By",
+                    name: fullName(row.actor_first_name, row.actor_last_name) });
     }
-    if (row.actor_person_id && row.actor_person_id !== row.entity_id) {
-      links.push(["By", row.actor_person_id]);
+    if (row.entity_type === "person" && row.entity_id
+        && row.entity_id !== row.actor_person_id) {
+      people.push({ id: row.entity_id, label: "About",
+                    name: fullName(row.entity_first_name, row.entity_last_name) });
     }
-    if (!links.length) return null;
 
-    return el("span", { class: "choice__why" },
-      ...links.flatMap(([label, personId], index) => [
-        index ? " · " : null,
-        `${label} `,
-        el("a", { href: `#/roster/${row.school_id}#person-${personId}` },
-           `#${personId}`),
-      ]).filter((part) => part !== null));
+    const text = row.summary || "";
+    const found = [];
+    const unmatched = [];
+    for (const person of people) {
+      const at = person.name ? firstFree(text, person.name, found) : -1;
+      if (at < 0) { unmatched.push(person); continue; }
+      found.push({ at, end: at + person.name.length, person });
+    }
+    found.sort((x, y) => x.at - y.at);
+
+    const nodes = [];
+    let from = 0;
+    for (const hit of found) {
+      nodes.push(text.slice(from, hit.end), " (", idLink(row, hit.person.id), ")");
+      from = hit.end;
+    }
+    nodes.push(text.slice(from));
+
+    if (unmatched.length) {
+      nodes.push(el("span", { class: "choice__why" },
+        ...unmatched.flatMap((person, index) => [
+          index ? " · " : null,
+          `${person.label} ${person.name || "person"} (`,
+          idLink(row, person.id),
+          ")",
+        ]).filter((part) => part !== null)));
+    }
+    return nodes;
   }
 
+  const fullName = (first, last) =>
+    [first, last].filter(Boolean).join(" ");
+
+  /* Where `name` first appears in `text` outside a stretch already claimed by
+   * the other person, so two people sharing a name are not both pinned to the
+   * same words. */
+  function firstFree(text, name, claimed) {
+    let at = text.indexOf(name);
+    while (at >= 0 && claimed.some((c) => at < c.end && at + name.length > c.at)) {
+      at = text.indexOf(name, at + 1);
+    }
+    return at;
+  }
+
+  function idLink(row, personId) {
+    return row.school_id
+      ? el("a", { href: `#/roster/${row.school_id}/person/${personId}` },
+           `#${personId}`)
+      : `#${personId}`;
+  }
+
+  /* Payments are the ONE action that records values, because money disputes are
+   * exactly when you need them. */
   function renderValueDetail(json) {
     let detail;
     try { detail = JSON.parse(json); } catch (ignored) { return null; }

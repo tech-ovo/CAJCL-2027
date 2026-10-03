@@ -199,7 +199,7 @@ def migrate_database(reset: bool = False) -> str:
 
 @app.function(image=slim_image, secrets=secrets, timeout=1800)
 def seed_database(reset: bool = False) -> dict:
-    """Load the demonstration data. Returns the access codes.
+    """Load the demonstration data. Returns the login tokens.
 
     The codes come back to the caller rather than being written to a file,
     because a file written inside a Modal container disappears with it.
@@ -434,7 +434,7 @@ def retire_adm_codes():
     text = add_board.report(result)
     print(text)
     pathlib.Path("board-codes.txt").write_text(
-        "Access codes reissued when the ADM prefix was retired.\n"
+        "Login tokens reissued when the ADM prefix was retired.\n"
         "REAL PEOPLE. Do not commit this file; it is gitignored.\n"
         "Each code is shown once. Everyone here needs a new sheet.\n\n" + text,
         encoding="utf-8")

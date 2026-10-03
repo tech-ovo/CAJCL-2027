@@ -334,7 +334,7 @@ def redeem(request: Request, payload: dict = Body(...)):
 def join_chapter(request: Request, payload: dict = Body(...)):
     """Join a chapter with its join code. Public: the code is the credential.
 
-    Creates a PENDING delegate, signs them in, and returns their access code
+    Creates a PENDING delegate, signs them in, and returns their login token
     ONCE -- the same kind of code a pasted roster produces, which is the only
     way back in afterwards. They may fill in their forms at once; their sponsor
     approves them later. See backend/lib/joining.py.
@@ -353,7 +353,7 @@ def join_chapter(request: Request, payload: dict = Body(...)):
         "person": body,
         "code": result.code,
         "school": {"id": result.school["id"], "name": result.school["name"]},
-        "note": "This is the only time this access code is shown. Write it "
+        "note": "This is the only time this login token is shown. Write it "
                 "down or take a screenshot: it is how you sign in again.",
     }
 
@@ -809,8 +809,8 @@ def regenerate_join_code(request: Request, payload: dict = Body(default={}),
                                                            writes=True)):
     """Replace the chapter's join code. The old one stops working at once.
 
-    Not a secret like an access code, so it is returned and shown whenever it is
-    wanted. Students who already joined keep their own access codes.
+    Not a secret like a login token, so it is returned and shown whenever it is
+    wanted. Students who already joined keep their own login tokens.
     """
     with database().tx(request_id=request_id(request)) as tx:
         school = _school_of(tx, principal, payload.get("school_id"))

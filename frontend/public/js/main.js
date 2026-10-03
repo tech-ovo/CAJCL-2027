@@ -61,7 +61,11 @@ const ROUTES = [
   // A chair opening one chapter's roster. Same page, same endpoint -- the
   // server already accepts ?school_id for an administrative scope and refuses
   // it for everyone else, so this adds a route and no new authority.
-  [/^\/roster\/(\d+)$/,          rosterPage,        { scope: "registration" }],
+  // `/person/N` is the audit log's way of pointing at one row: the roster opens
+  // on that person and highlights them. A `#` inside the hash never worked --
+  // the router matches the whole thing, so "#/roster/5#person-9" matched
+  // nothing and landed on "not found".
+  [/^\/roster\/(\d+)(?:\/person\/(\d+))?$/, rosterPage, { scope: "registration" }],
   [/^\/roster\/import$/,         importPage,        { scope: "sponsor" }],
   // A chair pasting for a chapter that cannot get its own spreadsheet in.
   // Same page and the same two endpoints, both of which already accept a

@@ -13,7 +13,7 @@ The CAJCL Convention Platform is an integrated digital portal designed to admini
 
 ### Core Objectives
 1. **Frictionless Chapter Ingestion:** Empower sponsors to import unformatted attendee lists with intelligent name-parsing heuristics and zero data corruption.
-2. **Privacy-by-Design Credentialing:** Eliminate standard passwords for minors; authenticate via single-use, high-entropy access codes distributed via physical packets.
+2. **Privacy-by-Design Credentialing:** Eliminate standard passwords for minors; authenticate via single-use, high-entropy login tokens distributed via physical packets.
 3. **Double-Blind Academic Evaluation:** Provide an end-to-end digital submission and judging workflow for pre-convention arts and creative writing that eliminates evaluator bias.
 4. **Resilient Financial Reconciliation:** Maintain a deterministic, immutable accounting ledger that handles no-refund cancellations and complimentary adult ratios without manual arithmetic.
 
@@ -48,7 +48,7 @@ Every attendee is provisioned a permanent 13-character identifier (`PPP-XXXXX-XX
 - `VOL`: Adult Chaperone / Volunteer
 
 ### Security & Privacy Guardrails
-1. **Zero Cleartext Credentials:** Access codes are persisted strictly as `HMAC-SHA256(CODE_PEPPER, code)`. Stolen databases cannot yield plain credentials.
+1. **Zero Cleartext Credentials:** Login tokens are persisted strictly as `HMAC-SHA256(CODE_PEPPER, code)`. Stolen databases cannot yield plain credentials.
 2. **Zero Student Emails:** The system explicitly forbids capturing student email addresses. All communications route through chapter sponsors.
 3. **Session Revocation:** Credential reissuance immediately voids the previous code and invalidates all active sessions across client devices.
 
@@ -59,8 +59,8 @@ Every attendee is provisioned a permanent 13-character identifier (`PPP-XXXXX-XX
 1. **State Database Coordination:** Following notification from the state CAJCL database, administrators provision the chapter in the platform (School Name, City, Division).
 2. **Division Isolation:** If an institution sends both middle and high school delegations, **two distinct chapters are created** (e.g., *Northwood MS* and *Northwood HS*) to maintain grade-level and testing eligibility boundaries.
 3. **Billing Exemption:** The Senior Classical League (SCL) is designated as an exempt organization (`billing_exempt = 1`), automatically zeroing invoice obligations.
-4. **Credential Dispatch:** Administrators issue the initial sponsor access code via the verified launch email template.
-5. **Join Code:** Every chapter is created with an 8-character **join code** (open by default). The chair sees it on the confirmation panel, on the chapter's *Join code* button, and in the *Add the sponsor* confirmation, and forwards it to the sponsor in the same email as the sponsor's access code. See §4a.
+4. **Credential Dispatch:** Administrators issue the initial sponsor login token via the verified launch email template.
+5. **Join Code:** Every chapter is created with an 8-character **join code** (open by default). The chair sees it on the confirmation panel, on the chapter's *Join code* button, and in the *Add the sponsor* confirmation, and forwards it to the sponsor in the same email as the sponsor's login token. See §4a.
 
 ---
 
@@ -69,12 +69,12 @@ Every attendee is provisioned a permanent 13-character identifier (`PPP-XXXXX-XX
 A sponsor rarely knows which students are coming until paper packets are in hand. Instead of pasting a roster first, the sponsor prints a one-page **join sheet** (join code, QR, instructions) for as many students as they expect, with the paper forms behind it.
 
 ```text
-Student: #/join (code + name + grade + Latin level) ──> account + access code (shown once) ──> signed in, PENDING
+Student: #/join (code + name + grade + Latin level) ──> account + login token (shown once) ──> signed in, PENDING
 Sponsor: roster ▸ "Waiting for approval" ──> Approve (counts everywhere)  |  Deny (all data removed)
 ```
 
-- **The join code is not a secret like an access code.** It is stored as-is so the sponsor can read it at any time. It can only create a *pending delegate in that one chapter*. Sponsors can **close/reopen** joining (code kept) or **replace** the code (old one dies instantly; students who already joined are untouched). A chapter holds at most 150 pending students.
-- **Access codes are unchanged.** The student receives an ordinary `DEL-` access code, hashed like any other and used to sign in. The difference is only how they get it.
+- **The join code is not a secret like a login token.** It is stored as-is so the sponsor can read it at any time. It can only create a *pending delegate in that one chapter*. Sponsors can **close/reopen** joining (code kept) or **replace** the code (old one dies instantly; students who already joined are untouched). A chapter holds at most 150 pending students.
+- **Login tokens are unchanged.** The student receives an ordinary `DEL-` login token, hashed like any other and used to sign in. The difference is only how they get it.
 - **Pending is not blocked.** A pending student fills in their activity sheet at once. Their registration is marked **preliminary**: it is excluded from the invoice, the public delegate count, meal totals, completion figures, academics entry counts and the packet. It *is* visible to chairs (roster, Chapters and Overview show a separate preliminary count).
 - **Approval** moves the student into every figure. **Denial** runs the existing redaction: every personal field, sessions, code, form answers, contest entries and audit-log mentions are removed, leaving an anonymous `denied` row (the audit log and person numbers point at `people.id`).
 - **Duplicates** (same first and last name, approved or pending, in the chapter) are refused with directions to ask the sponsor for a new code.
