@@ -85,15 +85,18 @@ jobs:
           public = conn.execute(
               "SELECT schools_hs + schools_ms, delegates + adults "
               "FROM public_stats_cache").fetchone()
-          everyone = q("SELECT COUNT(*) FROM people p JOIN schools s "
+          approved = q("SELECT COUNT(*) FROM people p JOIN schools s "
                        "ON s.id = p.school_id "
-                       "WHERE p.status='active' AND s.status='active'")
+                       "WHERE p.status='active' AND s.status='active' "
+                       "AND p.approval='approved'")
+          pending = q("SELECT COUNT(*) FROM people WHERE status='active' AND approval='pending'")
           assert public[0] == chapters, (
               f"public says {public[0]} chapters, database has {chapters}")
-          assert public[1] == everyone, (
-              f"public says {public[1]} people, database has {everyone}")
+          assert public[1] == approved, (
+              f"public says {public[1]} people, database has {approved}")
+          assert pending == 3, f"expected 3 pending delegates, got {pending}"
           uni = q("SELECT id FROM schools WHERE name='University High School'")
-          delegates = q(f"SELECT COUNT(*) FROM people WHERE school_id={uni} AND person_type='delegate'")
+          delegates = q(f"SELECT COUNT(*) FROM people WHERE school_id={uni} AND person_type='delegate' AND approval='approved'")
           assert delegates == 30, f"expected 30 delegates at Uni, got {delegates}"
           print(f"{chapters} chapters, {delegates} delegates at the host school")
           EOF

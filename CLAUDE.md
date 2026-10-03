@@ -36,8 +36,10 @@ rules), then `docs/design.md` for the visual rules.
   Limits: 150 pending per chapter, 30 wrong join codes per IP per 15 min (stored
   in `login_attempts` with a leading `j`, so sign-in limits don't see them).
   Pasting a roster still works and yields approved people. Printed prose is the
-  `join_instructions` document. Open question (PRIVACY.md §12): under-13
-  self-entry before the parent waiver is signed.
+  `join_instructions` document. CI `migrate-from-scratch` asserts 184 approved
+  attendees (`public_stats_cache`) and 3 pending delegates seeded at Uni. Open
+  question (PRIVACY.md §12): under-13 self-entry before the parent waiver is
+  signed.
 - Pre-convention contests (migrations 008, 009): `lib/contests.py` (rules, divisions,
   word counts, ballots, ranking), `lib/drive.py` (Apps Script puppet client, or
   `DRIVE_LOCAL_DIR` folder stand-in locally/tests), `queries/contests.sql`,
