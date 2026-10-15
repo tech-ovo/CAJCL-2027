@@ -38,6 +38,9 @@ import { contestsPage, chapterContestsPage,
          contestSubmissionsPage } from "./pages/contests.js";
 import { judgingPage, contestResultsPage } from "./pages/judging.js";
 import { photosPage, photoContestPage } from "./pages/photos.js";
+import { schedulePage, scheduleEditorPage } from "./pages/schedule.js";
+import { olympikaPage } from "./pages/olympika.js";
+import { athleticsPage } from "./pages/athletics.js";
 
 export const state = {
   me: null,          // /auth/me, or null when signed out
@@ -106,6 +109,12 @@ const ROUTES = [
   // chair sees them all and runs the categories.
   [/^\/photos$/,                 photosPage,        { scope: "delegate" }],
   [/^\/photo-contest(?:\/(categories))?$/, photoContestPage, { scope: "activities" }],
+  // The convention schedule. Everybody reads it; the Logistics chair keeps it.
+  [/^\/schedule$/,               schedulePage,      { public: true }],
+  [/^\/schedule\/edit$/,         scheduleEditorPage, { scope: "logistics" }],
+  // Olympika. Delegates sign up; the Athletics Director runs it.
+  [/^\/olympika$/,               olympikaPage,      { scope: "delegate" }],
+  [/^\/athletics(?:\/(\d+))?$/,  athleticsPage,     { scope: "athletics" }],
   [/^\/admin$/,                  adminPage,         { scope: "*" }],
   [/^\/audit$/,                  auditPage,         { scope: "*" }],
 ];
@@ -493,7 +502,7 @@ function renderNav() {
     return a;
   };
 
-  add(nav, link("#/", "Welcome"));
+  add(nav, link("#/", "Welcome"), link("#/schedule", "Schedule"));
 
   if (state.me) {
     /* TWO GROUPS, AND THE ORDER IS THE POINT.
@@ -524,7 +533,7 @@ function renderNav() {
 
     if (state.me.person_type === "delegate") {
       add(nav, ownLink("#/activity-sheet"), link("#/contests", "Contests"),
-          link("#/photos", "Photos"));
+          link("#/olympika", "Olympika"), link("#/photos", "Photos"));
     } else if (state.me.person_type === "adult") {
       // NOT gated on scope. This used to be hidden from anyone holding `*`,
       // on the assumption that an administrator is not an attendee -- but a
@@ -568,6 +577,12 @@ function renderNav() {
     }
     if (hasScope("activities")) {
       administrative.push(["#/photo-contest", "Photo contest"]);
+    }
+    if (hasScope("athletics")) {
+      administrative.push(["#/athletics", "Athletics"]);
+    }
+    if (hasScope("logistics")) {
+      administrative.push(["#/schedule/edit", "Edit schedule"]);
     }
     if (hasScope("*")) {
       administrative.push(["#/admin", "Settings"], ["#/audit", "Log"]);

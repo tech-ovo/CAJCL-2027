@@ -529,6 +529,140 @@ CREATE INDEX        idx_photo_entries_category ON photo_entries (category_id, su
 
 ---
 
+### 2.7 The Convention Schedule and Olympika
+
+Two things that meet in one table (migration 013). The **master schedule**
+(`schedule_items`) is what everybody reads to know where to be; the Logistics
+chair (role `logistics_chair`, scope `logistics`) adds, edits and deletes its
+entries. **Olympika** is the athletics program; the Athletics Director (role
+`athletics_director`, scope `athletics`) keeps its events, sees every sign-up,
+and sets when heats and games are played. Both scopes are global but narrow
+and NOT in `auth.ADMIN_SCOPES`: neither opens a roster.
+
+Times are UTC instants like everywhere else (`lib/clock.py`); the editors send
+a California date and `HH:MM` and the server converts, and every entry comes
+back out as the same pieces (`date`, `start`, `end`), so no browser does
+time-zone arithmetic.
+
+**What the Director schedules is written onto the master schedule** by
+`lib/olympika.sync_schedule`, in the same transaction as the change: one entry
+per heat, and one entry per ROUND of a bracket ("Ultimate Frisbee —
+Quarterfinals") spanning that round's games. Those rows are `source =
+'olympika'`, keyed by `source_key` (`heat:12`, `round:3:2`), and the Logistics
+chair cannot edit or delete them.
+
+An event is `individual` (each delegate signs themself up; "Assign heats" deals
+the entrants into the heats: sizes within one, a chapter's entrants spread over
+different heats, lanes shuffled) or `team` (**one delegate signs up per team**
+and is its captain, the only person recorded; "Form bracket" draws a
+single-elimination bracket, byes to the top seeds, shuffled until the fewest
+first-round games are between teams of one chapter). Only delegates who are
+`active` and `approved` count in any list.
+
+```sql
+CREATE TABLE olympika_events (
+  id              INTEGER PRIMARY KEY,
+  name            TEXT NOT NULL,
+  description     TEXT,
+  kind            TEXT NOT NULL CHECK (kind IN ('individual','team')),
+  location        TEXT,
+  signup_open     INTEGER NOT NULL DEFAULT 0 CHECK (signup_open IN (0, 1)),
+  max_per_school  INTEGER CHECK (max_per_school IS NULL OR max_per_school >= 1),
+  sort_order      INTEGER NOT NULL DEFAULT 0,
+  created_at      TEXT NOT NULL,
+  updated_at      TEXT NOT NULL
+);
+CREATE UNIQUE INDEX idx_olympika_events_name ON olympika_events (name COLLATE NOCASE);
+
+CREATE TABLE olympika_heats (
+  id          INTEGER PRIMARY KEY,
+  event_id    INTEGER NOT NULL REFERENCES olympika_events(id),
+  number      INTEGER NOT NULL,
+  label       TEXT,
+  starts_at   TEXT,
+  ends_at     TEXT,
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT NOT NULL
+);
+CREATE UNIQUE INDEX idx_olympika_heats_event ON olympika_heats (event_id, number);
+
+CREATE TABLE olympika_signups (
+  id             INTEGER PRIMARY KEY,
+  event_id       INTEGER NOT NULL REFERENCES olympika_events(id),
+  person_id      INTEGER NOT NULL REFERENCES people(id),
+  school_id      INTEGER NOT NULL REFERENCES schools(id),
+  heat_id        INTEGER REFERENCES olympika_heats(id),
+  lane           INTEGER,
+  signed_up_at   TEXT NOT NULL
+);
+CREATE UNIQUE INDEX idx_olympika_signups_event  ON olympika_signups (event_id, person_id);
+CREATE INDEX        idx_olympika_signups_person ON olympika_signups (person_id);
+CREATE INDEX        idx_olympika_signups_school ON olympika_signups (event_id, school_id);
+CREATE INDEX        idx_olympika_signups_heat   ON olympika_signups (heat_id);
+
+CREATE TABLE olympika_teams (
+  id                 INTEGER PRIMARY KEY,
+  event_id           INTEGER NOT NULL REFERENCES olympika_events(id),
+  school_id          INTEGER NOT NULL REFERENCES schools(id),
+  captain_person_id  INTEGER REFERENCES people(id),
+  name               TEXT NOT NULL,
+  seed               INTEGER,
+  created_at         TEXT NOT NULL,
+  updated_at         TEXT NOT NULL
+);
+CREATE UNIQUE INDEX idx_olympika_teams_captain ON olympika_teams (event_id, captain_person_id);
+CREATE UNIQUE INDEX idx_olympika_teams_name    ON olympika_teams (event_id, name COLLATE NOCASE);
+CREATE INDEX        idx_olympika_teams_school  ON olympika_teams (event_id, school_id);
+CREATE INDEX        idx_olympika_teams_person  ON olympika_teams (captain_person_id);
+
+CREATE TABLE olympika_matches (
+  id          INTEGER PRIMARY KEY,
+  event_id    INTEGER NOT NULL REFERENCES olympika_events(id),
+  round       INTEGER NOT NULL,
+  slot        INTEGER NOT NULL,
+  team_a_id   INTEGER REFERENCES olympika_teams(id),
+  team_b_id   INTEGER REFERENCES olympika_teams(id),
+  winner_id   INTEGER REFERENCES olympika_teams(id),
+  score_a     INTEGER,
+  score_b     INTEGER,
+  starts_at   TEXT,
+  ends_at     TEXT,
+  field       TEXT,
+  updated_at  TEXT NOT NULL
+);
+CREATE UNIQUE INDEX idx_olympika_matches_slot   ON olympika_matches (event_id, round, slot);
+CREATE INDEX        idx_olympika_matches_team_a ON olympika_matches (team_a_id);
+CREATE INDEX        idx_olympika_matches_team_b ON olympika_matches (team_b_id);
+CREATE INDEX        idx_olympika_matches_winner ON olympika_matches (winner_id);
+
+CREATE TABLE schedule_items (
+  id                 INTEGER PRIMARY KEY,
+  title              TEXT NOT NULL,
+  description        TEXT,
+  location           TEXT,
+  starts_at          TEXT NOT NULL,
+  ends_at            TEXT,
+  published          INTEGER NOT NULL DEFAULT 1 CHECK (published IN (0, 1)),
+  source             TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('manual','olympika')),
+  source_key         TEXT,
+  olympika_event_id  INTEGER REFERENCES olympika_events(id),
+  created_at         TEXT NOT NULL,
+  updated_at         TEXT NOT NULL
+);
+CREATE INDEX idx_schedule_items_starts ON schedule_items (starts_at, id);
+CREATE INDEX idx_schedule_items_event  ON schedule_items (olympika_event_id);
+CREATE UNIQUE INDEX idx_schedule_items_key ON schedule_items (source_key) WHERE source_key IS NOT NULL;
+```
+
+In a bracket, `round` counts from 1 and `slot` from 0; the winner of (round,
+slot) goes to (round + 1, slot / 2), as team A when slot is even and team B
+when odd. A first-round game with one team is a **bye**: its winner is set when
+the bracket is drawn and it is never timed or shown as a game. A redacted
+captain's sign-ups are deleted, and so is their team unless a bracket has been
+drawn, when the team stays nameless so the bracket keeps its shape.
+
+---
+
 ## 3. Natural Language Name Parser Specification
 
 The ingestion engine processes raw unstructured text from chapter sponsors via `backend/lib/names.py`.
@@ -591,6 +725,8 @@ The ingestion engine processes raw unstructured text from chapter sponsors via `
 | `GET` | `/me/photos` | `delegate` | Lists photo contest categories with the caller's own photo in each. |
 | `POST/DELETE` | `/me/photos/{category_id}` | `delegate` | Uploads (or replaces, or re-captions) / withdraws the caller's photo; only while the category is accepting. Body carries the photo and thumbnail base64. |
 | `GET` | `/me/photos/{category_id}/file?size=thumb` | `delegate` | Streams the caller's own photo or thumbnail. |
+| `GET` | `/me/olympika` | `delegate` | Every Olympika event with the caller's own entry: their heat, lane and time, or their team's games. |
+| `POST/PATCH/DELETE` | `/me/olympika/{event_id}` | `delegate` | Signs up for an individual event, or signs up a team (`team_name`; the caller is its captain); renames the caller's team; withdraws. Entering only while sign-up is open; a team cannot leave a drawn bracket. |
 
 ### 4.4 Double-Blind Judging
 | Method | Route | Required Scope | Summary |
@@ -613,4 +749,18 @@ The ingestion engine processes raw unstructured text from chapter sponsors via `
 | `POST` | `/admin/photos/categories` | `activities` | Adds a photo category (name, description, accepting). |
 | `PATCH/DELETE` | `/admin/photos/categories/{id}` | `activities` | Edits / opens / closes a category; deletes it with all its photos (files trashed in Drive). |
 | `GET/DELETE` | `/admin/photos/entries/{id}[/file?size=thumb]` | `activities` | Streams a photo or its thumbnail; takes a photo down. |
+| `GET` | `/public/schedule` | none | Every published master-schedule entry, in time order, with the convention's clock. Cached 20 s. |
+| `GET/POST` | `/admin/schedule` | `logistics` | The master schedule with drafts; adds an entry. |
+| `PATCH/DELETE` | `/admin/schedule/{id}` | `logistics` | Edits / deletes a manual entry. Entries the Athletics Director's heats and brackets wrote (`source = 'olympika'`) are refused. |
+| `GET` | `/admin/athletics` | `athletics` | Every Olympika event with its entry count, heats and whether a bracket is drawn. |
+| `POST` | `/admin/athletics/events` | `athletics` | Adds an event. |
+| `GET/PATCH/DELETE` | `/admin/athletics/events/{id}` | `athletics` | One event with every sign-up, heat, team and game; edits it (including opening and closing sign-up); deletes it with everything under it. |
+| `PUT` | `/admin/athletics/events/{id}/heats` | `athletics` | Sets the number of heats and, with a date and start, times them all. |
+| `PATCH` | `/admin/athletics/heats/{id}` | `athletics` | Renames a heat or changes when it runs. |
+| `POST` | `/admin/athletics/events/{id}/assign` | `athletics` | Deals every entrant into the heats. |
+| `PATCH/DELETE` | `/admin/athletics/signups/{id}` | `athletics` | Moves an entrant to another heat or lane; removes the sign-up. |
+| `POST/DELETE` | `/admin/athletics/events/{id}/bracket` | `athletics` | Draws a single-elimination bracket (optionally timing the games); clears it. |
+| `POST` | `/admin/athletics/events/{id}/bracket/times` | `athletics` | Re-times the games of the bracket as drawn. |
+| `PATCH` | `/admin/athletics/matches/{id}` | `athletics` | Records a result (the winner moves on) and/or changes a game's time and field. |
+| `PATCH/DELETE` | `/admin/athletics/teams/{id}` | `athletics` | Renames a team; removes one (only before a bracket is drawn). |
 | `POST` | `/admin/export` | `*` | Generates full or anonymized SQL/Excel system backups. |

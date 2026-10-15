@@ -33,6 +33,8 @@ System permissions adhere to a strict Role-Based Access Control (RBAC) model:
 | **Registration Chair**| `registration_chair` | `registration` | State-wide roster management, check-in operations, ledger payment recording. |
 | **Academics Chair** | `academics_chair` | `academics` | Exam catalog configuration, contest management, test material preparations. |
 | **Contest Judge** | `judge` | `judge` | Blind evaluation of pre-convention contest submissions (`Entry N`). |
+| **Athletics Director** | `athletics_director` | `athletics` | Olympika: adds, edits, opens/closes and deletes events; sees every sign-up; sets heats and brackets and when each is played; enters results (`#/athletics`). Whatever is scheduled is pushed to the master schedule. |
+| **Logistics Chair** | `logistics_chair` | `logistics` | The master convention schedule: adds, edits, drafts and deletes entries (`#/schedule/edit`). Cannot change entries the Athletics Director's heats and brackets wrote. |
 | **Activities Chair** | `activities_chair` | `activities` | Photo contest: adds, edits, opens/closes and deletes categories; sees and takes down every photo (`#/photo-contest`). |
 | **Awards Chair** | `awards_chair` | `awards` | Score tabulation, sweepstakes calculation, award certificate generation. |
 | **Convention President**| `admin` | `*` (Superadmin) | Global system configuration, role provisioning, audit trail review, raw data export. |
@@ -120,7 +122,7 @@ graph TD
 ### Student Activity Sheet (Delegates)
 - **Academic Testing:** Selection of 1 to 3 competitive exams (hard validation limit). Exam availability dynamically filters based on enrolled Latin level (e.g., Grammar 1 restricted to MS-1/2 and HS-1).
 - **Creative & Graphic Arts:** Registration across 14 artistic divisions (Drawing, Painting, Mosaic, etc.).
-- **Athletics (*Olympika*):** Individual event entry (Track, Swimming, Chess). Team competitions (Kickball, Ultimate Frisbee) are registered exclusively at the chapter level.
+- **Athletics (*Olympika*):** Individual event entry (Track, Swimming, Chess) and team competitions (Kickball, Ultimate Frisbee) are entered at convention from `#/olympika` (see §9, item 6). A sponsor's pre-convention team count (`#/teams`) remains planning input only; it does not create teams or brackets.
 - **Campus Games (*Ludi*):** Open Certamen, Trivia, and non-academic competitions.
 
 ### Adult Registration Sheet (Chaperones & Sponsors)
@@ -152,6 +154,8 @@ $$\text{Total Invoice} = (\$140 \times \text{Delegates}) + \max(0, \$75 \times (
 3. **Separation of Duties:** Administrators holding `academics` scope are barred from holding `judge` roles to preserve competitive integrity.
 4. **Automated Tabulation:** Judges submit ranked ballots. Points calculate automatically based on placement weights, breaking ties via highest first-place finishes.
 5. **At-Convention Photo Contest:** Delegates upload one photo (plus optional caption) per open category from `#/photos` on their phones; a new upload replaces the old, and they may withdraw at any time. The browser re-encodes each photo to a ≤2400 px JPEG plus a 480 px thumbnail (dropping location metadata); both go to Drive under `Photo Contest/<category>` through the contest puppet. The Activities chair's `#/photo-contest` shows every photo in a grid with name, person number, chapter and caption (filter by category/chapter, full size on click, take down), and a Categories tab to add, edit, open/close and delete categories. Deleting a category deletes its photos (Drive trash). No judging workflow: the chair picks winners from the grid.
+
+6. **The Convention Schedule and Olympika:** The master schedule (`#/schedule`) is public, grouped by day, searchable, and marks what is happening now. The Logistics chair keeps it (`#/schedule/edit`): entries have a title, details, place, date, start and optional end, and can be kept as drafts. Olympika events (`#/athletics`) are rows the Athletics Director adds, edits and deletes. Delegates sign up from `#/olympika` while an event is open: a race by themselves, a team event by signing up a team as its one captain (a team name is optional; a chapter limit may apply). For a race the Director says how many heats there are and when; **Assign heats** deals the entrants in (sizes within one, a chapter's entrants spread across heats, lanes shuffled), and individual entrants can be moved. For a team event **Draw bracket** forms a single-elimination bracket (byes to the top seeds, chapters kept apart in round one where possible) and, given a start time, minutes per game and field names, times every game; results entered move winners on. Every heat, and every round of a bracket, is written onto the master schedule when it is set, so the two cannot disagree.
 
 ---
 

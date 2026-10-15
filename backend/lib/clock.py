@@ -144,3 +144,43 @@ def plus_minutes(minutes: int, *, at: _dt.datetime | None = None) -> str:
 
 def plus_hours(hours: float, *, at: _dt.datetime | None = None) -> str:
     return to_iso((at or now_utc()) + _dt.timedelta(hours=hours))
+
+
+# ---------------------------------------------------------------------------
+# Wall-clock times, for the schedule
+# ---------------------------------------------------------------------------
+# The same rule as deadlines -- store a UTC instant, never type one -- applied
+# to a time of day. The schedule editors send "2027-03-12" and "09:30" as the
+# convention hall's clock reads, and the server works the offset out. The
+# pages get the local pieces back too, so no browser ever does time-zone
+# arithmetic: a delegate's laptop set to the wrong zone, or a visitor from
+# Texas, still reads 9:30.
+
+def local_to_utc(local_date: str | _dt.date, local_time: str) -> str:
+    """The UTC instant for a California date and an "HH:MM" time on it.
+
+    Raises ValueError for anything that is not a real date and time."""
+    if isinstance(local_date, str):
+        local_date = _dt.date.fromisoformat(local_date.strip())
+    hour_text, _, minute_text = str(local_time).strip().partition(":")
+    if not (hour_text.isdigit() and minute_text.isdigit()
+            and len(minute_text) == 2):
+        raise ValueError(f"{local_time!r} is not a time like 09:30")
+    local = _dt.datetime.combine(
+        local_date, _dt.time(int(hour_text), int(minute_text)), tzinfo=CONVENTION_TZ)
+    return to_iso(local)
+
+
+def local_parts(utc_iso: str | None) -> tuple[str, str] | tuple[None, None]:
+    """('2027-03-12', '09:30') -- the California date and 24-hour time of a
+    stored instant. The inverse of local_to_utc."""
+    if not utc_iso:
+        return None, None
+    local = parse_iso(utc_iso).astimezone(CONVENTION_TZ)
+    return local.date().isoformat(), local.strftime("%H:%M")
+
+
+def local_now_parts(*, at: _dt.datetime | None = None) -> tuple[str, str]:
+    """The California date and time right now, for "happening now" marks."""
+    local = (at or now_utc()).astimezone(CONVENTION_TZ)
+    return local.date().isoformat(), local.strftime("%H:%M")

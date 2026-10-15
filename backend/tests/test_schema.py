@@ -176,6 +176,10 @@ def test_system_roles_and_their_scopes(db):
         # Runs the photo contest. Narrow in the same way: see
         # auth.ACTIVITY_SCOPES.
         "activities_chair": {"activities"},
+        # Olympika, and the master schedule. Narrow in the same way: see
+        # auth.CONVENTION_SCOPES.
+        "athletics_director": {"athletics"},
+        "logistics_chair": {"logistics"},
     }
 
 

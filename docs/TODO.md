@@ -83,7 +83,7 @@ The following features have been evaluated and deliberately excluded from the cu
 | Feature / Request | Determination | Architectural Rationale |
 | :--- | :--- | :--- |
 | **Interactive Campus Navigation** | **Out of Scope** | High maintenance cost; physical event maps and signage satisfy attendee wayfinding. |
-| **Push Notification Schedules** | **Out of Scope** | Delegate privacy rules prohibit student contact information; delegates utilize printed schedules. |
+| **Push Notification Schedules** | **Out of Scope** | Delegate privacy rules prohibit student contact information; delegates read the Schedule page or the printed schedule. |
 | **Reversible Credential Encryption**| **Rejected** | Storing reversible login tokens compromises security posture; selective reissuance addresses lost credentials safely. |
 | **Inter-Chapter Student Transfers** | **Rejected** | Cross-school transfers violate institutional billing and Latin level eligibility constraints; drop-and-readd is required. |
 | **Automated Financial Refunds** | **Rejected** | Convention budget operates on firm pre-payment terms; accounting reconciles via `cancelled_paid` state. |

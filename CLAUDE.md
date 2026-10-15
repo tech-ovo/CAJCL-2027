@@ -101,6 +101,41 @@ rules), then `docs/design.md` for the visual rules.
   contest" for `activities`); thumbnails lazy-load 4 at a time. Redaction
   deletes a person's photos. Seed adds Marguerite Okonkwo (Activities chair)
   and opens two categories, but writes no photos. Tests: `test_photos.py`.
+- Master schedule and Olympika (migration 013): `lib/schedule.py` (entry rules,
+  `parse_span`), `lib/olympika.py` (event rules, `deal_heats`, `draw_bracket`,
+  `time_games`, `record_result`, `sync_schedule`), `queries/schedule.sql` and
+  `queries/olympika.sql`. Two new narrow global scopes, NOT in
+  `auth.ADMIN_SCOPES` (`auth.CONVENTION_SCOPES`): `logistics` (role
+  `logistics_chair`, keeps `schedule_items`) and `athletics` (role
+  `athletics_director`, runs Olympika). Times are UTC instants like everywhere;
+  editors send a California `date` + `start`/`end` ("HH:MM") and the server
+  converts (`clock.local_to_utc`); every entry comes back as `date/start/end`
+  pieces, so `js/when.js` never does zone arithmetic. Pages: `js/pages/schedule.js`
+  (`#/schedule`, PUBLIC, nav "Schedule" for everyone; `#/schedule/edit` for
+  `logistics`), `js/pages/olympika.js` (`#/olympika`, delegates, nav
+  "Olympika"), `js/pages/athletics.js` (`#/athletics[/id]`, nav "Athletics").
+  Endpoints: `GET /public/schedule` (the only unauthenticated one, cached 20 s),
+  `/admin/schedule*`, `/me/olympika[/{event}]`, `/admin/athletics/...`.
+  `olympika_events.kind` is `individual` (heats; "Assign heats" deals entrants,
+  sizes within one, a chapter spread across heats, lanes shuffled) or `team`
+  (ONE delegate signs up per team and is its captain; "Draw bracket" makes a
+  single-elimination bracket with byes for the top seeds, chapters kept apart in
+  round one, optionally timing every game by waves across named fields). Events
+  are rows the Director adds/edits/deletes; migration 013 seeds only "Ultimate
+  Frisbee" (closed). **What the Director schedules is pushed to
+  `schedule_items`** by `sync_schedule` inside the same transaction (a heat =
+  one row, a bracket = one row per ROUND; `source = 'olympika'`, `source_key`
+  `heat:12`/`round:3:2`); the Logistics endpoints refuse to edit/delete those
+  rows. Anything that changes a heat, a game's time, or an event's name/place
+  MUST call `olympika.sync_schedule(tx, event_id, now)`. Only `active` +
+  `approved` delegates appear in any list or are dealt; a pending delegate may
+  not sign up. `roster.redact` calls `olympika.forget_person` (sign-ups
+  deleted; a captain's team deleted unless a bracket exists, then orphaned
+  nameless). Tests: `test_olympika.py`. Seed adds Theodora Vance (Athletics
+  Director), Rafael Quintero (Logistics chair), a two-day schedule, events in
+  every state and a six-team Frisbee bracket with one game scored. The older
+  activity-sheet "Olympika" catalog items and the sponsor's `#/teams` counts are
+  non-binding planning input and do not feed these tables.
 - `certamen-bot/` — Certamen practice arena, React 19 + Vite 6 (no Tailwind,
   no icon library). `npm run build` outputs to `frontend/public/certamen/`
   (committed). Connected to a separate Turso database via Modal endpoints (`/certamen/...`)

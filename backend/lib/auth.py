@@ -18,8 +18,9 @@ SCOPES REACH A PERSON ONLY THROUGH ROLES
     Four scopes are ADMINISTRATIVE and global: `registration`, `academics`,
     `awards`, and `*` which subsumes everything. Three are IDENTITY scopes
     carried by ordinary accounts and ALWAYS school-limited: `sponsor`,
-    `delegate`, and `chapter`. Two more are global but NARROW, and open no
-    roster: `judge` (contest judging) and `activities` (the photo contest).
+    `delegate`, and `chapter`. Four more are global but NARROW, and open no
+    roster: `judge` (contest judging), `activities` (the photo contest),
+    `athletics` (Olympika) and `logistics` (the master schedule).
 """
 
 from __future__ import annotations
@@ -50,7 +51,12 @@ JUDGING_SCOPES = frozenset({"judge"})
 # contest entry with its name and chapter, and runs the categories. Nothing
 # else -- `require_school` must never treat it as reaching a roster.
 ACTIVITY_SCOPES = frozenset({"activities"})
-ALL_SCOPES = ADMIN_SCOPES | IDENTITY_SCOPES | JUDGING_SCOPES | ACTIVITY_SCOPES
+# And two more of the same kind. The Athletics Director sees the name and
+# chapter of everyone entered in Olympika, and the Logistics chair keeps the
+# master schedule, which names nobody. Neither reaches a roster.
+CONVENTION_SCOPES = frozenset({"athletics", "logistics"})
+ALL_SCOPES = (ADMIN_SCOPES | IDENTITY_SCOPES | JUDGING_SCOPES | ACTIVITY_SCOPES
+              | CONVENTION_SCOPES)
 
 
 class AuthError(Exception):

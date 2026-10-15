@@ -41,7 +41,8 @@ for _stream in (sys.stdout, sys.stderr):
     if hasattr(_stream, "reconfigure"):
         _stream.reconfigure(encoding="utf-8", errors="replace")
 
-from backend.lib import auth, clock, contests, joining, settings, stats  # noqa: E402
+from backend.lib import (auth, clock, contests, joining, olympika,  # noqa: E402
+                         settings, stats)
 from backend.lib.db import connect  # noqa: E402
 from backend.lib import migrate as migrate_runner  # noqa: E402
 
@@ -292,6 +293,8 @@ class Seeder:
         self._seed_pending(uni, days_ago)
         step("the photo contest")
         self._seed_photos(uni, days_ago)
+        step("the schedule and Olympika")
+        self._seed_olympika(days_ago)
         step("done")
         self._finish()
         return self.codes
@@ -728,6 +731,141 @@ class Seeder:
             tx.audit("photo_category.create",
                      "Marguerite Okonkwo added the photo category Best stuffed animal photo.",
                      entity_type="photo_category", entity_id=plush_id, ts=days_ago(1))
+
+    def _seed_olympika(self, days_ago) -> None:
+        """The master schedule, and Olympika part-way through its preparation.
+
+        A Logistics chair with a two-day schedule; an Athletics Director with
+        track events in every state (heats dealt, heats set but not dealt,
+        closed), a chess session, and Ultimate Frisbee with six teams, a
+        bracket drawn and timed, and its first game scored.
+        """
+        with self.db.tx() as tx:
+            pool = {}
+            for school_id in [r["id"] for r in tx.all("schools.all_ids")]:
+                pool[school_id] = [
+                    r["id"] for r in tx.all("roster.list", (school_id,))
+                    if r["person_type"] == "delegate" and r["status"] == "active"
+                    and r["approval"] == "approved"]
+            pool = {k: v for k, v in pool.items() if v}
+
+            director_id, code = self._person(
+                tx, self.uni_id, "Theodora", "", "Vance", person_type="adult",
+                adult_type="other", role="athletics_director", created=days_ago(30),
+                email="theodora.vance@example.org", latin_knowledge="novice",
+                meal="regular")
+            self.codes["Athletics Director: Theodora Vance (runs Olympika)"] = code
+            _, code = self._person(
+                tx, self.uni_id, "Rafael", "", "Quintero", person_type="adult",
+                adult_type="other", role="logistics_chair", created=days_ago(30),
+                email="rafael.quintero@example.org", latin_knowledge="novice",
+                meal="regular")
+            self.codes["Logistics chair: Rafael Quintero (keeps the schedule)"] = code
+
+            friday, saturday = "2027-03-12", "2027-03-13"
+
+            def stamp(day, time):
+                return clock.local_to_utc(day, time)
+
+            now = days_ago(3)
+            for title, description, place, day, start, end in [
+                ("Check-in and registration", "Pick up packets and name tags.",
+                 "Main lobby", friday, "08:00", "09:30"),
+                ("Opening ceremony", None, "Auditorium", friday, "09:30", "10:15"),
+                ("Academic testing", "Bring a pencil. Rooms are on your packet.",
+                 "Classroom wing", friday, "10:30", "12:00"),
+                ("Lunch", None, "Cafeteria", friday, "12:00", "13:00"),
+                ("Certamen preliminaries", None, "Library", friday, "16:00", "17:30"),
+                ("Banquet", "Dress is formal toga or business casual.",
+                 "Cafeteria", friday, "18:30", "20:00"),
+                ("Breakfast", None, "Cafeteria", saturday, "07:30", "08:30"),
+                ("Creative arts showcase", None, "Gallery", saturday, "10:00", "11:30"),
+                ("Lunch", None, "Cafeteria", saturday, "12:00", "13:00"),
+                ("Awards assembly", "Results of every contest and test.",
+                 "Auditorium", saturday, "16:00", "17:30"),
+                ("Departures", None, "Main lobby", saturday, "17:30", None),
+            ]:
+                tx.insert("schedule.create", (
+                    title, description, place, stamp(day, start),
+                    stamp(day, end) if end else None, 1, now, now))
+
+            def new_event(name, kind, place, opened, description, limit=None, order=0):
+                return {"id": tx.insert("olympika.event_create", (
+                    name, description, kind, place, 1 if opened else 0, limit,
+                    order, now, now)), "name": name}
+
+            def sign_up(event, count):
+                chapters = list(pool)
+                entered = 0
+                for index in range(count):
+                    school = chapters[index % len(chapters)]
+                    members = pool[school]
+                    person = members[(index // len(chapters)) % len(members)]
+                    if tx.one("olympika.signup_for_person", (event["id"], person)):
+                        continue
+                    tx.insert("olympika.signup_create",
+                              (event["id"], person, school, now))
+                    entered += 1
+                return entered
+
+            dash = new_event("100 m dash", "individual", "Track", True,
+                             "Sprint. Three entrants per chapter.", limit=3, order=10)
+            olympika.set_heat_count(tx, dash, 4, olympika.check_heat_plan({
+                "date": friday, "start": "14:00", "minutes_between": 15,
+                "minutes_long": 10}), now)
+            sign_up(dash, 34)
+            olympika.assign_heats(tx, dash, self.rng, now)
+
+            run = new_event("400 m run", "individual", "Track", True,
+                            "One lap.", order=20)
+            olympika.set_heat_count(tx, run, 2, olympika.check_heat_plan({
+                "date": friday, "start": "15:15", "minutes_between": 20,
+                "minutes_long": 15}), now)
+            sign_up(run, 18)
+
+            new_event("Mile run", "individual", "Track", False,
+                      "Four laps. Sign-up opens at convention.", order=30)
+
+            chess = new_event("Chess", "individual", "Library", True,
+                              "Rounds are paired on arrival.", order=40)
+            olympika.set_heat_count(tx, chess, 1, olympika.check_heat_plan({
+                "date": saturday, "start": "09:00", "minutes_between": 0,
+                "minutes_long": 150}), now)
+            sign_up(chess, 12)
+
+            new_event("Kickball", "team", "Back field", True,
+                      "A team from one chapter. One delegate signs up for it.",
+                      limit=2, order=60)
+
+            frisbee = dict(next(r for r in tx.all("olympika.events")
+                                if r["name"] == "Ultimate Frisbee"))
+            tx.run("olympika.event_update", (
+                frisbee["name"], frisbee["description"], frisbee["kind"],
+                "Main lawn", 1, frisbee["max_per_school"], frisbee["sort_order"],
+                now, frisbee["id"]))
+            mascots = ["Flying Aquilae", "Fighting Gladiators", "Ultimate Ursae",
+                       "Disc Dominus", "Lupi Volantes", "Rapid Rhetores"]
+            for school, mascot in zip(list(pool)[:6], mascots):
+                captain = pool[school][0]
+                school_row = tx.one("schools.get", (school,))
+                tx.insert("olympika.team_create", (
+                    frisbee["id"], school, captain,
+                    f"{school_row['name'].split()[0]} {mascot}", now, now))
+            olympika.form_bracket(tx, frisbee, self.rng, olympika.check_game_plan({
+                "date": saturday, "start": "13:00", "minutes": 30,
+                "fields": "Field 1, Field 2"}), now)
+            first = next(m for m in tx.all("olympika.matches_for_event", (frisbee["id"],))
+                         if not olympika.is_bye(m))
+            olympika.record_result(tx, dict(first), first["team_a_id"], 11, 8, now)
+
+            for event in (dash, run, chess, frisbee):
+                olympika.sync_schedule(tx, event["id"], now)
+
+            tx.audit("olympika_event.create",
+                     "Theodora Vance set up the Olympika events, heats and "
+                     "the Ultimate Frisbee bracket.",
+                     actor_person_id=director_id, entity_type="olympika_event",
+                     ts=now)
 
     def _finish(self) -> None:
         """Recompute every counter, and raise the demonstration-data marker."""

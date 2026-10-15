@@ -53,6 +53,8 @@ SMALL_TABLES = {
     "contests": 10,             # six pre-convention contests
     "contest_ballots": 200,     # judges x divisions x Publicity categories
     "photo_categories": 20,     # a handful of photo contest categories a year
+    "olympika_events": 20,      # a dozen events a year
+    "schedule_items": 250,      # by hand, plus a row per heat and bracket round
 }
 
 # Tables that WILL exceed 200 rows and must always be reached by an index.
@@ -64,6 +66,9 @@ BIG_TABLES = {
     "adult_role_selections", "chapter_entries", "payments", "person_roles",
     "contest_entries", "contest_ballot_places", "scores",
     "photo_entries",            # up to one per delegate per photo category
+    "olympika_heats",           # a dozen events x up to forty heats
+    "olympika_signups",         # up to a few per delegate
+    "olympika_teams", "olympika_matches",
 }
 
 # Queries allowed to scan a large table, each with the reason. Keep this list

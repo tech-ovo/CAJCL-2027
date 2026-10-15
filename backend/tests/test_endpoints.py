@@ -215,6 +215,42 @@ ROUTES = [
     ("admin.photos.categories.delete", "DELETE", "/admin/photos/categories/1", None),
     ("admin.photos.file", "GET", "/admin/photos/entries/{entry}/file", None),
     ("admin.photos.entries.delete", "DELETE", "/admin/photos/entries/{entry}", None),
+
+    ("admin.schedule", "GET", "/admin/schedule", None),
+    ("admin.schedule.create", "POST", "/admin/schedule",
+     {"title": "Opening ceremony", "date": "2027-03-12", "start": "09:00"}),
+    ("admin.schedule.update", "PATCH", "/admin/schedule/1", {"title": "x"}),
+    ("admin.schedule.delete", "DELETE", "/admin/schedule/1", None),
+
+    ("me.olympika", "GET", "/me/olympika", None),
+    ("me.olympika.enter", "POST", "/me/olympika/1", {}),
+    ("me.olympika.rename", "PATCH", "/me/olympika/1", {"team_name": "Eagles"}),
+    ("me.olympika.withdraw", "DELETE", "/me/olympika/1", None),
+    ("admin.athletics", "GET", "/admin/athletics", None),
+    ("admin.athletics.event", "GET", "/admin/athletics/events/1", None),
+    ("admin.athletics.events.create", "POST", "/admin/athletics/events",
+     {"name": "Long jump", "kind": "individual"}),
+    ("admin.athletics.events.update", "PATCH", "/admin/athletics/events/1",
+     {"signup_open": True}),
+    ("admin.athletics.events.delete", "DELETE", "/admin/athletics/events/1", None),
+    ("admin.athletics.heats", "PUT", "/admin/athletics/events/1/heats", {"count": 2}),
+    ("admin.athletics.heats.update", "PATCH", "/admin/athletics/heats/1",
+     {"label": "Final"}),
+    ("admin.athletics.assign", "POST", "/admin/athletics/events/1/assign", {}),
+    ("admin.athletics.signups.update", "PATCH", "/admin/athletics/signups/1",
+     {"heat_id": None}),
+    ("admin.athletics.signups.delete", "DELETE", "/admin/athletics/signups/1", None),
+    ("admin.athletics.bracket", "POST", "/admin/athletics/events/1/bracket", {}),
+    ("admin.athletics.bracket.times", "POST",
+     "/admin/athletics/events/1/bracket/times",
+     {"date": "2027-03-13", "start": "13:00"}),
+    ("admin.athletics.bracket.delete", "DELETE",
+     "/admin/athletics/events/1/bracket", None),
+    ("admin.athletics.matches.update", "PATCH", "/admin/athletics/matches/1",
+     {"field": "A"}),
+    ("admin.athletics.teams.update", "PATCH", "/admin/athletics/teams/1",
+     {"name": "Hawks"}),
+    ("admin.athletics.teams.delete", "DELETE", "/admin/athletics/teams/1", None),
 ]
 
 
@@ -278,6 +314,7 @@ def test_no_route_is_accidentally_public():
     """Only the public and auth surfaces may be reached with no credential."""
     allowed = {
         "/public/stats", "/public/convention", "/public/announcements",
+        "/public/schedule",
         "/auth/redeem", "/auth/join", "/health",
         # These take any valid session and check authority in the handler.
         "/auth/me", "/auth/logout", "/auth/impersonate/end",
@@ -308,6 +345,11 @@ def test_no_route_is_accidentally_public():
                        .replace("{item_id}", "1") \
                        .replace("{option_id}", "1") \
                        .replace("{category_id}", "1") \
+                       .replace("{event_id}", "1") \
+                       .replace("{heat_id}", "1") \
+                       .replace("{signup_id}", "1") \
+                       .replace("{match_id}", "1") \
+                       .replace("{team_id}", "1") \
                        .replace("{announcement_id}", "1") \
                        .replace("{key}", "welcome_body")
         assert template in guarded_paths, f"{path} has no declared guard"

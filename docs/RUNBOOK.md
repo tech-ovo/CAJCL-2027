@@ -203,6 +203,8 @@ Roles bundle functional permission scopes. Scopes are never assigned to individu
 | `chapter` | Team athletics registrations, publicity portfolio submission | Strictly scoped to own chapter |
 | `judge` | Pre-convention submission judging | Blind contest evaluation |
 | `activities` | Photo contest categories and every photo, with names (`#/photo-contest`) | Global, but opens no roster |
+| `athletics` | Olympika events, every sign-up with a name, heats, brackets, results (`#/athletics`) | Global, but opens no roster |
+| `logistics` | The master convention schedule (`#/schedule/edit`) | Global, sees no people |
 
 *Multi-Chapter Sponsor Association:*  
 If a single teacher manages multiple institutions (e.g., MS and HS delegations), navigate to **Chapters → Select Second Chapter → Use Existing Sponsor**. Adds access scope without duplicating attendee records or login tokens.

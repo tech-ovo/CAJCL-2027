@@ -23,6 +23,7 @@ import base64
 import binascii
 import json
 import os
+import random
 import re
 import uuid
 from dataclasses import dataclass
@@ -32,7 +33,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from .lib import (auth, catalog, clock, codes, contests, drive, forms, joining,
-                  photos, printing, roster, settings, stats)
+                  olympika, photos, printing, roster, schedule, settings, stats)
 from .lib.db import connect
 
 # GitHub Pages plus the custom domain, and nothing else. The frontend never
@@ -2186,6 +2187,843 @@ def remove_photo_entry(entry_id: int, request: Request,
     _trash_quietly(row["drive_file_id"])
     _trash_quietly(row["drive_thumb_id"])
     return {"ok": True}
+
+
+# ===========================================================================
+# The convention schedule, and Olympika
+# ===========================================================================
+#
+# THE MASTER SCHEDULE is read by everybody and kept by the Logistics chair:
+#
+#   /public/schedule          every published entry. No credential.
+#   /admin/schedule           the Logistics chair's list, drafts included, and
+#                             adding, editing and deleting entries. `logistics`.
+#
+# OLYMPIKA is the athletics program, in two halves:
+#
+#   /me/olympika              a delegate's view: every event, their own entry
+#                             in each, and where and when they play.
+#   /admin/athletics          the Athletics Director: events, every sign-up,
+#                             heats, brackets and results. `athletics`.
+#
+# WHAT THE DIRECTOR SCHEDULES REACHES THE MASTER SCHEDULE in the same
+# transaction (olympika.sync_schedule), so the two cannot disagree. Those
+# entries are the Director's: the Logistics chair sees them and cannot change
+# them (see `_manual_item`).
+
+def _olympika_error(message: str) -> catalog.ValidationError:
+    return catalog.ValidationError([message])
+
+
+def _actor(principal: auth.Principal) -> dict:
+    return {"actor_person_id": principal.person_id,
+            "impersonator_person_id": principal.impersonator_person_id}
+
+
+@app.get("/public/schedule")
+def public_schedule():
+    """Every published entry in time order, and the convention's clock.
+
+    One indexed range read of a couple of hundred rows at the very most, and
+    cached for 20 seconds: a delegate checking whether their heat has moved
+    should not wait long, and a hall of them refreshing should not matter.
+    """
+    with database().read() as tx:
+        rows = tx.all("schedule.published")
+    today, now = clock.local_now_parts()
+    return JSONResponse(
+        {"items": [schedule.view(r) for r in rows],
+         "now": {"date": today, "time": now}},
+        headers={"Cache-Control": "public, max-age=20"})
+
+
+# -- The Logistics chair ----------------------------------------------------
+
+def _schedule_item(tx, item_id: int) -> dict:
+    row = tx.one("schedule.get", (item_id,))
+    if row is None:
+        raise _olympika_error("There is no such schedule entry. It may have "
+                              "just been deleted; reload the page.")
+    return dict(row)
+
+
+def _manual_item(tx, item_id: int) -> dict:
+    row = _schedule_item(tx, item_id)
+    if row["source"] != "manual":
+        raise _olympika_error(
+            "That entry is kept up to date from the Athletics Director's "
+            "heats and brackets. Change it on the Athletics page and it "
+            "follows here.")
+    return row
+
+
+@app.get("/admin/schedule")
+def admin_schedule(principal: auth.Principal = guard("admin.schedule", "logistics",
+                                                     school_rule="any")):
+    with database().read() as tx:
+        rows = tx.all("schedule.all")
+    today, now = clock.local_now_parts()
+    return {"items": [schedule.view(r, admin=True) for r in rows],
+            "now": {"date": today, "time": now},
+            "max_title": schedule.MAX_TITLE,
+            "max_description": schedule.MAX_DESCRIPTION,
+            "max_location": schedule.MAX_LOCATION}
+
+
+@app.post("/admin/schedule")
+def create_schedule_item(request: Request, payload: dict = Body(...),
+                         principal: auth.Principal = guard(
+                             "admin.schedule.create", "logistics",
+                             school_rule="any", writes=True)):
+    fields = schedule.check_item(payload)
+    now = clock.now_iso()
+    with database().tx(request_id=request_id(request)) as tx:
+        item_id = tx.insert("schedule.create", (
+            fields["title"], fields["description"], fields["location"],
+            fields["starts_at"], fields["ends_at"], fields["published"], now, now))
+        tx.audit("schedule.create",
+                 f"{principal.display_name} added “{fields['title']}” to the schedule.",
+                 entity_type="schedule_item", entity_id=item_id, **_actor(principal))
+        row = tx.one("schedule.get", (item_id,))
+    return {"ok": True, "item": schedule.view(row, admin=True)}
+
+
+@app.patch("/admin/schedule/{item_id}")
+def update_schedule_item(item_id: int, request: Request, payload: dict = Body(...),
+                         principal: auth.Principal = guard(
+                             "admin.schedule.update", "logistics",
+                             school_rule="any", writes=True)):
+    with database().tx(request_id=request_id(request)) as tx:
+        current = _manual_item(tx, item_id)
+        fields = schedule.check_item(payload, current)
+        changed = [k for k in fields if fields[k] != current[k]]
+        if changed:
+            tx.run("schedule.update", (
+                fields["title"], fields["description"], fields["location"],
+                fields["starts_at"], fields["ends_at"], fields["published"],
+                clock.now_iso(), item_id))
+            tx.audit("schedule.update",
+                     f"{principal.display_name} changed “{fields['title']}” on the schedule.",
+                     entity_type="schedule_item", entity_id=item_id,
+                     changed_fields=changed, **_actor(principal))
+        row = tx.one("schedule.get", (item_id,))
+    return {"ok": True, "item": schedule.view(row, admin=True)}
+
+
+@app.delete("/admin/schedule/{item_id}")
+def delete_schedule_item(item_id: int, request: Request,
+                         principal: auth.Principal = guard(
+                             "admin.schedule.delete", "logistics",
+                             school_rule="any", writes=True)):
+    with database().tx(request_id=request_id(request)) as tx:
+        current = _manual_item(tx, item_id)
+        tx.run("schedule.delete", (item_id,))
+        tx.audit("schedule.delete",
+                 f"{principal.display_name} removed “{current['title']}” from the schedule.",
+                 entity_type="schedule_item", entity_id=item_id, **_actor(principal))
+    return {"ok": True}
+
+
+# -- Olympika: shared pieces ------------------------------------------------
+
+def _olympika_event(tx, event_id: int) -> dict:
+    row = tx.one("olympika.event_get", (event_id,))
+    if row is None:
+        raise _olympika_error("There is no such event. It may have just been "
+                              "deleted; reload the page.")
+    return dict(row)
+
+
+def _event_view(row) -> dict:
+    return {"id": row["id"], "name": row["name"],
+            "description": row["description"], "kind": row["kind"],
+            "location": row["location"], "signup_open": bool(row["signup_open"]),
+            "max_per_school": row["max_per_school"],
+            "sort_order": row["sort_order"]}
+
+
+def _heat_view(row, entrants: int | None = None) -> dict:
+    view = {"id": row["id"], "number": row["number"], "label": row["label"],
+            **schedule.when(row["starts_at"], row["ends_at"])}
+    if entrants is not None:
+        view["entrants"] = entrants
+    return view
+
+
+def _match_view(row, rounds: int) -> dict:
+    return {"id": row["id"], "round": row["round"], "slot": row["slot"],
+            "round_name": olympika.round_name(row["round"], rounds),
+            "bye": olympika.is_bye(row),
+            "team_a_id": row["team_a_id"], "team_a_name": row["team_a_name"],
+            "team_b_id": row["team_b_id"], "team_b_name": row["team_b_name"],
+            "winner_id": row["winner_id"],
+            "score_a": row["score_a"], "score_b": row["score_b"],
+            "field": row["field"],
+            **schedule.when(row["starts_at"], row["ends_at"])}
+
+
+def _save_event(tx, fields: dict, event_id=None) -> int:
+    now = clock.now_iso()
+    columns = (fields["name"], fields["description"], fields["kind"],
+               fields["location"], fields["signup_open"],
+               fields["max_per_school"], fields["sort_order"])
+    try:
+        if event_id is None:
+            event_id = tx.insert("olympika.event_create", (*columns, now, now))
+        else:
+            tx.run("olympika.event_update", (*columns, now, event_id))
+    except Exception as error:
+        if "unique" in str(error).lower():
+            raise _olympika_error(
+                f"There is already an event called “{fields['name']}”.") from None
+        raise
+    return event_id
+
+
+def _entry_count(tx, event: dict) -> int:
+    if event["kind"] == "team":
+        return tx.value("olympika.team_count_for_event", (event["id"],), default=0)
+    return tx.value("olympika.signup_count_for_event", (event["id"],), default=0)
+
+
+# -- A delegate's Olympika ---------------------------------------------------
+
+def _can_enter_olympika(person: dict) -> str | None:
+    """Why this person cannot enter, or None when they can."""
+    if person["person_type"] != "delegate":
+        return "Olympika is entered by delegates."
+    if person["status"] != "active":
+        return "Your registration is cancelled, so you cannot enter."
+    if person["approval"] != "approved":
+        return ("Your sponsor has to approve you before you can enter. Ask "
+                "them to check the roster.")
+    return None
+
+
+def _my_team_games(tx, event: dict, team_id: int) -> list[dict]:
+    matches = tx.all("olympika.matches_for_event", (event["id"],))
+    rounds = max((m["round"] for m in matches), default=0)
+    games = []
+    for m in matches:
+        if team_id not in (m["team_a_id"], m["team_b_id"]) or olympika.is_bye(m):
+            continue
+        mine_is_a = m["team_a_id"] == team_id
+        opponent = m["team_b_name"] if mine_is_a else m["team_a_name"]
+        games.append({
+            "round_name": olympika.round_name(m["round"], rounds),
+            "opponent": opponent, "field": m["field"],
+            "result": (None if m["winner_id"] is None
+                       else "won" if m["winner_id"] == team_id else "lost"),
+            "score_for": m["score_a"] if mine_is_a else m["score_b"],
+            "score_against": m["score_b"] if mine_is_a else m["score_a"],
+            **schedule.when(m["starts_at"], m["ends_at"])})
+    return games
+
+
+@app.get("/me/olympika")
+def my_olympika(principal: auth.Principal = guard("me.olympika", "delegate",
+                                                  school_rule="self")):
+    with database().read() as tx:
+        person = _self(tx, principal)
+        signups = {r["event_id"]: r
+                   for r in tx.all("olympika.signups_for_person", (person["id"],))}
+        teams = {r["event_id"]: r
+                 for r in tx.all("olympika.teams_for_captain", (person["id"],))}
+        listed = []
+        for row in tx.all("olympika.events"):
+            view = _event_view(row)
+            view["entry"] = None
+            if row["kind"] == "individual":
+                view["heats"] = [_heat_view(h) for h in tx.all("olympika.heats", (row["id"],))
+                                 if h["starts_at"]]
+                mine = signups.get(row["id"])
+                if mine:
+                    view["entry"] = {
+                        "heat_number": mine["heat_number"],
+                        "heat_label": mine["heat_label"], "lane": mine["lane"],
+                        **(schedule.when(mine["heat_starts_at"], mine["heat_ends_at"])
+                           if mine["heat_id"] else {})}
+            else:
+                mine = teams.get(row["id"])
+                if mine:
+                    view["entry"] = {"team": mine["name"], "seed": mine["seed"],
+                                     "games": _my_team_games(tx, dict(row), mine["id"])}
+            listed.append(view)
+    reason = _can_enter_olympika(person)
+    return {"can_enter": reason is None, "reason": reason,
+            "max_team_name": olympika.MAX_TEAM_NAME, "events": listed}
+
+
+@app.post("/me/olympika/{event_id}")
+def enter_olympika(event_id: int, request: Request, payload: dict = Body(default={}),
+                   principal: auth.Principal = guard("me.olympika.enter", "delegate",
+                                                     school_rule="self", writes=True)):
+    """Sign up for an individual event, or sign up a team for a team event:
+    `{team_name}` (optional). One delegate signs up per team."""
+    name = olympika.check_team_name(payload.get("team_name"))
+    now = clock.now_iso()
+    with database().tx(request_id=request_id(request)) as tx:
+        person = _self(tx, principal)
+        reason = _can_enter_olympika(person)
+        if reason:
+            raise _olympika_error(reason)
+        event = _olympika_event(tx, event_id)
+        if not event["signup_open"]:
+            raise _olympika_error(f"Sign-up for {event['name']} is not open right now.")
+        limit = event["max_per_school"]
+
+        if event["kind"] == "individual":
+            if tx.one("olympika.signup_for_person", (event_id, person["id"])):
+                raise _olympika_error(f"You are already signed up for {event['name']}.")
+            if limit and tx.value("olympika.signup_count_for_school",
+                                  (event_id, person["school_id"]), default=0) >= limit:
+                raise _olympika_error(
+                    f"Your chapter already has {limit} entered in {event['name']}, "
+                    "which is the most it can.")
+            tx.insert("olympika.signup_create",
+                      (event_id, person["id"], person["school_id"], now))
+            action, summary = "olympika.signup", (
+                f"{principal.display_name} signed up for {event['name']}.")
+        else:
+            if tx.one("olympika.team_for_captain", (event_id, person["id"])):
+                raise _olympika_error(
+                    f"You have already signed up a team for {event['name']}.")
+            if tx.value("olympika.match_count_for_event", (event_id,), default=0):
+                raise _olympika_error(
+                    f"The {event['name']} bracket has already been drawn. Ask the "
+                    "Athletics Director to add your team.")
+            if limit and tx.value("olympika.team_count_for_school",
+                                  (event_id, person["school_id"]), default=0) >= limit:
+                raise _olympika_error(
+                    f"Your chapter already has {limit} team{'' if limit == 1 else 's'} in "
+                    f"{event['name']}, which is the most it can.")
+            if name is None:
+                name = olympika.default_team_name(person["school_name"], [
+                    r["name"] for r in tx.all("olympika.team_names_for_school",
+                                              (event_id, person["school_id"]))])
+            try:
+                tx.insert("olympika.team_create", (
+                    event_id, person["school_id"], person["id"], name, now, now))
+            except Exception as error:
+                if "unique" in str(error).lower():
+                    raise _olympika_error(
+                        f"There is already a team called “{name}” in {event['name']}. "
+                        "Pick another name.") from None
+                raise
+            action, summary = "olympika.team_signup", (
+                f"{principal.display_name} signed up a team for {event['name']}.")
+        tx.audit(action, summary, school_id=person["school_id"],
+                 entity_type="olympika_event", entity_id=event_id, **_actor(principal))
+    return {"ok": True}
+
+
+@app.patch("/me/olympika/{event_id}")
+def rename_my_team(event_id: int, request: Request, payload: dict = Body(...),
+                   principal: auth.Principal = guard("me.olympika.rename", "delegate",
+                                                     school_rule="self", writes=True)):
+    name = olympika.check_team_name(payload.get("team_name"))
+    if name is None:
+        raise _olympika_error("Give the team a name.")
+    with database().tx(request_id=request_id(request)) as tx:
+        person = _self(tx, principal)
+        event = _olympika_event(tx, event_id)
+        team = tx.one("olympika.team_for_captain", (event_id, person["id"]))
+        if event["kind"] != "team" or team is None:
+            raise _olympika_error("You have not signed up a team for that event.")
+        try:
+            tx.run("olympika.team_rename", (name, clock.now_iso(), team["id"]))
+        except Exception as error:
+            if "unique" in str(error).lower():
+                raise _olympika_error(
+                    f"There is already a team called “{name}” in {event['name']}.") from None
+            raise
+        tx.audit("olympika.team_rename",
+                 f"{principal.display_name} renamed their {event['name']} team.",
+                 school_id=person["school_id"], entity_type="olympika_team",
+                 entity_id=team["id"], **_actor(principal))
+        olympika.sync_schedule(tx, event_id, clock.now_iso())
+    return {"ok": True}
+
+
+@app.delete("/me/olympika/{event_id}")
+def withdraw_from_olympika(event_id: int, request: Request,
+                           principal: auth.Principal = guard(
+                               "me.olympika.withdraw", "delegate",
+                               school_rule="self", writes=True)):
+    """Take yourself, or your team, out of an event. Allowed after sign-up
+    closes, but not for a team once the bracket is drawn -- the Athletics
+    Director has to take it out of the bracket."""
+    with database().tx(request_id=request_id(request)) as tx:
+        person = _self(tx, principal)
+        event = _olympika_event(tx, event_id)
+        if event["kind"] == "individual":
+            signup = tx.one("olympika.signup_for_person", (event_id, person["id"]))
+            if signup is None:
+                raise _olympika_error(f"You are not signed up for {event['name']}.")
+            tx.run("olympika.signup_delete", (signup["id"],))
+            action, summary = "olympika.withdraw", (
+                f"{principal.display_name} withdrew from {event['name']}.")
+        else:
+            team = tx.one("olympika.team_for_captain", (event_id, person["id"]))
+            if team is None:
+                raise _olympika_error(f"You have no team in {event['name']}.")
+            if tx.value("olympika.match_count_for_event", (event_id,), default=0):
+                raise _olympika_error(
+                    f"The {event['name']} bracket has already been drawn, so a team "
+                    "cannot leave it by itself. Tell the Athletics Director.")
+            tx.run("olympika.team_delete", (team["id"],))
+            action, summary = "olympika.team_withdraw", (
+                f"{principal.display_name} withdrew their {event['name']} team.")
+        tx.audit(action, summary, school_id=person["school_id"],
+                 entity_type="olympika_event", entity_id=event_id, **_actor(principal))
+    return {"ok": True}
+
+
+# -- The Athletics Director --------------------------------------------------
+
+@app.get("/admin/athletics")
+def athletics_events(principal: auth.Principal = guard("admin.athletics", "athletics",
+                                                       school_rule="any")):
+    """Every event with how many have entered and what has been set up."""
+    with database().read() as tx:
+        events = []
+        for row in tx.all("olympika.events"):
+            view = _event_view(row)
+            heats = tx.all("olympika.heats", (row["id"],))
+            view.update({
+                "entries": _entry_count(tx, row),
+                "heats": len(heats),
+                "heats_timed": sum(1 for h in heats if h["starts_at"]),
+                "bracket": bool(tx.value("olympika.match_count_for_event",
+                                         (row["id"],), default=0)),
+            })
+            events.append(view)
+    return {"events": events, **_olympika_limits()}
+
+
+def _olympika_limits() -> dict:
+    return {"max_name": olympika.MAX_NAME, "max_description": olympika.MAX_DESCRIPTION,
+            "max_location": olympika.MAX_LOCATION, "max_label": olympika.MAX_LABEL,
+            "max_heats": olympika.MAX_HEATS, "max_team_name": olympika.MAX_TEAM_NAME}
+
+
+def _athletics_detail(tx, event: dict) -> dict:
+    heats = [dict(h) for h in tx.all("olympika.heats", (event["id"],))]
+    body = {"event": _event_view(event), "heats": [], "signups": [], "teams": [],
+            "matches": [], "rounds": 0, **_olympika_limits()}
+    if event["kind"] == "individual":
+        signups = [dict(r) for r in tx.all("olympika.signups_for_event", (event["id"],))]
+        tally: dict[int, int] = {}
+        for s in signups:
+            if s["heat_id"]:
+                tally[s["heat_id"]] = tally.get(s["heat_id"], 0) + 1
+        body["heats"] = [_heat_view(h, tally.get(h["id"], 0)) for h in heats]
+        body["signups"] = [{
+            "id": s["id"], "person_id": s["person_id"], "first_name": s["first_name"],
+            "last_name": s["last_name"], "school_seq": s["school_seq"],
+            "grade": s["grade"], "latin_level": s["latin_level"],
+            "school_id": s["school_id"], "school_name": s["school_name"],
+            "school_number": s["school_number"], "heat_id": s["heat_id"],
+            "heat_number": s["heat_number"], "lane": s["lane"],
+            "signed_up_at": s["signed_up_at"]} for s in signups]
+    else:
+        matches = tx.all("olympika.matches_for_event", (event["id"],))
+        rounds = max((m["round"] for m in matches), default=0)
+        body["rounds"] = rounds
+        body["matches"] = [_match_view(m, rounds) for m in matches]
+        body["teams"] = [{
+            "id": t["id"], "name": t["name"], "seed": t["seed"],
+            "school_id": t["school_id"], "school_name": t["school_name"],
+            "school_number": t["school_number"],
+            "captain_id": t["captain_person_id"],
+            "first_name": t["first_name"], "last_name": t["last_name"],
+            "school_seq": t["school_seq"], "grade": t["grade"],
+            "latin_level": t["latin_level"],
+            "created_at": t["created_at"]}
+            for t in tx.all("olympika.teams_for_event", (event["id"],))]
+    return body
+
+
+@app.get("/admin/athletics/events/{event_id}")
+def athletics_event(event_id: int,
+                    principal: auth.Principal = guard("admin.athletics.event",
+                                                      "athletics", school_rule="any")):
+    with database().read() as tx:
+        return _athletics_detail(tx, _olympika_event(tx, event_id))
+
+
+@app.post("/admin/athletics/events")
+def create_olympika_event(request: Request, payload: dict = Body(...),
+                          principal: auth.Principal = guard(
+                              "admin.athletics.events.create", "athletics",
+                              school_rule="any", writes=True)):
+    fields = olympika.check_event(payload)
+    with database().tx(request_id=request_id(request)) as tx:
+        if "sort_order" not in payload:
+            fields["sort_order"] = 10 + max(
+                (r["sort_order"] for r in tx.all("olympika.events")), default=0)
+        event_id = _save_event(tx, fields)
+        tx.audit("olympika_event.create",
+                 f"{principal.display_name} added the Olympika event {fields['name']}.",
+                 entity_type="olympika_event", entity_id=event_id, **_actor(principal))
+        row = tx.one("olympika.event_get", (event_id,))
+    return {"ok": True, "event": _event_view(row)}
+
+
+@app.patch("/admin/athletics/events/{event_id}")
+def update_olympika_event(event_id: int, request: Request, payload: dict = Body(...),
+                          principal: auth.Principal = guard(
+                              "admin.athletics.events.update", "athletics",
+                              school_rule="any", writes=True)):
+    """Rename, reword, move, reorder, or open and close sign-up."""
+    with database().tx(request_id=request_id(request)) as tx:
+        current = _olympika_event(tx, event_id)
+        fields = olympika.check_event(payload, current)
+        if fields["kind"] != current["kind"] and _entry_count(tx, current):
+            raise _olympika_error(
+                "People have already entered this event, so it cannot change "
+                "between individual and team. Add a new event instead.")
+        changed = [k for k in fields if fields[k] != current[k]]
+        if changed:
+            _save_event(tx, fields, event_id)
+            if changed == ["signup_open"]:
+                summary = (f"{principal.display_name} "
+                           + ("opened" if fields["signup_open"] else "closed")
+                           + f" sign-up for {fields['name']}.")
+            else:
+                summary = (f"{principal.display_name} changed the Olympika event "
+                           f"{fields['name']}.")
+            tx.audit("olympika_event.update", summary, entity_type="olympika_event",
+                     entity_id=event_id, changed_fields=changed, **_actor(principal))
+            # Its name and place are on the master schedule.
+            if {"name", "location"} & set(changed):
+                olympika.sync_schedule(tx, event_id, clock.now_iso())
+        row = tx.one("olympika.event_get", (event_id,))
+    return {"ok": True, "event": _event_view(row)}
+
+
+@app.delete("/admin/athletics/events/{event_id}")
+def delete_olympika_event(event_id: int, request: Request,
+                          principal: auth.Principal = guard(
+                              "admin.athletics.events.delete", "athletics",
+                              school_rule="any", writes=True)):
+    """The event, its sign-ups, heats and bracket, and its master-schedule
+    entries."""
+    with database().tx(request_id=request_id(request)) as tx:
+        event = _olympika_event(tx, event_id)
+        entries = _entry_count(tx, event)
+        olympika.delete_event(tx, event_id)
+        tx.audit("olympika_event.delete",
+                 f"{principal.display_name} deleted the Olympika event {event['name']}"
+                 + (f" and the {entries} "
+                    f"{'team' if event['kind'] == 'team' else 'sign-up'}"
+                    f"{'' if entries == 1 else 's'} in it." if entries else "."),
+                 entity_type="olympika_event", entity_id=event_id, **_actor(principal))
+    return {"ok": True, "removed": entries}
+
+
+def _individual_event(tx, event_id: int) -> dict:
+    event = _olympika_event(tx, event_id)
+    if event["kind"] != "individual":
+        raise _olympika_error(f"{event['name']} is a team event. It has a bracket, "
+                              "not heats.")
+    return event
+
+
+def _team_event(tx, event_id: int) -> dict:
+    event = _olympika_event(tx, event_id)
+    if event["kind"] != "team":
+        raise _olympika_error(f"{event['name']} is run in heats. It has no bracket.")
+    return event
+
+
+@app.put("/admin/athletics/events/{event_id}/heats")
+def set_olympika_heats(event_id: int, request: Request, payload: dict = Body(...),
+                       principal: auth.Principal = guard(
+                           "admin.athletics.heats", "athletics",
+                           school_rule="any", writes=True)):
+    """`{count}` heats, and optionally `{date, start, minutes_between,
+    minutes_long}` to time them all: the first at `start`, the rest
+    `minutes_between` apart. Without a start, existing times are kept."""
+    try:
+        count = int(payload.get("count"))
+        if not 0 <= count <= olympika.MAX_HEATS:
+            raise ValueError
+    except (TypeError, ValueError):
+        raise _olympika_error(
+            f"Say how many heats there are, from 0 to {olympika.MAX_HEATS}.") from None
+    plan = olympika.check_heat_plan(payload)
+    now = clock.now_iso()
+    with database().tx(request_id=request_id(request)) as tx:
+        event = _individual_event(tx, event_id)
+        olympika.set_heat_count(tx, event, count, plan, now)
+        olympika.sync_schedule(tx, event_id, now)
+        tx.audit("olympika_heat.set",
+                 f"{principal.display_name} set {event['name']} to "
+                 f"{count} heat{'' if count == 1 else 's'}"
+                 + (" and timed them." if plan else "."),
+                 entity_type="olympika_event", entity_id=event_id, **_actor(principal))
+        return _athletics_detail(tx, event)
+
+
+@app.patch("/admin/athletics/heats/{heat_id}")
+def update_olympika_heat(heat_id: int, request: Request, payload: dict = Body(...),
+                         principal: auth.Principal = guard(
+                             "admin.athletics.heats.update", "athletics",
+                             school_rule="any", writes=True)):
+    """Rename a heat or change when it runs. Empty `date` and `start` takes
+    it off the schedule."""
+    now = clock.now_iso()
+    with database().tx(request_id=request_id(request)) as tx:
+        heat = tx.one("olympika.heat_get", (heat_id,))
+        if heat is None:
+            raise _olympika_error("There is no such heat. Reload the page.")
+        event = _olympika_event(tx, heat["event_id"])
+        label = (olympika.check_heat_label(payload["label"]) if "label" in payload
+                 else heat["label"])
+        starts_at, ends_at = schedule.parse_span(payload, dict(heat), require_start=False)
+        tx.run("olympika.heat_update", (label, starts_at, ends_at, now, heat_id))
+        olympika.sync_schedule(tx, event["id"], now)
+        tx.audit("olympika_heat.update",
+                 f"{principal.display_name} changed heat {heat['number']} of "
+                 f"{event['name']}.",
+                 entity_type="olympika_heat", entity_id=heat_id,
+                 changed_fields=[k for k in ("label", "date", "start", "end") if k in payload],
+                 **_actor(principal))
+        return _athletics_detail(tx, event)
+
+
+@app.post("/admin/athletics/events/{event_id}/assign")
+def assign_olympika_heats(event_id: int, request: Request,
+                          principal: auth.Principal = guard(
+                              "admin.athletics.assign", "athletics",
+                              school_rule="any", writes=True)):
+    """Deal every entrant into the heats: sizes within one of each other, a
+    chapter's entrants spread across heats, lanes shuffled. Replaces any
+    earlier assignment, including moves made by hand."""
+    now = clock.now_iso()
+    with database().tx(request_id=request_id(request)) as tx:
+        event = _individual_event(tx, event_id)
+        result = olympika.assign_heats(tx, event, random.Random(), now)
+        tx.audit("olympika_heat.assign",
+                 f"{principal.display_name} assigned {result['entrants']} "
+                 f"{'entrant' if result['entrants'] == 1 else 'entrants'} to "
+                 f"{result['heats']} heat{'' if result['heats'] == 1 else 's'} of "
+                 f"{event['name']}.",
+                 entity_type="olympika_event", entity_id=event_id, **_actor(principal))
+        return _athletics_detail(tx, event)
+
+
+@app.patch("/admin/athletics/signups/{signup_id}")
+def move_olympika_signup(signup_id: int, request: Request, payload: dict = Body(...),
+                         principal: auth.Principal = guard(
+                             "admin.athletics.signups.update", "athletics",
+                             school_rule="any", writes=True)):
+    """Put one entrant in a different heat (or none, with `heat_id` null),
+    optionally with a lane."""
+    with database().tx(request_id=request_id(request)) as tx:
+        signup = tx.one("olympika.signup_get", (signup_id,))
+        if signup is None:
+            raise _olympika_error("That sign-up is gone. Reload the page.")
+        event = _olympika_event(tx, signup["event_id"])
+        heat_id = payload.get("heat_id", signup["heat_id"]) or None
+        if heat_id is not None:
+            heat = tx.one("olympika.heat_get", (heat_id,))
+            if heat is None or heat["event_id"] != event["id"]:
+                raise _olympika_error("That heat belongs to a different event.")
+        lane = payload.get("lane", signup["lane"] if heat_id == signup["heat_id"] else None)
+        if lane in ("", None) or heat_id is None:
+            lane = None
+        else:
+            try:
+                lane = int(lane)
+                if not 1 <= lane <= 200:
+                    raise ValueError
+            except (TypeError, ValueError):
+                raise _olympika_error("The lane must be a whole number.") from None
+        tx.run("olympika.signup_set_heat", (heat_id, lane, signup_id))
+        tx.audit("olympika_signup.move",
+                 f"{principal.display_name} moved an entrant in {event['name']}.",
+                 school_id=signup["school_id"], entity_type="olympika_signup",
+                 entity_id=signup_id, **_actor(principal))
+        return _athletics_detail(tx, event)
+
+
+@app.delete("/admin/athletics/signups/{signup_id}")
+def remove_olympika_signup(signup_id: int, request: Request,
+                           principal: auth.Principal = guard(
+                               "admin.athletics.signups.delete", "athletics",
+                               school_rule="any", writes=True)):
+    with database().tx(request_id=request_id(request)) as tx:
+        signup = tx.one("olympika.signup_get", (signup_id,))
+        if signup is None:
+            raise _olympika_error("That sign-up is already gone.")
+        event = _olympika_event(tx, signup["event_id"])
+        tx.run("olympika.signup_delete", (signup_id,))
+        tx.audit("olympika_signup.remove",
+                 f"{principal.display_name} removed an entrant from {event['name']}.",
+                 school_id=signup["school_id"], entity_type="olympika_signup",
+                 entity_id=signup_id, **_actor(principal))
+        return _athletics_detail(tx, event)
+
+
+@app.post("/admin/athletics/events/{event_id}/bracket")
+def form_olympika_bracket(event_id: int, request: Request,
+                          payload: dict = Body(default={}),
+                          principal: auth.Principal = guard(
+                              "admin.athletics.bracket", "athletics",
+                              school_rule="any", writes=True)):
+    """Draw a single-elimination bracket of the event's teams, replacing any
+    earlier one -- and its results. With `{date, start, minutes, fields}` the
+    games are timed too: `minutes` each, as many at once as there are
+    `fields` (a comma-separated list of names)."""
+    plan = olympika.check_game_plan(payload)
+    now = clock.now_iso()
+    with database().tx(request_id=request_id(request)) as tx:
+        event = _team_event(tx, event_id)
+        result = olympika.form_bracket(tx, event, random.Random(), plan, now)
+        olympika.sync_schedule(tx, event_id, now)
+        tx.audit("olympika_bracket.form",
+                 f"{principal.display_name} drew the {event['name']} bracket: "
+                 f"{result['teams']} teams, {result['games']} games.",
+                 entity_type="olympika_event", entity_id=event_id, **_actor(principal))
+        return _athletics_detail(tx, event)
+
+
+@app.post("/admin/athletics/events/{event_id}/bracket/times")
+def time_olympika_bracket(event_id: int, request: Request, payload: dict = Body(...),
+                          principal: auth.Principal = guard(
+                              "admin.athletics.bracket.times", "athletics",
+                              school_rule="any", writes=True)):
+    """Re-time the games of the bracket as drawn, without redrawing it."""
+    plan = olympika.check_game_plan(payload)
+    if plan is None:
+        raise _olympika_error("Give the date and the time the first game starts.")
+    now = clock.now_iso()
+    with database().tx(request_id=request_id(request)) as tx:
+        event = _team_event(tx, event_id)
+        games = [dict(m) for m in tx.all("olympika.matches_for_event", (event_id,))]
+        if not games:
+            raise _olympika_error("Draw the bracket first.")
+        timed = olympika.apply_times(tx, games, plan, now)
+        olympika.sync_schedule(tx, event_id, now)
+        tx.audit("olympika_bracket.time",
+                 f"{principal.display_name} timed {timed} {event['name']} games.",
+                 entity_type="olympika_event", entity_id=event_id, **_actor(principal))
+        return _athletics_detail(tx, event)
+
+
+@app.delete("/admin/athletics/events/{event_id}/bracket")
+def clear_olympika_bracket(event_id: int, request: Request,
+                           principal: auth.Principal = guard(
+                               "admin.athletics.bracket.delete", "athletics",
+                               school_rule="any", writes=True)):
+    now = clock.now_iso()
+    with database().tx(request_id=request_id(request)) as tx:
+        event = _team_event(tx, event_id)
+        olympika.reset_bracket(tx, event_id, now)
+        olympika.sync_schedule(tx, event_id, now)
+        tx.audit("olympika_bracket.clear",
+                 f"{principal.display_name} cleared the {event['name']} bracket.",
+                 entity_type="olympika_event", entity_id=event_id, **_actor(principal))
+        return _athletics_detail(tx, event)
+
+
+@app.patch("/admin/athletics/matches/{match_id}")
+def update_olympika_match(match_id: int, request: Request, payload: dict = Body(...),
+                          principal: auth.Principal = guard(
+                              "admin.athletics.matches.update", "athletics",
+                              school_rule="any", writes=True)):
+    """Record a result (`winner_id`, `score_a`, `score_b`) and/or change when
+    and where the game is played (`date`, `start`, `end`, `field`)."""
+    now = clock.now_iso()
+    with database().tx(request_id=request_id(request)) as tx:
+        match = tx.one("olympika.match_get", (match_id,))
+        if match is None:
+            raise _olympika_error("That game is gone. Reload the page.")
+        event = _olympika_event(tx, match["event_id"])
+        match = dict(match)
+        changed = []
+
+        if {"winner_id", "score_a", "score_b"} & set(payload):
+            winner = payload.get("winner_id", match["winner_id"]) or None
+            olympika.record_result(
+                tx, match, winner,
+                payload.get("score_a", match["score_a"]),
+                payload.get("score_b", match["score_b"]), now)
+            match = dict(tx.one("olympika.match_get", (match_id,)))
+            changed.append("result")
+
+        if {"date", "start", "end", "end_date", "field"} & set(payload):
+            if olympika.is_bye(match):
+                raise _olympika_error("That team has a bye. There is no game to time.")
+            starts_at, ends_at = schedule.parse_span(payload, match, require_start=False)
+            field = (" ".join(str(payload["field"] or "").split())
+                     if "field" in payload else match["field"]) or None
+            if field and len(field) > olympika.MAX_LOCATION:
+                raise _olympika_error("Keep the field's name shorter.")
+            tx.run("olympika.match_update", (
+                match["team_a_id"], match["team_b_id"], match["winner_id"],
+                match["score_a"], match["score_b"], starts_at, ends_at, field,
+                now, match_id))
+            olympika.sync_schedule(tx, event["id"], now)
+            changed.append("time")
+
+        tx.audit("olympika_match.update",
+                 f"{principal.display_name} updated a {event['name']} game.",
+                 entity_type="olympika_match", entity_id=match_id,
+                 changed_fields=changed or None, **_actor(principal))
+        return _athletics_detail(tx, event)
+
+
+@app.patch("/admin/athletics/teams/{team_id}")
+def rename_olympika_team(team_id: int, request: Request, payload: dict = Body(...),
+                         principal: auth.Principal = guard(
+                             "admin.athletics.teams.update", "athletics",
+                             school_rule="any", writes=True)):
+    name = olympika.check_team_name(payload.get("name"))
+    if name is None:
+        raise _olympika_error("Give the team a name.")
+    now = clock.now_iso()
+    with database().tx(request_id=request_id(request)) as tx:
+        team = tx.one("olympika.team_get", (team_id,))
+        if team is None:
+            raise _olympika_error("That team is gone. Reload the page.")
+        event = _olympika_event(tx, team["event_id"])
+        try:
+            tx.run("olympika.team_rename", (name, now, team_id))
+        except Exception as error:
+            if "unique" in str(error).lower():
+                raise _olympika_error(
+                    f"There is already a team called “{name}” in {event['name']}.") from None
+            raise
+        tx.audit("olympika_team.rename",
+                 f"{principal.display_name} renamed a team in {event['name']}.",
+                 school_id=team["school_id"], entity_type="olympika_team",
+                 entity_id=team_id, **_actor(principal))
+        return _athletics_detail(tx, event)
+
+
+@app.delete("/admin/athletics/teams/{team_id}")
+def remove_olympika_team(team_id: int, request: Request,
+                         principal: auth.Principal = guard(
+                             "admin.athletics.teams.delete", "athletics",
+                             school_rule="any", writes=True)):
+    with database().tx(request_id=request_id(request)) as tx:
+        team = tx.one("olympika.team_get", (team_id,))
+        if team is None:
+            raise _olympika_error("That team is already gone.")
+        event = _olympika_event(tx, team["event_id"])
+        if tx.value("olympika.match_count_for_event", (event["id"],), default=0):
+            raise _olympika_error(
+                "The bracket has been drawn. Clear the bracket first, remove "
+                "the team, then draw it again.")
+        tx.run("olympika.team_delete", (team_id,))
+        tx.audit("olympika_team.remove",
+                 f"{principal.display_name} removed a team from {event['name']}.",
+                 school_id=team["school_id"], entity_type="olympika_team",
+                 entity_id=team_id, **_actor(principal))
+        return _athletics_detail(tx, event)
 
 
 # ===========================================================================

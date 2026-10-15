@@ -25,7 +25,7 @@ import hmac
 import json
 import secrets
 
-from . import auth, clock, drive, settings, stats
+from . import auth, clock, drive, olympika, settings, stats
 from .db import Tx
 from .names import parse_roster
 
@@ -516,6 +516,7 @@ def redact(tx: Tx, school: dict, actor: auth.Principal, person: dict) -> None:
     - Clears roles and sponsor grants.
     - Unranks and redacts contest entries, quietly trashing associated Drive files.
     - Deletes photo contest entries, quietly trashing the photos and thumbnails.
+    - Deletes Olympika sign-ups, and teams the person captained.
     - Redacts historical audit log sentences mentioning the person by name.
     - Redacts occurrences in original roster imports.
     - Records an audited 'person.redact' action with no personal details.
@@ -577,6 +578,10 @@ def redact(tx: Tx, school: dict, actor: auth.Principal, person: dict) -> None:
                     pass
     if photo_entries:
         tx.run("photos.entries_delete_for_person", (person_id,))
+
+    # 3c. Olympika: their sign-ups, and any team they were the one delegate
+    # signing up. A captain's name is the team's only link to a person.
+    olympika.forget_person(tx, person_id, now)
 
     # 4. Roster imports: scrub raw text if imported from a paste
     import_id = person.get("roster_import_id")

@@ -558,7 +558,7 @@ footer.page > .hair { margin-top: 0; }
 }
 
 input[type="text"], input[type="email"], input[type="tel"], input[type="number"],
-input[type="search"], input[type="date"], select, textarea {
+input[type="search"], input[type="date"], input[type="time"], select, textarea {
   width: 100%;
   font-family: var(--font-sans); font-size: var(--size-base);
   color: var(--text); background: var(--panel-bg);
