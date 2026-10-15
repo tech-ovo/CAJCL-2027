@@ -13,12 +13,16 @@ THE FLOW
     1. A board member writes the page in Google Docs.
     2. An administrator pastes its link on the Site pages screen (once).
     3. "Publish" asks the Drive puppet (apps-script/Code.gs, op `convert`) to
-       turn each Doc into a cleaned HTML file in Drive and share it with anyone
-       who has the link. The file is rewritten in place, so its link is stable.
-       The database stores that link and nothing else about the text.
-    4. The same click asks GitHub to rebuild the site. The build
-       (scripts/build_pages.py) reads /public/pages, downloads each file, cleans
-       it AGAIN with htmlclean, and writes /p/<slug>.html.
+       turn each Doc into a cleaned HTML file in Drive, pictures embedded, and
+       share it with anyone who has the link. The screen sends ONE request per
+       page, so none runs past the web function's 60 seconds however many
+       pages or pictures there are. The file is rewritten in place, so its
+       link is stable; the database stores that link and nothing else about
+       the text.
+    4. When every page has been tried, the screen asks GitHub to rebuild the
+       site. The build (scripts/build_pages.py) reads /public/pages, downloads
+       each file, cleans it AGAIN with htmlclean, saves its pictures as files,
+       and writes /p/<slug>.html.
 
 A conversion that fails leaves the previous Drive copy and link in place: the
 page keeps showing the last good version.
@@ -31,7 +35,6 @@ import os
 import re
 import urllib.error
 import urllib.request
-from concurrent.futures import ThreadPoolExecutor
 
 from . import drive
 from .catalog import ValidationError
@@ -157,28 +160,17 @@ def convert(page: dict, folder_id: str) -> tuple[str, str]:
         folder_id, drive_name(page), page["doc_id"])
 
 
-def convert_all(pages: list[dict], folder_id: str) -> list[dict]:
-    """Convert every page, a few at a time. One bad Doc does not stop the rest.
-
-    Each result is {"id", "ok", "file_id", "url", "error"}. Nothing here writes
-    to the database: the caller does that, in one transaction, afterwards.
-    """
-    def one(page: dict) -> dict:
-        try:
-            file_id, url = convert(page, folder_id)
-            return {"id": page["id"], "ok": True, "file_id": file_id,
-                    "url": url, "error": ""}
-        except drive.DriveUnavailable as error:
-            return {"id": page["id"], "ok": False, "file_id": "", "url": "",
-                    "error": str(error)}
-        except Exception as error:      # a bug must not hide the other pages
-            return {"id": page["id"], "ok": False, "file_id": "", "url": "",
-                    "error": f"Unexpected error: {error}"}
-
-    if len(pages) <= 1:
-        return [one(p) for p in pages]
-    with ThreadPoolExecutor(max_workers=4) as pool:
-        return list(pool.map(one, pages))
+def convert_one(page: dict, folder_id: str) -> dict:
+    """Convert one page. {"ok", "file_id", "url", "error"}; never raises, so one
+    bad Doc is a message on its row, not a failed request."""
+    try:
+        file_id, url = convert(page, folder_id)
+        return {"ok": True, "file_id": file_id, "url": url, "error": ""}
+    except drive.DriveUnavailable as error:
+        return {"ok": False, "file_id": "", "url": "", "error": str(error)}
+    except Exception as error:      # a bug must not look like a Drive outage
+        return {"ok": False, "file_id": "", "url": "",
+                "error": f"Unexpected error: {error}"}
 
 
 def folder_for_pages(store: drive.Drive, configured: str) -> str:

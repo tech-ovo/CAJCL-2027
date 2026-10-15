@@ -42,11 +42,13 @@ import { potluckPage } from "./pages/potluck.js";
 import { schedulePage, scheduleEditorPage } from "./pages/schedule.js";
 import { olympikaPage } from "./pages/olympika.js";
 import { athleticsPage } from "./pages/athletics.js";
+import { sitePagesPage } from "./pages/sitepages.js";
 
 export const state = {
   me: null,          // /auth/me, or null when signed out
   convention: {},    // public settings
   demoMode: false,
+  textPages: [],     // /pages.json, written by the build; empty if there is none
 };
 
 const ROUTES = [
@@ -119,6 +121,9 @@ const ROUTES = [
   // Olympika. Delegates sign up; the Athletics Director runs it.
   [/^\/olympika$/,               olympikaPage,      { scope: "delegate" }],
   [/^\/athletics(?:\/(\d+))?$/,  athleticsPage,     { scope: "athletics" }],
+  // Long text pages written in Google Docs. The pages themselves are static
+  // files (/p/<slug>.html, scripts/build_pages.py); this is where they are kept.
+  [/^\/site-pages$/,             sitePagesPage,     { scope: ["registration", "academics"] }],
   [/^\/admin$/,                  adminPage,         { scope: "*" }],
   [/^\/audit$/,                  auditPage,         { scope: "*" }],
 ];
@@ -171,6 +176,7 @@ async function boot() {
   // The static snapshot in index.html is already on screen. Replace it quietly
   // once the API answers, and leave it alone if the API never does.
   loadPublicFacts();
+  loadTextPages();
 
   window.addEventListener("hashchange", route);
   await route();
@@ -188,6 +194,25 @@ async function loadPublicFacts() {
   }
   renderBanners();
   loadAnnouncements();
+}
+
+/* The long text pages the build wrote (scripts/build_pages.py). A file on this
+ * site, not an API call, so it works while the server is asleep. A site with no
+ * such pages, or a local checkout that never ran the build, has no file; either
+ * way the navigation simply has no extra links. */
+async function loadTextPages() {
+  try {
+    const response = await fetch("pages.json", { cache: "no-cache" });
+    if (!response.ok) return;
+    const list = await response.json();
+    if (Array.isArray(list)) {
+      state.textPages = list;
+      renderNav();
+      // Resources lists them too; if it is what the visitor landed on, it was
+      // drawn before the file arrived.
+      if (location.hash === "#/resources") route();
+    }
+  } catch (ignored) { /* no pages; nothing to add */ }
 }
 
 export function applySnapshot(convention) {
@@ -507,6 +532,9 @@ function renderNav() {
   };
 
   add(nav, link("#/", "Welcome"), link("#/schedule", "Schedule"));
+  // Plain links to static pages, not routes: each is its own document.
+  add(nav, ...state.textPages.filter((page) => page.show_in_nav).map(
+    (page) => el("a", { href: page.path }, page.nav_label || page.title)));
 
   if (state.me) {
     /* TWO GROUPS, AND THE ORDER IS THE POINT.
@@ -588,6 +616,9 @@ function renderNav() {
     }
     if (hasScope("logistics")) {
       administrative.push(["#/schedule/edit", "Edit schedule"]);
+    }
+    if (hasScope("registration") || hasScope("academics")) {
+      administrative.push(["#/site-pages", "Site pages"]);
     }
     if (hasScope("*")) {
       administrative.push(["#/admin", "Settings"], ["#/audit", "Log"]);

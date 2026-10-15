@@ -62,12 +62,13 @@ class AppsScriptDrive(Drive):
     """
 
     TIMEOUT_SECONDS = 90
+    CONVERT_TIMEOUT_SECONDS = 55
 
     def __init__(self, url: str, key: str):
         self.url = url
         self.key = key.encode()
 
-    def _call(self, op: str, **fields) -> dict:
+    def _call(self, op: str, _timeout: int | None = None, **fields) -> dict:
         ts = str(int(time.time()))
         # Must match verify() in Code.gs, field for field.
         material = ".".join([ts, op, fields.get("folderId", ""),
@@ -78,7 +79,8 @@ class AppsScriptDrive(Drive):
             self.url, data=body, method="POST",
             headers={"Content-Type": "application/json"})
         try:
-            with urllib.request.urlopen(request, timeout=self.TIMEOUT_SECONDS) as response:
+            with urllib.request.urlopen(request,
+                                        timeout=_timeout or self.TIMEOUT_SECONDS) as response:
                 payload = json.loads(response.read().decode())
         except (urllib.error.URLError, TimeoutError, ValueError) as error:
             raise DriveUnavailable(f"Drive did not answer ({error}).") from None
@@ -102,7 +104,11 @@ class AppsScriptDrive(Drive):
     def convert(self, folder_id: str, name: str, doc_id: str) -> tuple[str, str]:
         # The Doc's id travels in `fileId`, which is signed (see verify() in
         # Code.gs): a captured request cannot be pointed at another Doc.
-        payload = self._call("convert", folderId=folder_id, name=name, fileId=doc_id)
+        #
+        # Under the 60 s the web function is allowed per request: a Doc with a
+        # lot of pictures that takes longer is reported, not left hanging.
+        payload = self._call("convert", _timeout=self.CONVERT_TIMEOUT_SECONDS,
+                             folderId=folder_id, name=name, fileId=doc_id)
         return payload["fileId"], payload["url"]
 
 

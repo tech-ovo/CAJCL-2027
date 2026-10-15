@@ -266,7 +266,8 @@ ROUTES = [
       "doc_url": "https://docs.google.com/document/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/edit"}),
     ("admin.pages.update", "PATCH", "/admin/pages/1", {"title": "Hotels"}),
     ("admin.pages.delete", "DELETE", "/admin/pages/1", None),
-    ("admin.pages.publish", "POST", "/admin/pages/publish", {}),
+    ("admin.pages.convert", "POST", "/admin/pages/1/convert", {}),
+    ("admin.pages.rebuild", "POST", "/admin/pages/rebuild", {}),
 ]
 
 

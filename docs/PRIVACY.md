@@ -81,6 +81,7 @@ graph LR
 | **Emergency Contact** | Parent/Guardian Name, Parent/Guardian Phone Number | Delegates | Sponsor Roster Input | Purged April 12, 2027 |
 | **Adult Contact Info** | Email Address, Mobile Phone, Chaperone Availability Notes | Sponsors, Chaperones | Adult Form | Purged April 12, 2027 |
 | **Cryptographic Auth** | Code HMAC, Session Token SHA-256 Hash, Hashed IP, User-Agent | All Registrants | Automated / System Generated | Purged April 12, 2027 (Tokens expire in 180 days) |
+| **Public Information Pages** | Text the board writes in Google Docs and publishes on the site (hotel list, white book, instructions). Must contain NO registrant data. The converted copy in Drive (`Site Pages` folder) is readable by anyone with its link, because the site build downloads it | Board members (authors) | An administrator pastes the Doc link; Apps Script converts it | Kept until the page is removed; not personal data, so not part of the April 12 purge |
 | **Financial Accounting** | Check Number, Ledger Amount, Remittance Notes | Sponsoring Chapters | Administrative Entry | Retained for 501(c)(3) tax audit requirements (7 years) |
 
 ### Explicitly Excluded Data Elements (Deliberate Non-Collection)
@@ -96,7 +97,7 @@ graph LR
 
 | Sub-Processor | Service Role | Security Certification | Data Protection Agreement (DPA) | Data Transferred |
 | :--- | :--- | :--- | :--- | :--- |
-| **GitHub, Inc.** | Static CDN (Pages), CI/CD (Actions), Source Repo | SOC 1/2/3, ISO 27001 | Executed standard enterprise DPA | Static assets, visitor IP logs, CI encrypted secrets |
+| **GitHub, Inc.** | Static CDN (Pages), CI/CD (Actions), Source Repo | SOC 1/2/3, ISO 27001 | Executed standard enterprise DPA | Static assets (including the text pages published from Google Docs), visitor IP logs, CI encrypted secrets |
 | **Modal Labs, Inc.** | Serverless Compute Backend, Asynchronous Workers | SOC 2 Type II, TLS 1.3, Encrypted at Rest | Executed standard platform DPA | Ephemeral compute payloads, API execution context |
 | **Turso (ChiselStrike)**| Distributed libSQL (SQLite) Relational Database | SOC 2 Type II, AES-256 Volume Encryption | Executed standard platform DPA | Primary relational data, authentication HMACs |
 | **Google LLC** | Google Drive / Apps Script (Digital uploads & scans) | ISO 27001/27018, SOC 2/3 (Workspace infrastructure) | Google Cloud Data Processing Addendum (Workspace) | Contest digital files, photo contest images and thumbnails, scanned physical liability PDFs |

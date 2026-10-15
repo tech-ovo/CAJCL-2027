@@ -2404,13 +2404,15 @@ def delete_potluck_activity(activity_id: int, request: Request,
 #   /public/pages             the published pages and where their HTML is.
 #                             Read by the site build. No credential.
 #   /admin/pages              the list, adding, editing and removing a page.
-#   /admin/pages/publish      convert every Doc, then rebuild the site.
+#   /admin/pages/{id}/convert re-read one Doc into Drive (one page per request).
+#   /admin/pages/rebuild      ask GitHub to rebuild the site.
 #
-# Any administrative scope may keep these (registration, academics, awards, or
-# `*`): the Academics chair owns the academic resources page, the registration
-# chairs own the instructions. See lib/pages.py for the whole flow.
+# The registration and academics chairs (and the admin, who holds every scope)
+# keep these: registration owns the instructions, academics the academic
+# resources. Anyone, signed in or not, may READ the pages (they are static
+# files). See lib/pages.py for the whole flow.
 
-PAGES_SCOPES = ("registration", "academics", "awards")
+PAGES_SCOPES = ("registration", "academics")
 
 
 def _pages_error(message: str) -> catalog.ValidationError:
@@ -2529,57 +2531,68 @@ def delete_site_page(page_id: int, request: Request,
     return {"ok": True}
 
 
-@app.post("/admin/pages/publish")
-def publish_site_pages(request: Request, payload: dict = Body(default={}),
-                       principal: auth.Principal = guard(
-                           "admin.pages.publish", *PAGES_SCOPES,
-                           school_rule="any", writes=True)):
-    """Convert every Doc, then ask GitHub to rebuild the site.
+@app.post("/admin/pages/{page_id}/convert")
+def convert_site_page(page_id: int, request: Request,
+                      principal: auth.Principal = guard(
+                          "admin.pages.convert", *PAGES_SCOPES,
+                          school_rule="any", writes=True)):
+    """Read one Doc again and rewrite its Drive copy.
 
-    A Doc that cannot be converted keeps its previous copy and reports why; the
-    rebuild still goes ahead, because a retitled, hidden or removed page needs
-    one too. Slow (each Doc is a round trip to Drive), so the page shows a
-    spinner and the Docs are converted a few at a time.
+    ONE PAGE PER REQUEST. A Doc with pictures can take half a minute and the web
+    function is allowed 60 seconds, so the screen walks the list itself and
+    shows each row's result as it arrives. A Doc that cannot be converted keeps
+    its previous copy and records why; that is a normal answer, not an error.
     """
     with database().read() as tx:
-        rows = [dict(r) for r in tx.all("pages.all")]
+        page = _site_page(tx, page_id)
         configured = settings.get(tx, "drive.contests_root")
-
-    results = []
-    if rows:
-        try:
-            store = drive.client("Page publishing")
-            folder = pages.folder_for_pages(store, configured)
-            results = pages.convert_all(rows, folder)
-        except drive.DriveUnavailable as error:
-            results = [{"id": r["id"], "ok": False, "file_id": "", "url": "",
-                        "error": str(error)} for r in rows]
+    try:
+        store = drive.client("Page publishing")
+        folder = pages.folder_for_pages(store, configured)
+        result = pages.convert_one(page, folder)
+    except drive.DriveUnavailable as error:
+        result = {"ok": False, "file_id": "", "url": "", "error": str(error)}
 
     with database().tx(request_id=request_id(request)) as tx:
-        now = clock.now_iso()
-        for result in results:
-            if tx.one("pages.get", (result["id"],)) is None:
-                continue                    # removed while we were converting
-            if result["ok"]:
-                tx.run("pages.synced",
-                       (result["file_id"], result["url"], now, result["id"]))
-            else:
-                tx.run("pages.sync_failed", (result["error"][:500], result["id"]))
-        failed = sum(1 for r in results if not r["ok"])
-        tx.audit("site_page.publish",
-                 f"{principal.display_name} published the site pages "
-                 f"({len(results) - failed} converted"
-                 + (f", {failed} failed" if failed else "") + ").",
-                 **_actor(principal))
-        listing = _page_list(tx)
+        if tx.one("pages.get", (page_id,)) is None:
+            raise _pages_error("That page was removed while it was being converted.")
+        if result["ok"]:
+            tx.run("pages.synced", (result["file_id"], result["url"],
+                                    clock.now_iso(), page_id))
+        else:
+            tx.run("pages.sync_failed", (result["error"][:500], page_id))
+        tx.audit("site_page.convert",
+                 f"{principal.display_name} re-read the Google Doc for the page "
+                 f"{page['title']}"
+                 + ("." if result["ok"] else f", which failed: {result['error'][:200]}"),
+                 entity_type="site_page", entity_id=page_id, **_actor(principal))
+        row = tx.one("pages.get", (page_id,))
+    return {"ok": result["ok"], "error": result["error"], "page": pages.view(row)}
 
+
+@app.post("/admin/pages/rebuild")
+def rebuild_site_pages(request: Request,
+                       principal: auth.Principal = guard(
+                           "admin.pages.rebuild", *PAGES_SCOPES,
+                           school_rule="any", writes=True)):
+    """Ask GitHub to rebuild the site from what is in Drive now.
+
+    Also needed with no pages converted at all: a retitled, hidden or removed
+    page only reaches the site through a rebuild. Not being able to start one
+    (no token, GitHub refusing) is reported in the answer, not as an error,
+    because the conversions before it succeeded.
+    """
     rebuild = {"ok": True, "url": "", "error": ""}
     try:
         rebuild["url"] = pages.request_rebuild()
     except pages.RebuildUnavailable as error:
         rebuild.update(ok=False, error=str(error), url=pages.actions_url())
-    return {"ok": True, "pages": listing, "rebuild": rebuild,
-            "converted": len(results) - failed, "failed": failed}
+    with database().tx(request_id=request_id(request)) as tx:
+        tx.audit("site_page.publish",
+                 f"{principal.display_name} "
+                 + ("published" if rebuild["ok"] else "tried to publish")
+                 + " the site pages.", **_actor(principal))
+    return {"ok": True, "rebuild": rebuild}
 
 
 # ===========================================================================

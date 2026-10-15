@@ -242,6 +242,7 @@ def inspect_secret() -> str:
     for name in ("TURSO_DATABASE_URL", "TURSO_AUTH_TOKEN", "CODE_PEPPER",
                  "CAJCL_ENV", "TURSO_PLATFORM_TOKEN", "TURSO_ORG", "TURSO_DB_NAME",
                  "APPS_SCRIPT_URL", "APPS_SCRIPT_KEY",
+                 "GITHUB_DISPATCH_TOKEN", "GITHUB_REPO",
                  "TURSO_CERTAMEN_DATABASE_URL", "TURSO_CERTAMEN_AUTH_TOKEN"):
         raw = os.environ.get(name)
         if raw is None:

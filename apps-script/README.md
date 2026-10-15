@@ -1,6 +1,6 @@
 # The Drive puppet
 
-Roughly 160 lines that will essentially never change.
+Roughly 300 lines that will essentially never change.
 
 ## Why it exists
 
@@ -10,8 +10,8 @@ the entire justification for this component. Nothing else belongs here.
 
 ## What it does
 
-Five operations — `upload`, `fetch`, `list`, `mkdir`, `trash` — and it holds no
-configuration. Folder IDs, filenames, and retention rules all travel in the
+Six operations — `upload`, `fetch`, `list`, `mkdir`, `trash`, `convert` — and it
+holds no configuration. Folder IDs, filenames, and retention rules all travel in the
 request payload from Modal. Every request carries an HMAC signature and a
 timestamp, and anything older than five minutes is rejected. The signed string
 is `ts.op.folderId.name.fileId`; `backend/lib/drive.py` builds the same one.
@@ -22,6 +22,18 @@ contest and then per chapter. `fetch` reads one back so a judge can see an
 entry through the site without being shared the folder, whose chapter
 subfolders would say whose it is. Apps Script caps a request at about 50 MB,
 which is why the site caps an upload at 20 MB (base64 adds a third).
+
+`convert` turns a Google Doc into a cleaned HTML file for the site's text pages
+(`docs/PAGES.md`). The Doc's id travels in the signed `fileId` field, the output
+file's name in `name` and its folder in `folderId`. The script exports the Doc as a zip
+(HTML plus its pictures) through the Drive API (`UrlFetchApp`, hence the `script.external_request` scope
+in `appsscript.json`: **redeploying with it asks the account to re-authorise
+once**), cleans it in `cleanDocHtml` (no Apps Script services, so it runs in
+Node for the parity test in `backend/tests/test_site_pages.py`), rewrites the
+single file called `name` in that folder, and shares it "anyone with the link".
+The Doc must be shared with the account that owns the script; if it is not, the
+error says which address to share it with. The site build cleans the result
+again, so this pass is a convenience, not the security boundary.
 
 ## What it must never touch
 

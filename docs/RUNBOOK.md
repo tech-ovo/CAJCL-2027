@@ -144,7 +144,8 @@ Secrets reside exclusively in **Modal Secrets** (`cajcl-2027`) and **GitHub Acti
 | `TURSO_DATABASE_URL` | TLS endpoint for libSQL database. | Direct database connectivity failure if incorrect. |
 | `TURSO_AUTH_TOKEN` | Bearer token for database read/write. | Authentication failure to database layer. |
 | `MODAL_TOKEN_ID` / `_SECRET`| CI/CD deployment credentials. | GitHub Actions deployment failure. |
-| `APPS_SCRIPT_URL` / `_KEY` | Drive puppet webhook integration. | Contest digital upload pipeline failure. |
+| `APPS_SCRIPT_URL` / `_KEY` | Drive puppet webhook integration. | Contest digital upload pipeline failure; **Site pages → Publish** cannot convert Docs. |
+| `GITHUB_DISPATCH_TOKEN` | Fine-grained token (this repo, Actions: read/write) that lets **Publish** start the site rebuild. Expires; renew it. | **Publish** converts the Docs but says the rebuild did not start; run **Actions → Deploy → Run workflow** by hand. |
 | `DB_POOL` | Connection pooling toggle (`1` by default). | If set to `0`, increases query latency significantly. |
 
 *Rotating Secrets Safely:* `modal secret create cajcl-2027 KEY="value" ... --force` (Must pass all existing keys; `--force` replaces the entire bundle).

@@ -16,6 +16,15 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      # The admin screen's "Publish" button (Site pages) runs this with
+      # site_only=true: rebuild and publish the site from the latest Google
+      # Docs, without migrating or redeploying the API. A manual run from the
+      # Actions tab leaves it off and does everything.
+      site_only:
+        description: "Only rebuild the site (skip the migrations and the API deploy)"
+        type: boolean
+        default: false
 
 concurrency:
   group: deploy
@@ -28,6 +37,7 @@ permissions:
 
 jobs:
   migrate-and-deploy-api:
+    if: ${{ !inputs.site_only }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -55,6 +65,8 @@ jobs:
   publish-site:
     runs-on: ubuntu-latest
     needs: migrate-and-deploy-api
+    # Skipped API job (a site-only rebuild) must not skip this one.
+    if: ${{ !cancelled() && needs.migrate-and-deploy-api.result != 'failure' }}
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
@@ -78,6 +90,15 @@ jobs:
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
         run: python scripts/build_snapshot.py
+
+      # The long text pages written in Google Docs: the API lists them, Drive
+      # holds the converted HTML, and this writes /p/<slug>.html and
+      # pages.json into the site. It must run after the snapshot (it copies the
+      # masthead from the built index.html). A page that cannot be fetched
+      # FAILS the build, so a live page is never silently dropped; the previous
+      # deployment stays up. See docs/PAGES.md.
+      - name: Build the text pages
+        run: python scripts/build_pages.py
 
       # CNAME is optional. A commissioner with no custom domain deletes it and
       # uses the github.io address; without this guard, doing so would fail the

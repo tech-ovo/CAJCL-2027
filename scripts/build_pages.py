@@ -8,10 +8,11 @@ WHAT IT DOES
        and the public Drive link of each one's converted HTML.
     2. Downloads each file, cleans it AGAIN with backend/lib/htmlclean.py (the
        Drive copy is not trusted: whatever Apps Script did or did not strip,
-       only the allowlist reaches the site), and puts it in the site's frame
-       (frontend/page.template.html).
-    3. Writes frontend/public/p/<slug>.html for each page, and
-       frontend/public/pages.json -- the list the site's navigation and the
+       only the allowlist reaches the site), saves each embedded picture as a
+       file (type checked, location/camera data removed), and puts the page in
+       the site's frame (frontend/page.template.html).
+    3. Writes frontend/public/p/<slug>.html for each page, the pictures in
+       frontend/public/p/img/, and frontend/public/pages.json -- the list the site's navigation and the
        Resources page read.
 
     Run it AFTER scripts/build_snapshot.py, because the masthead, footer and
@@ -82,8 +83,9 @@ def api_base() -> str:
 
 
 def snapshot(index_html: str, key: str, default: str) -> str:
-    match = re.search(rf'data-snapshot="{key}"[^>]*>(.*?)</', index_html, re.S)
-    return match.group(1).strip() if match and match.group(1).strip() else default
+    match = re.search(rf'<(\w+)[^>]*data-snapshot="{key}"[^>]*>(.*?)</\1>',
+                      index_html, re.S)
+    return match.group(2).strip() if match and match.group(2).strip() else default
 
 
 def frame_parts(index_html: str) -> dict:
@@ -149,14 +151,19 @@ def build(pages: list[dict], fetch, out: pathlib.Path, *, index_html: str,
     folder.mkdir(parents=True, exist_ok=True)
     for stale in folder.glob("*.html"):
         stale.unlink()
+    pictures = folder / "img"
+    if pictures.is_dir():
+        for stale in pictures.iterdir():
+            stale.unlink()
 
     for page, entry in zip(pages, entries):
         try:
             raw = fetch(page["html_url"])
             body = htmlclean.drop_leading_title(htmlclean.clean(raw), entry["title"])
+            body = htmlclean.extract_images(body, pictures, "/p/img")
         except (BuildError, ValueError) as error:
             raise BuildError(f"page “{entry['title']}” ({entry['slug']}): {error}") from None
-        if not re.sub(r"<[^>]+>|\s", "", body):
+        if "<img" not in body and not re.sub(r"<[^>]+>|\s", "", body):
             raise BuildError(
                 f"page “{entry['title']}” ({entry['slug']}) came back empty. Is the "
                 "Drive file shared with anyone who has the link, and is the Doc "

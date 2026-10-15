@@ -161,6 +161,31 @@ rules), then `docs/design.md` for the visual rules.
   every state and a six-team Frisbee bracket with one game scored. The older
   activity-sheet "Olympika" catalog items and the sponsor's `#/teams` counts are
   non-binding planning input and do not feed these tables.
+- Text pages from Google Docs (migration 015, `docs/PAGES.md`): an administrator
+  (scope `registration` or `academics`, plus `*`; viewing is public) adds a page on `#/site-pages`
+  (`js/pages/sitepages.js`) with a title and a Google Doc link;
+  the Publish button walks the pages calling `POST /admin/pages/{id}/convert` (ONE page per request: the web function times out at 60 s, Drive convert at 55 s) and then `POST /admin/pages/rebuild`; convert uses the Drive puppet's `convert` op
+  (`apps-script/Code.gs`, `Drive.convert` in `lib/drive.py`) rewrite
+  `page-<id>.html` (stable public link, under `<drive.contests_root>/Site Pages/`),
+  stores the link in `site_pages` (`lib/pages.py`, `queries/pages.sql`), then
+  calls GitHub `workflow_dispatch` on `deploy.yml` with `site_only=true`
+  (`GITHUB_DISPATCH_TOKEN`, optional `GITHUB_REPO`/`GITHUB_WORKFLOW`/`GITHUB_REF_NAME`
+  in the `cajcl-2027` Modal secret; no token = Docs convert, rebuild reported as
+  not started). `site_only` skips the migrate/API-deploy job
+  (`publish-site` runs on `!cancelled()`). The build step `scripts/build_pages.py`
+  (after `build_snapshot.py`) reads the unauthenticated `GET /public/pages`, downloads
+  each `html_url`, re-cleans with `lib/htmlclean.py` (allowlist; the Drive copy is
+  NOT trusted; Code.gs `cleanDocHtml` is a first pass kept in parity by a node
+  test), and writes `frontend/public/p/<slug>.html` (frame in
+  `frontend/page.template.html`; masthead/footer/theme script + CSP hash copied from
+  the built `index.html`) plus `pages.json` (both gitignored). `main.js` reads
+  `pages.json` into `state.textPages` for the nav bar and Resources. A page that
+  cannot be fetched or is empty FAILS the build (never silently dropped). A
+  failed conversion keeps the old copy (`sync_error`). Pictures: Code.gs exports the
+  Doc as a ZIP and embeds png/jpeg/gif as `data:` URIs; `htmlclean` keeps ONLY those
+  (alt kept); the build `extract_images` writes them to `p/img/<hash>.ext` after a
+  magic-byte check and `photos.strip_metadata` (limits: 4 MB each, 40 per page).
+  Static pages show the signed-out menu. `.doc` styles are in `app.css`.
 - `certamen-bot/` — Certamen practice arena, React 19 + Vite 6 (no Tailwind,
   no icon library). `npm run build` outputs to `frontend/public/certamen/`
   (committed). Connected to a separate Turso database via Modal endpoints (`/certamen/...`)
@@ -190,7 +215,7 @@ rules), then `docs/design.md` for the visual rules.
   `PRIVACY.md` (regulatory & privacy spec), `REGISTRATION.md` (chair SOP), `RISKS.md` (risk register),
   `RUNBOOK.md` (incident & ops runbook), `SECURITY.md` (threat model & security spec),
   `TODO.md` (product roadmap & tracker), `design.md` (design system standard), `schema.md` (DDL & API spec),
-  `stack.md` (architecture blueprint), `structure.md` (PRD & functional spec).
+  `stack.md` (architecture blueprint), `structure.md` (PRD & functional spec), `PAGES.md` (Google Docs text pages guide).
 - `apps-script/`, `scripts/`, `docs/`. `scripts/seed.py` seeds demo data (`--reset` to wipe/re-migrate); seeds entries for Slogans & Publicity and a submitted ballot by Rosalind Achebe for English slogans (`contest_ballots`). Bulk question import: `python scripts/import_certamen_questions.py --file <path.json|path.csv>`.
 
 ## Checks
@@ -200,6 +225,8 @@ rules), then `docs/design.md` for the visual rules.
 - `pip install esprima` or ~24 frontend tests skip silently. esprima 4 cannot
   parse `??` or `?.`, so the site's JS avoids them.
 - `python scripts/check_query_plans.py`.
+- `backend/tests/test_site_pages.py` runs the Code.gs cleaner under `node` (skipped
+  if node is absent).
 - `backend/tests/test_frontend.py` fails on any hex colour outside
   `tokens.css`, including the Certamen build's CSS.
 - `cd certamen-bot && npm run lint && npm run build`.

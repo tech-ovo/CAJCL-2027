@@ -179,6 +179,21 @@ pip install modal
 
 ---
 
+### Phase 5b: Site Pages (Google Docs) — optional
+Only needed for the text pages board members write in Google Docs (hotel list,
+white book, …); see [`PAGES.md`](PAGES.md).
+1. Deploy the latest `apps-script/Code.gs` (it gained the `convert` operation and
+   needs the `script.external_request` scope, so Apps Script asks to re-authorise
+   once). Without it, **Publish** reports that Drive refused the request.
+2. Create a GitHub **fine-grained personal access token** limited to this one
+   repository with **Actions: Read and write** and nothing else. Add it to the
+   Modal bundle as `GITHUB_DISPATCH_TOKEN` (and `GITHUB_REPO=owner/name` if the
+   repository is not `tech-ovo/CAJCL-2027`). Without it, **Publish** converts the
+   Docs but reports that the rebuild could not be started.
+3. `modal run backend/app.py::doctor` shows both.
+
+---
+
 ### Phase 6: CI/CD Pipeline & GitHub Pages Publication
 1. Navigate to GitHub Repository **Settings → Secrets and variables → Actions** and add:
    - `MODAL_TOKEN_ID`
@@ -191,7 +206,11 @@ pip install modal
    ```bash
    git push origin main
    ```
-   The workflow executes font assembly, statistics snapshot baking, schema migration validation, and CDN deployment.
+   The workflow executes font assembly, statistics snapshot baking, text-page
+   building from the Google Docs (`scripts/build_pages.py`, which calls the
+   deployed API), schema migration validation, and CDN deployment. A run started
+   from **Site pages → Publish** passes `site_only=true` and skips the migrations
+   and the API deploy.
 
 ---
 

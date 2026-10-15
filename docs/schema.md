@@ -724,13 +724,14 @@ Long text pages (hotel list, white book, registration instructions, …) are
 written in Google Docs and published as static pages (migration 015,
 `lib/pages.py`, `lib/htmlclean.py`, `scripts/build_pages.py`). The table holds
 only the list of pages and where each one's converted HTML lives; the text is
-in the Doc and in Drive. `POST /admin/pages/publish` has the Drive puppet
+in the Doc and in Drive. `POST /admin/pages/{id}/convert` (one page per request, so none runs past the 60 s web-function limit; the screen walks the list) has the Drive puppet
 (`convert` op) turn each Doc into a cleaned HTML file named `page-<id>.html`
 under `<drive.contests_root>/Site Pages/`, rewritten in place so its public
-download link (`html_url`) never changes, then asks GitHub to rebuild the site
+download link (`html_url`) never changes, then `POST /admin/pages/rebuild` asks GitHub to rebuild the site
 (`workflow_dispatch` on `deploy.yml` with `site_only=true`). The build fetches
 `GET /public/pages`, downloads each `html_url`, cleans it again with
-`htmlclean` and writes `/p/<slug>.html` plus `/pages.json` (the navigation).
+`htmlclean`, saves its embedded pictures as files in `/p/img/`, and writes
+`/p/<slug>.html` plus `/pages.json` (the navigation).
 A failed conversion keeps the previous copy and records `sync_error`. Changing
 `doc_url` to a different Doc clears `html_file_id`, `html_url` and `synced_at`.
 Removing a page trashes its Drive copy and never touches the Doc.
@@ -850,9 +851,10 @@ The ingestion engine processes raw unstructured text from chapter sponsors via `
 | `POST` | `/admin/potluck` | `activities` | Adds an activity (name, blurb, place, date/start/end, helpers wanted, open). |
 | `PATCH/DELETE` | `/admin/potluck/{id}` | `activities` | Edits / opens / closes an activity; deletes it with every pick and its schedule row. |
 | `GET` | `/public/pages` | none | Every site page converted at least once: slug, title, menu name, `html_url`. Read by the site build. Cached 10 s. |
-| `GET/POST` | `/admin/pages` | `registration` / `academics` / `awards` | The site pages list; adds a page (title, address, Google Doc link, menu name, show in menu, order). |
+| `GET/POST` | `/admin/pages` | `registration` / `academics` | The site pages list; adds a page (title, address, Google Doc link, menu name, show in menu, order). |
 | `PATCH/DELETE` | `/admin/pages/{id}` | same | Edits a page (a different Doc forgets the converted copy); removes it and trashes the copy. |
-| `POST` | `/admin/pages/publish` | same | Converts every Doc through the Drive puppet, then asks GitHub to rebuild the site. Reports each Doc that failed and whether the rebuild started. |
+| `POST` | `/admin/pages/{id}/convert` | same | Re-reads one Doc through the Drive puppet and rewrites its Drive copy (pictures embedded). A failed Doc keeps its last good copy and returns the reason. |
+| `POST` | `/admin/pages/rebuild` | same | Asks GitHub to rebuild the site. Reports whether it started. |
 | `GET` | `/public/schedule` | none | Every published master-schedule entry, in time order, with the convention's clock. Cached 20 s. |
 | `GET/POST` | `/admin/schedule` | `logistics` | The master schedule with drafts; adds an entry. |
 | `PATCH/DELETE` | `/admin/schedule/{id}` | `logistics` | Edits / deletes a manual entry. Entries the Athletics Director's heats and brackets wrote (`source = 'olympika'`) are refused. |

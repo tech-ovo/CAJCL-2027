@@ -12,6 +12,7 @@
  */
 
 import { add, el, clear } from "../ui.js";
+import { state } from "../main.js";
 
 /* Ordered by how likely somebody is to want it, not alphabetically. The
  * Certamen arena is the thing this page is mostly visited for.
@@ -66,6 +67,13 @@ export async function resourcesPage(host) {
           el("span", { class: "resource__name" }, item.name),
           el("span", { class: "label" }, item.where)),
         el("span", { class: "resource__what" }, item.what)))),
+
+    // The long text pages from Google Docs (js/pages/sitepages.js), including
+    // any left out of the menu bar. Absent until the build has written them.
+    state.textPages.length ? el("section", {},
+      el("h2", {}, "Convention information"),
+      el("ul", {}, ...state.textPages.map((page) =>
+        el("li", {}, el("a", { href: page.path }, page.title))))) : null,
 
     el("p", { class: "small muted" },
       "More to come. If you have made something other chapters would use, or "

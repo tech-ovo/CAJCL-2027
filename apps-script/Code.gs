@@ -40,6 +40,11 @@
  *  replayed tomorrow. */
 var MAX_AGE_SECONDS = 300;
 
+/** Pictures embedded in a converted page. Keep in step with htmlclean.py. */
+var MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+var MAX_IMAGES = 40;
+var MAX_IMAGE_TOTAL = 16 * 1024 * 1024;
+
 function doPost(e) {
   try {
     var request = JSON.parse(e.postData.contents);
@@ -184,15 +189,42 @@ function convert(request) {
     throw new Error('That link is not a Google Doc.');
   }
 
+  // The zipped export: the HTML plus an images/ folder, which is the only
+  // reliable way to get a Doc's pictures (the plain export links to Google
+  // servers, and those links are not ours to depend on).
   var response = UrlFetchApp.fetch(
     'https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(request.fileId) +
-      '/export?mimeType=' + encodeURIComponent('text/html'),
+      '/export?mimeType=' + encodeURIComponent('application/zip'),
     { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
       muteHttpExceptions: true });
   if (response.getResponseCode() !== 200) {
     throw new Error('Google could not export the Doc (' + response.getResponseCode() + ').');
   }
-  var html = cleanDocHtml(response.getContentText());
+  var files = Utilities.unzip(response.getBlob().setContentType('application/zip'));
+  var htmlBlob = null, pictures = {};
+  files.forEach(function (blob) {
+    var name = blob.getName();
+    if (/\.html?$/i.test(name)) { if (!htmlBlob) htmlBlob = blob; }
+    else pictures[name.replace(/^.*\//, '')] = blob;
+  });
+  if (!htmlBlob) throw new Error('Google\'s export of the Doc had no page in it.');
+
+  var budget = { count: 0, bytes: 0 };
+  var html = cleanDocHtml(htmlBlob.getDataAsString('UTF-8'), function (src) {
+    var blob = pictures[String(src).replace(/^.*\//, '').split(/[?#]/)[0]];
+    if (!blob) return '';
+    var type = String(blob.getContentType() || '').toLowerCase();
+    if (type === 'image/jpg') type = 'image/jpeg';
+    if (type !== 'image/png' && type !== 'image/jpeg' && type !== 'image/gif') return '';
+    var bytes = blob.getBytes();
+    // The same ceilings the site build enforces (backend/lib/htmlclean.py);
+    // a picture over them is left out here rather than failing the page.
+    if (bytes.length > MAX_IMAGE_BYTES || budget.count >= MAX_IMAGES ||
+        budget.bytes + bytes.length > MAX_IMAGE_TOTAL) return '';
+    budget.count++;
+    budget.bytes += bytes.length;
+    return 'data:' + type + ';base64,' + Utilities.base64Encode(bytes);
+  });
 
   var folder = DriveApp.getFolderById(request.folderId);
   var existing = folder.getFilesByName(request.name);
@@ -215,14 +247,16 @@ function convert(request) {
  * <style> block, so deleting the styles would delete the emphasis. This reads
  * the style block first, turns those spans into <strong>/<em>/<u>/<sup>/<sub>,
  * and then drops every attribute except a link's href and a cell's
- * colspan/rowspan. Images and scripts go. Google's link redirects
- * (google.com/url?q=...) are unwrapped.
+ * colspan/rowspan. Scripts go. Google's link redirects (google.com/url?q=...)
+ * are unwrapped. A picture stays only if `resolveImage(src)` returns a
+ * `data:image/...;base64,...` address for it (convert() supplies pictures from
+ * the Doc's own export); with no resolver, pictures are dropped.
  *
  * It uses no Apps Script services, so it can be tried in any JavaScript
  * runtime. backend/lib/htmlclean.py is the same allowlist in Python; the site
  * build runs that one on every page, so this is the first pass, not the guard.
  */
-function cleanDocHtml(source) {
+function cleanDocHtml(source, resolveImage) {
   var KEEP = { p: 1, br: 1, hr: 1, ul: 1, ol: 1, li: 1, strong: 1, em: 1, u: 1,
                sub: 1, sup: 1, a: 1, table: 1, thead: 1, tbody: 1, tr: 1,
                th: 1, td: 1, blockquote: 1, code: 1, pre: 1, h2: 1, h3: 1, h4: 1 };
@@ -287,7 +321,14 @@ function cleanDocHtml(source) {
       continue;
     }
     if (tag === 'br' || tag === 'hr') { out.push('<' + tag + '>'); continue; }
-    if (tag === 'img') continue;
+    if (tag === 'img') {
+      var uri = resolveImage ? String(resolveImage(attr(attrs, 'src')) || '') : '';
+      if (/^data:image\/(png|jpeg|gif);base64,[A-Za-z0-9+\/]+=*$/.test(uri)) {
+        var alt = attr(attrs, 'alt').replace(/\s+/g, ' ').trim().substring(0, 300);
+        out.push('<img src="' + uri + '" alt="' + alt.replace(/"/g, '&quot;') + '">');
+      }
+      continue;
+    }
     if (tag === 'span') {
       var d = decorations(attr(attrs, 'class'), linkDepth > 0);
       out.push(d.open);

@@ -1228,3 +1228,35 @@ details > summary {
  * has no bottom margin, and "13 of 13 have started" sat on top of "Meals". */
 .stats + section,
 .stats + * { margin-top: var(--space-7); }
+
+/* ===========================================================================
+ * Text pages written in Google Docs (/p/<slug>.html, scripts/build_pages.py)
+ *
+ * The Doc supplies only structure -- headings, paragraphs, lists, links,
+ * tables -- and this supplies the look. A table is wrapped in nothing by the
+ * cleaner, so it scrolls on its own on a phone rather than widening the page.
+ * ======================================================================== */
+
+.doc { padding-bottom: var(--space-5); }
+.doc h2 { margin-top: var(--space-6); }
+.doc h3, .doc h4 { margin-top: var(--space-5); }
+.doc table {
+  display: block; overflow-x: auto; max-width: 100%;
+  border-collapse: collapse; margin: 0 0 var(--space-5);
+  font-family: var(--font-sans); font-size: var(--size-sm);
+}
+.doc th, .doc td {
+  text-align: left; vertical-align: top;
+  padding: var(--space-2) var(--space-3) var(--space-2) 0;
+  border-bottom: var(--border);
+}
+.doc th { font-weight: var(--weight-semi); border-bottom: var(--border-strong); }
+.doc blockquote {
+  margin: 0 0 var(--space-4); padding-left: var(--space-4);
+  border-left: 2px solid var(--accent); color: var(--text-muted);
+}
+.doc img { max-width: 100%; height: auto; display: block; margin: 0 0 var(--space-4); }
+.doc pre, .doc code { font-family: var(--font-mono); font-size: 0.95em; }
+.doc pre { overflow-x: auto; margin: 0 0 var(--space-4); }
+.doc hr { border: 0; border-top: var(--border); margin: var(--space-5) 0; }
+.doc sub, .doc sup { font-size: 0.75em; }
