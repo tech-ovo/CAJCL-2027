@@ -40,6 +40,10 @@
  *  replayed tomorrow. */
 var MAX_AGE_SECONDS = 300;
 
+/** Bump when the script changes, so scripts/check_puppet.py can tell which
+ *  copy a deployment is really running. */
+var VERSION = '2026-10-14-images';
+
 /** Pictures embedded in a converted page. Keep in step with htmlclean.py. */
 var MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 var MAX_IMAGES = 40;
@@ -60,6 +64,7 @@ function doPost(e) {
       case 'mkdir':  return json(mkdir(request));
       case 'trash':  return json(trash(request));
       case 'convert': return json(convert(request));
+      case 'ping':   return json({ ok: true, version: VERSION });
       default:       return json({ ok: false, error: 'unknown op: ' + request.op });
     }
   } catch (error) {
@@ -178,15 +183,25 @@ function trash(request) {
  * Cleaning is cleanDocHtml below; the site build cleans again regardless.
  */
 function convert(request) {
-  var doc;
-  try {
-    doc = DriveApp.getFileById(request.fileId);
-  } catch (error) {
-    throw new Error('This script cannot open that Google Doc. Share the Doc with ' +
-                    Session.getEffectiveUser().getEmail() + ' (Viewer is enough).');
+  // Ask the Drive API about the Doc first, so a refusal comes back with
+  // Google's own words (the status and message), not a guess. DriveApp throws
+  // one vague error for "not shared", "wrong kind of link" and "needs a resource
+  // key", which made all three look like the first.
+  var token = 'Bearer ' + ScriptApp.getOAuthToken();
+  var meta = UrlFetchApp.fetch(
+    'https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(request.fileId) +
+      '?supportsAllDrives=true&fields=name,mimeType',
+    { headers: { Authorization: token }, muteHttpExceptions: true });
+  if (meta.getResponseCode() !== 200) {
+    var why = googleError(meta);
+    throw new Error('Google would not show this script that Doc (' +
+                    meta.getResponseCode() + (why ? ': ' + why : '') + '). ' +
+                    'It must be shared with ' + ownerAddress() +
+                    ' (Viewer is enough), and the link must be to a Google Doc.');
   }
-  if (doc.getMimeType() !== MimeType.GOOGLE_DOCS) {
-    throw new Error('That link is not a Google Doc.');
+  if (JSON.parse(meta.getContentText()).mimeType !== 'application/vnd.google-apps.document') {
+    throw new Error('That link is not a Google Doc (it is a ' +
+                    JSON.parse(meta.getContentText()).mimeType + ').');
   }
 
   // The zipped export: the HTML plus an images/ folder, which is the only
@@ -195,10 +210,11 @@ function convert(request) {
   var response = UrlFetchApp.fetch(
     'https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(request.fileId) +
       '/export?mimeType=' + encodeURIComponent('application/zip'),
-    { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
-      muteHttpExceptions: true });
+    { headers: { Authorization: token }, muteHttpExceptions: true });
   if (response.getResponseCode() !== 200) {
-    throw new Error('Google could not export the Doc (' + response.getResponseCode() + ').');
+    var reason = googleError(response);
+    throw new Error('Google could not export the Doc (' + response.getResponseCode() +
+                    (reason ? ': ' + reason : '') + ').');
   }
   var files = Utilities.unzip(response.getBlob().setContentType('application/zip'));
   var htmlBlob = null, pictures = {};
@@ -238,6 +254,42 @@ function convert(request) {
   file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
   return { ok: true, fileId: file.getId(), name: file.getName(),
            url: 'https://drive.google.com/uc?export=download&id=' + file.getId() };
+}
+
+/**
+ * Run this ONCE by hand from the editor (pick `authorize` in the function menu
+ * and press Run) after adding a permission to appsscript.json, to get the
+ * consent screen. Nothing else here is meant to be run from the editor: the
+ * other functions need the request that only the web app supplies, and fail
+ * with "Cannot read properties of undefined".
+ */
+function authorize() {
+  DriveApp.getRootFolder();
+  UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/about?fields=user',
+                    { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() } });
+  Logger.log('Authorised. Now redeploy: Deploy > Manage deployments > New version.');
+}
+
+/** The message inside a Google API error response, or ''. */
+function googleError(response) {
+  try {
+    var body = JSON.parse(response.getContentText());
+    return String((body.error && body.error.message) || '').substring(0, 200);
+  } catch (error) {
+    return '';
+  }
+}
+
+/** The address to share a Doc with: the account whose Drive this is.
+ *  Session.getEffectiveUser() would need the userinfo.email scope (and another
+ *  re-authorisation); the owner of the root folder is the same account and
+ *  needs nothing more than the Drive scope already granted. */
+function ownerAddress() {
+  try {
+    var email = DriveApp.getRootFolder().getOwner().getEmail();
+    if (email) return email;
+  } catch (error) { /* fall through */ }
+  return 'the Google account that owns this script';
 }
 
 /**

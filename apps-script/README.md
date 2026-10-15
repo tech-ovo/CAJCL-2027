@@ -31,6 +31,10 @@ in `appsscript.json`: **redeploying with it asks the account to re-authorise
 once**), cleans it in `cleanDocHtml` (no Apps Script services, so it runs in
 Node for the parity test in `backend/tests/test_site_pages.py`), rewrites the
 single file called `name` in that folder, and shares it "anyone with the link".
+After adding a permission to `appsscript.json` (as `convert` did), run `authorize`
+once from the editor to grant it, then deploy a **new version** of the existing
+deployment (a new deployment gets a new URL). Do not run `convert` or the other
+operations from the editor: they need the request the web app supplies.
 The Doc must be shared with the account that owns the script; if it is not, the
 error says which address to share it with. The site build cleans the result
 again, so this pass is a convenience, not the security boundary.
