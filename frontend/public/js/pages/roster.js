@@ -11,6 +11,7 @@ import { add, el, clear, tabula, table, button, emptyState, loadingRows,
          field, input, select } from "../ui.js";
 import { state, route, hasScope, adopt } from "../main.js";
 import { joinCodePanel, formatJoinCode } from "./joincode.js";
+import { whenText } from "../when.js";
 
 export async function rosterPage(host, params = []) {
   // Set when a chapter is named in the URL. A sponsor reaching their own
@@ -166,6 +167,9 @@ export async function rosterPage(host, params = []) {
       }),
 
       waiting.length ? pendingPanel(waiting, school) : null,
+
+      (data.potluck_requests || []).length
+        ? potluckPanel(data.potluck_requests, school) : null,
 
       el("div", { class: "btn-row" },
         // A chair gets this too. A sponsor whose spreadsheet will not paste is
@@ -324,6 +328,67 @@ export async function rosterPage(host, params = []) {
                 }
               },
             })));
+  }
+
+  /* Students who ticked an activity at the potluck, waiting for the sponsor.
+   *
+   * Choosing one is an offer to help run it at convention, so it is the
+   * sponsor's call whether that student can be spared. Approving puts them on
+   * the Activities chair's list; declining tells the student on their own
+   * sheet, where they can ask again. A chair sees the list and not the
+   * buttons, as with the students above. */
+  function potluckPanel(requests, school) {
+    return el("section", { class: "panel", style: "margin-bottom:1.5rem" },
+      el("h2", {}, `Activities potluck: waiting for you (${requests.length})`),
+      el("p", { class: "small muted" },
+        "These students offered to help run an activity at convention. The "
+        + "Activities chair sees only the ones you approve."),
+      table([
+        { key: "name", label: "Student",
+          render: (row) => fullName(row) },
+        { key: "activity", label: "Activity",
+          render: (row) => el("span", {}, el("strong", {}, row.activity_name),
+            whenText(row) || row.location
+              ? el("span", { class: "small muted", style: "display:block" },
+                   [whenText(row), row.location].filter(Boolean).join(" · "))
+              : null) },
+        { key: "actions", label: "Actions",
+          render: (row) => asChair
+            ? el("span", { class: "muted" }, "—")
+            : el("span", { style: "display:flex; gap:.5rem; flex-wrap:wrap" },
+                button("Approve", {
+                  variant: "btn--small btn--primary",
+                  onclick: () => decidePotluck(row, "approve"),
+                }),
+                button("Decline", {
+                  variant: "btn--small btn--quiet",
+                  onclick: () => decidePotluck(row, "decline"),
+                })) },
+      ], requests, { caption: `Potluck offers waiting at ${school.name}` }),
+      asChair || requests.length < 2
+        ? null
+        : el("div", { class: "btn-row" },
+            button(`Approve all ${requests.length}`, {
+              onclick: async () => {
+                try {
+                  await api.post("/sponsor/potluck/approve-all",
+                                 { school_id: school.id });
+                  await reload();
+                } catch (error) {
+                  await tell({ body: error.message });
+                }
+              },
+            })));
+  }
+
+  async function decidePotluck(row, verb) {
+    try {
+      await api.post(
+        `/sponsor/people/${row.person_id}/potluck/${row.activity_id}/${verb}`, {});
+      await reload();
+    } catch (error) {
+      await tell({ body: error.message });
+    }
   }
 
   async function approve(row) {

@@ -251,6 +251,22 @@ ROUTES = [
     ("admin.athletics.teams.update", "PATCH", "/admin/athletics/teams/1",
      {"name": "Hawks"}),
     ("admin.athletics.teams.delete", "DELETE", "/admin/athletics/teams/1", None),
+
+    ("sponsor.potluck.approve", "POST", "/sponsor/people/{person}/potluck/1/approve", {}),
+    ("sponsor.potluck.decline", "POST", "/sponsor/people/{person}/potluck/1/decline", {}),
+    ("sponsor.potluck.approve_all", "POST", "/sponsor/potluck/approve-all",
+     {"school_id": "{school}"}),
+    ("admin.potluck", "GET", "/admin/potluck", None),
+    ("admin.potluck.create", "POST", "/admin/potluck", {"name": "Face painting"}),
+    ("admin.potluck.update", "PATCH", "/admin/potluck/1", {"name": "x"}),
+    ("admin.potluck.delete", "DELETE", "/admin/potluck/1", None),
+    ("admin.pages", "GET", "/admin/pages", None),
+    ("admin.pages.create", "POST", "/admin/pages",
+     {"title": "Hotel list",
+      "doc_url": "https://docs.google.com/document/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/edit"}),
+    ("admin.pages.update", "PATCH", "/admin/pages/1", {"title": "Hotels"}),
+    ("admin.pages.delete", "DELETE", "/admin/pages/1", None),
+    ("admin.pages.publish", "POST", "/admin/pages/publish", {}),
 ]
 
 
@@ -314,7 +330,7 @@ def test_no_route_is_accidentally_public():
     """Only the public and auth surfaces may be reached with no credential."""
     allowed = {
         "/public/stats", "/public/convention", "/public/announcements",
-        "/public/schedule",
+        "/public/schedule", "/public/pages",
         "/auth/redeem", "/auth/join", "/health",
         # These take any valid session and check authority in the handler.
         "/auth/me", "/auth/logout", "/auth/impersonate/end",
@@ -345,7 +361,9 @@ def test_no_route_is_accidentally_public():
                        .replace("{item_id}", "1") \
                        .replace("{option_id}", "1") \
                        .replace("{category_id}", "1") \
+                       .replace("{page_id}", "1") \
                        .replace("{event_id}", "1") \
+                       .replace("{activity_id}", "1") \
                        .replace("{heat_id}", "1") \
                        .replace("{signup_id}", "1") \
                        .replace("{match_id}", "1") \

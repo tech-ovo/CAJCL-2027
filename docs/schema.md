@@ -643,14 +643,17 @@ CREATE TABLE schedule_items (
   starts_at          TEXT NOT NULL,
   ends_at            TEXT,
   published          INTEGER NOT NULL DEFAULT 1 CHECK (published IN (0, 1)),
-  source             TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('manual','olympika')),
+  source             TEXT NOT NULL DEFAULT 'manual'
+                       CHECK (source IN ('manual','olympika','potluck')),
   source_key         TEXT,
   olympika_event_id  INTEGER REFERENCES olympika_events(id),
+  potluck_activity_id INTEGER REFERENCES potluck_activities(id),  -- migration 014
   created_at         TEXT NOT NULL,
   updated_at         TEXT NOT NULL
 );
 CREATE INDEX idx_schedule_items_starts ON schedule_items (starts_at, id);
 CREATE INDEX idx_schedule_items_event  ON schedule_items (olympika_event_id);
+CREATE INDEX idx_schedule_items_potluck ON schedule_items (potluck_activity_id);
 CREATE UNIQUE INDEX idx_schedule_items_key ON schedule_items (source_key) WHERE source_key IS NOT NULL;
 ```
 
@@ -660,6 +663,97 @@ when odd. A first-round game with one team is a **bye**: its winner is set when
 the bracket is drawn and it is never timed or shown as a game. A redacted
 captain's sign-ups are deleted, and so is their team unless a bracket has been
 drawn, when the team stays nameless so the bracket keeps its shape.
+
+---
+
+### 2.8 The Activities Potluck
+
+The Activities chair posts activities that need helpers; attendees tick the
+ones they would help run on their own activity sheet (migration 014,
+`lib/potluck.py`). An **adult's** pick is approved at once. A **delegate's**
+pick is `pending` until their sponsor approves or declines it; a pick a
+sponsor or chair enters for a delegate is approved at once. The Activities
+chair sees only **approved** helpers per activity, by name and chapter.
+
+`capacity` counts `pending` + `approved`, so a full activity stops taking picks
+and a sponsor is never asked to approve a place that is not there; a declined
+pick frees its place, and reversing a decline is refused if the activity has
+filled. `open` stops NEW picks only. The signup table is not replaced whole on
+a sheet save (the sponsor's decision lives in it); a declined pick stays on the
+student's sheet until they pick it again (which makes it `pending`). Two picks
+at the same time are a warning, never a block. An activity with a time is
+written onto `schedule_items` (`source = 'potluck'`, `source_key` =
+`potluck:<id>`) by `potluck.sync_schedule` in the same transaction; the
+Logistics chair cannot edit it, and no person is named there.
+
+```sql
+CREATE TABLE potluck_activities (
+  id          INTEGER PRIMARY KEY,
+  name        TEXT NOT NULL,
+  description TEXT,
+  location    TEXT,
+  starts_at   TEXT,
+  ends_at     TEXT,
+  capacity    INTEGER CHECK (capacity IS NULL OR capacity > 0),
+  open        INTEGER NOT NULL DEFAULT 1 CHECK (open IN (0, 1)),
+  sort_order  INTEGER NOT NULL DEFAULT 0,
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT NOT NULL
+);
+CREATE UNIQUE INDEX idx_potluck_activities_name ON potluck_activities (name COLLATE NOCASE);
+
+CREATE TABLE potluck_signups (
+  person_id            INTEGER NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+  activity_id          INTEGER NOT NULL REFERENCES potluck_activities(id) ON DELETE CASCADE,
+  status               TEXT NOT NULL CHECK (status IN ('pending','approved','declined')),
+  requested_at         TEXT NOT NULL,
+  decided_at           TEXT,
+  decided_by_person_id INTEGER REFERENCES people(id),
+  PRIMARY KEY (person_id, activity_id)
+);
+CREATE INDEX idx_potluck_signups_activity ON potluck_signups (activity_id, status);
+```
+
+Redaction deletes the person's signups (`potluck.forget_person`).
+
+---
+
+### 2.9 Site Pages (Google Docs)
+
+Long text pages (hotel list, white book, registration instructions, …) are
+written in Google Docs and published as static pages (migration 015,
+`lib/pages.py`, `lib/htmlclean.py`, `scripts/build_pages.py`). The table holds
+only the list of pages and where each one's converted HTML lives; the text is
+in the Doc and in Drive. `POST /admin/pages/publish` has the Drive puppet
+(`convert` op) turn each Doc into a cleaned HTML file named `page-<id>.html`
+under `<drive.contests_root>/Site Pages/`, rewritten in place so its public
+download link (`html_url`) never changes, then asks GitHub to rebuild the site
+(`workflow_dispatch` on `deploy.yml` with `site_only=true`). The build fetches
+`GET /public/pages`, downloads each `html_url`, cleans it again with
+`htmlclean` and writes `/p/<slug>.html` plus `/pages.json` (the navigation).
+A failed conversion keeps the previous copy and records `sync_error`. Changing
+`doc_url` to a different Doc clears `html_file_id`, `html_url` and `synced_at`.
+Removing a page trashes its Drive copy and never touches the Doc.
+
+```sql
+CREATE TABLE site_pages (
+  id           INTEGER PRIMARY KEY,
+  slug         TEXT NOT NULL,           -- /p/<slug>.html
+  title        TEXT NOT NULL,
+  nav_label    TEXT NOT NULL DEFAULT '',
+  show_in_nav  INTEGER NOT NULL DEFAULT 1 CHECK (show_in_nav IN (0, 1)),
+  sort_order   INTEGER NOT NULL DEFAULT 0,
+  doc_url      TEXT NOT NULL,
+  doc_id       TEXT NOT NULL,
+  html_file_id TEXT NOT NULL DEFAULT '',
+  html_url     TEXT NOT NULL DEFAULT '',
+  synced_at    TEXT,
+  sync_error   TEXT NOT NULL DEFAULT '',
+  created_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL
+);
+CREATE UNIQUE INDEX idx_site_pages_slug ON site_pages (slug COLLATE NOCASE);
+```
 
 ---
 
@@ -708,6 +802,9 @@ The ingestion engine processes raw unstructured text from chapter sponsors via `
 | `POST` | `/sponsor/people/{id}/approve` | `sponsor` | Approves a pending (join-code) student; they move into the invoice, public count and meal totals. |
 | `POST` | `/sponsor/people/{id}/deny` | `sponsor` | Denies a pending student: runs the full redaction and leaves an anonymous `denied` row. |
 | `POST` | `/sponsor/approve-all` | `sponsor` | Approves everyone currently pending in the chapter. |
+| `POST` | `/sponsor/people/{id}/potluck/{activity}/approve` | `sponsor` | Approves a delegate's offer to help with a potluck activity. Reversing a decline is refused if the activity has filled. |
+| `POST` | `/sponsor/people/{id}/potluck/{activity}/decline` | `sponsor` | Declines it; the delegate sees that on their sheet and may pick again. |
+| `POST` | `/sponsor/potluck/approve-all` | `sponsor` | Approves every pick waiting in the chapter. |
 | `POST` | `/sponsor/join/code` | `sponsor` | Replaces the chapter's join code; the old one stops working at once. |
 | `POST` | `/sponsor/join/open` | `sponsor` | Closes or reopens joining without changing the code. |
 | `GET` | `/sponsor/join-sheet` | `sponsor` | One-page printable handout: join code, QR, instructions. |
@@ -749,6 +846,13 @@ The ingestion engine processes raw unstructured text from chapter sponsors via `
 | `POST` | `/admin/photos/categories` | `activities` | Adds a photo category (name, description, accepting). |
 | `PATCH/DELETE` | `/admin/photos/categories/{id}` | `activities` | Edits / opens / closes a category; deletes it with all its photos (files trashed in Drive). |
 | `GET/DELETE` | `/admin/photos/entries/{id}[/file?size=thumb]` | `activities` | Streams a photo or its thumbnail; takes a photo down. |
+| `GET` | `/admin/potluck` | `activities` | Every potluck activity with its approved helpers (name and chapter) and a count still waiting on a sponsor. |
+| `POST` | `/admin/potluck` | `activities` | Adds an activity (name, blurb, place, date/start/end, helpers wanted, open). |
+| `PATCH/DELETE` | `/admin/potluck/{id}` | `activities` | Edits / opens / closes an activity; deletes it with every pick and its schedule row. |
+| `GET` | `/public/pages` | none | Every site page converted at least once: slug, title, menu name, `html_url`. Read by the site build. Cached 10 s. |
+| `GET/POST` | `/admin/pages` | `registration` / `academics` / `awards` | The site pages list; adds a page (title, address, Google Doc link, menu name, show in menu, order). |
+| `PATCH/DELETE` | `/admin/pages/{id}` | same | Edits a page (a different Doc forgets the converted copy); removes it and trashes the copy. |
+| `POST` | `/admin/pages/publish` | same | Converts every Doc through the Drive puppet, then asks GitHub to rebuild the site. Reports each Doc that failed and whether the rebuild started. |
 | `GET` | `/public/schedule` | none | Every published master-schedule entry, in time order, with the convention's clock. Cached 20 s. |
 | `GET/POST` | `/admin/schedule` | `logistics` | The master schedule with drafts; adds an entry. |
 | `PATCH/DELETE` | `/admin/schedule/{id}` | `logistics` | Edits / deletes a manual entry. Entries the Athletics Director's heats and brackets wrote (`source = 'olympika'`) are refused. |

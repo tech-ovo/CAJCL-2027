@@ -45,6 +45,13 @@ class Drive:
     def trash(self, file_id: str) -> None:
         raise NotImplementedError
 
+    def convert(self, folder_id: str, name: str, doc_id: str) -> tuple[str, str]:
+        """Turn a Google Doc into a cleaned HTML file called `name` in a folder
+        that anyone with the link can read. The SAME file is rewritten on every
+        call, so its link never changes. Returns (file id, public download URL).
+        """
+        raise NotImplementedError
+
 
 class AppsScriptDrive(Drive):
     """Signed requests to the puppet's /exec URL.
@@ -91,6 +98,12 @@ class AppsScriptDrive(Drive):
 
     def trash(self, file_id: str) -> None:
         self._call("trash", fileId=file_id)
+
+    def convert(self, folder_id: str, name: str, doc_id: str) -> tuple[str, str]:
+        # The Doc's id travels in `fileId`, which is signed (see verify() in
+        # Code.gs): a captured request cannot be pointed at another Doc.
+        payload = self._call("convert", folderId=folder_id, name=name, fileId=doc_id)
+        return payload["fileId"], payload["url"]
 
 
 class LocalDrive(Drive):
@@ -145,6 +158,22 @@ class LocalDrive(Drive):
             path.replace(trash / f"{int(time.time() * 1000)} {path.name}")
 
 
+    def convert(self, folder_id: str, name: str, doc_id: str) -> tuple[str, str]:
+        """The "Doc" is a file already holding the exported HTML."""
+        from . import htmlclean
+        source = self.fetch(doc_id)
+        try:
+            body = htmlclean.clean(source.decode("utf-8", "replace"))
+        except ValueError as error:
+            raise DriveUnavailable(str(error)) from None
+        folder = self._path(folder_id)
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / self._safe(name)
+        path.write_text(body, encoding="utf-8")
+        file_id = str(path.relative_to(self.root))
+        return file_id, f"local:{file_id}"
+
+
 _override: Drive | None = None
 
 
@@ -154,7 +183,7 @@ def use(drive: Drive | None) -> None:
     _override = drive
 
 
-def client() -> Drive:
+def client(what: str = "Contest uploads") -> Drive:
     if _override is not None:
         return _override
     url = os.environ.get("APPS_SCRIPT_URL")
@@ -165,16 +194,16 @@ def client() -> Drive:
     if local and os.environ.get("CAJCL_ENV") != "production":
         return LocalDrive(local)
     raise DriveUnavailable(
-        "Contest uploads are not switched on yet: the Drive connection is not "
+        f"{what} are not switched on yet: the Drive connection is not "
         "configured. Nothing was saved. Please tell state@uhsjcl.org.")
 
 
-def root_folder(configured: str) -> str:
+def root_folder(configured: str, what: str = "Contest uploads") -> str:
     """The contests root. A local Drive needs no folder id and uses its own root."""
     if configured:
         return configured
     if isinstance(client(), LocalDrive):
         return "."
     raise DriveUnavailable(
-        "Contest uploads are not switched on yet: no Drive folder is set for "
+        f"{what} are not switched on yet: no Drive folder is set for "
         "them in Settings. Nothing was saved. Please tell state@uhsjcl.org.")

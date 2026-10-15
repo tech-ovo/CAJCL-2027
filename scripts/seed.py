@@ -41,7 +41,7 @@ for _stream in (sys.stdout, sys.stderr):
     if hasattr(_stream, "reconfigure"):
         _stream.reconfigure(encoding="utf-8", errors="replace")
 
-from backend.lib import (auth, clock, contests, joining, olympika,  # noqa: E402
+from backend.lib import (auth, clock, contests, joining, olympika, potluck,  # noqa: E402
                          settings, stats)
 from backend.lib.db import connect  # noqa: E402
 from backend.lib import migrate as migrate_runner  # noqa: E402
@@ -293,6 +293,8 @@ class Seeder:
         self._seed_pending(uni, days_ago)
         step("the photo contest")
         self._seed_photos(uni, days_ago)
+        step("the activities potluck")
+        self._seed_potluck(uni, days_ago)
         step("the schedule and Olympika")
         self._seed_olympika(days_ago)
         step("done")
@@ -731,6 +733,48 @@ class Seeder:
             tx.audit("photo_category.create",
                      "Marguerite Okonkwo added the photo category Best stuffed animal photo.",
                      entity_type="photo_category", entity_id=plush_id, ts=days_ago(1))
+
+    def _seed_potluck(self, uni: int, days_ago) -> None:
+        """Three activities that need helpers, one on the schedule, and two
+        offers: an adult's (approved at once) and a delegate's (waiting on the
+        sponsor, so the roster's potluck panel has something in it)."""
+        with self.db.tx() as tx:
+            now = days_ago(2)
+            made = {}
+            for name, blurb, place, day, start, end, capacity, order in [
+                ("Face painting", "Paint faces at the welcome fair. No experience needed.",
+                 "Courtyard", "2027-03-12", "14:00", "15:30", 4, 10),
+                ("Sand art", "Help younger delegates fill bottles with coloured sand.",
+                 "Gallery", "2027-03-12", "14:00", "15:00", 3, 20),
+                ("Registration desk", "Greet arrivals and hand out packets.",
+                 None, None, None, None, None, 30),
+            ]:
+                starts = ends = None
+                if day:
+                    starts = clock.local_to_utc(day, start)
+                    ends = clock.local_to_utc(day, end)
+                made[name] = tx.insert("potluck.activity_create", (
+                    name, blurb, place, starts, ends, capacity, 1, order, now, now))
+                potluck.sync_schedule(tx, made[name], now)
+                tx.audit("potluck.create",
+                         f"Marguerite Okonkwo added the potluck activity {name}.",
+                         entity_type="potluck_activity", entity_id=made[name], ts=now)
+
+            rows = [r for r in tx.all("roster.list", (uni,)) if r["status"] == "active"
+                    and r["approval"] == "approved"]
+            adult = next((r for r in rows if r["person_type"] == "adult"), None)
+            delegate = next((r for r in rows if r["person_type"] == "delegate"), None)
+            if adult:
+                tx.run("potluck.signup_add", (adult["id"], made["Registration desk"],
+                                              "approved", now, now, adult["id"]))
+            if delegate:
+                tx.run("potluck.signup_add", (delegate["id"], made["Face painting"],
+                                              "pending", now, None, None))
+                tx.audit("potluck.update",
+                         f"{delegate['first_name']} {delegate['last_name']}'s "
+                         f"activities potluck picks were saved by themselves (1 chosen).",
+                         school_id=uni, entity_type="person", entity_id=delegate["id"],
+                         changed_fields=["potluck"], ts=now)
 
     def _seed_olympika(self, days_ago) -> None:
         """The master schedule, and Olympika part-way through its preparation.

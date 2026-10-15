@@ -6,6 +6,12 @@
  * cannot, absent domain-wide delegation. That is the whole justification, and
  * nothing else should ever be added here.
  *
+ * `convert` is the same justification applied to Google Docs: reading a Doc
+ * that is shared only with that account, and writing the converted copy to its
+ * Drive, are things only this script can do. It reads a Doc and writes ONE
+ * public HTML file into the folder it is told; it never lists or changes
+ * anything else.
+ *
  * IT HOLDS NO CONFIGURATION. Folder IDs, filenames, and retention rules all
  * travel in the request payload from Modal. The ONE secret in Script Properties
  * is a shared HMAC key, because this web app is deployed as "execute as me /
@@ -48,6 +54,7 @@ function doPost(e) {
       case 'list':   return json(list(request));
       case 'mkdir':  return json(mkdir(request));
       case 'trash':  return json(trash(request));
+      case 'convert': return json(convert(request));
       default:       return json({ ok: false, error: 'unknown op: ' + request.op });
     }
   } catch (error) {
@@ -152,6 +159,168 @@ function mkdir(request) {
 function trash(request) {
   DriveApp.getFileById(request.fileId).setTrashed(true);
   return { ok: true, trashed: request.fileId };
+}
+
+/**
+ * Turn a Google Doc into a cleaned HTML file that anyone with the link can read.
+ *
+ * request.fileId   the Doc (signed, so a captured request cannot be aimed at
+ *                  another Doc)
+ * request.folderId where the HTML file lives; request.name what it is called
+ *
+ * The SAME file is rewritten on every call, found by name, so the link Modal
+ * stores stays valid forever. If anything fails the previous copy is untouched.
+ * Cleaning is cleanDocHtml below; the site build cleans again regardless.
+ */
+function convert(request) {
+  var doc;
+  try {
+    doc = DriveApp.getFileById(request.fileId);
+  } catch (error) {
+    throw new Error('This script cannot open that Google Doc. Share the Doc with ' +
+                    Session.getEffectiveUser().getEmail() + ' (Viewer is enough).');
+  }
+  if (doc.getMimeType() !== MimeType.GOOGLE_DOCS) {
+    throw new Error('That link is not a Google Doc.');
+  }
+
+  var response = UrlFetchApp.fetch(
+    'https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(request.fileId) +
+      '/export?mimeType=' + encodeURIComponent('text/html'),
+    { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+      muteHttpExceptions: true });
+  if (response.getResponseCode() !== 200) {
+    throw new Error('Google could not export the Doc (' + response.getResponseCode() + ').');
+  }
+  var html = cleanDocHtml(response.getContentText());
+
+  var folder = DriveApp.getFolderById(request.folderId);
+  var existing = folder.getFilesByName(request.name);
+  var file;
+  if (existing.hasNext()) {
+    file = existing.next();
+    file.setContent(html);
+  } else {
+    file = folder.createFile(request.name, html, MimeType.HTML);
+  }
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  return { ok: true, fileId: file.getId(), name: file.getName(),
+           url: 'https://drive.google.com/uc?export=download&id=' + file.getId() };
+}
+
+/**
+ * Reduce the HTML Google exports for a Doc to plain tags, with no styles.
+ *
+ * Google writes bold, italic and so on as CLASSES on <span>s, defined in a
+ * <style> block, so deleting the styles would delete the emphasis. This reads
+ * the style block first, turns those spans into <strong>/<em>/<u>/<sup>/<sub>,
+ * and then drops every attribute except a link's href and a cell's
+ * colspan/rowspan. Images and scripts go. Google's link redirects
+ * (google.com/url?q=...) are unwrapped.
+ *
+ * It uses no Apps Script services, so it can be tried in any JavaScript
+ * runtime. backend/lib/htmlclean.py is the same allowlist in Python; the site
+ * build runs that one on every page, so this is the first pass, not the guard.
+ */
+function cleanDocHtml(source) {
+  var KEEP = { p: 1, br: 1, hr: 1, ul: 1, ol: 1, li: 1, strong: 1, em: 1, u: 1,
+               sub: 1, sup: 1, a: 1, table: 1, thead: 1, tbody: 1, tr: 1,
+               th: 1, td: 1, blockquote: 1, code: 1, pre: 1, h2: 1, h3: 1, h4: 1 };
+  var RENAME = { h1: 'h2', h2: 'h3', h3: 'h4', h4: 'h4', h5: 'h4', h6: 'h4',
+                 b: 'strong', i: 'em' };
+
+  var css = (source.match(/<style[^>]*>([\s\S]*?)<\/style>/i) || [0, ''])[1];
+  var rules = {};
+  css.replace(/\.([A-Za-z0-9_-]+)\s*\{([^}]*)\}/g, function (all, name, body) {
+    rules[name] = (rules[name] || '') + ';' + body;
+    return '';
+  });
+  function decorations(classAttr, inLink) {
+    var open = '', close = '';
+    var text = String(classAttr || '').split(/\s+/).map(function (c) { return rules[c] || ''; }).join(';');
+    function wrap(tag) { open += '<' + tag + '>'; close = '</' + tag + '>' + close; }
+    if (/font-weight\s*:\s*(700|bold)/i.test(text)) wrap('strong');
+    if (/font-style\s*:\s*italic/i.test(text)) wrap('em');
+    if (!inLink && /text-decoration\s*:[^;]*underline/i.test(text)) wrap('u');
+    if (/vertical-align\s*:\s*super/i.test(text)) wrap('sup');
+    if (/vertical-align\s*:\s*sub/i.test(text)) wrap('sub');
+    return { open: open, close: close };
+  }
+  function attr(attrs, name) {
+    var m = new RegExp('\\b' + name + '\\s*=\\s*(?:"([^"]*)"|\'([^\']*)\')', 'i').exec(attrs);
+    return m ? (m[1] !== undefined ? m[1] : m[2]) : '';
+  }
+  function safeHref(raw) {
+    var value = String(raw || '').replace(/&amp;/g, '&').trim();
+    var wrapped = /^https?:\/\/(?:www\.)?google\.com\/url\?(.*)$/i.exec(value);
+    if (wrapped) {
+      var q = /(?:^|&)q=([^&]*)/.exec(wrapped[1]);
+      try { value = q ? decodeURIComponent(q[1].replace(/\+/g, ' ')) : ''; } catch (e) { value = ''; }
+    }
+    if (!/^(https?:\/\/|mailto:|tel:|#.)/i.test(value)) return '';
+    return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  }
+
+  var body = (source.match(/<body[^>]*>([\s\S]*)<\/body>/i) || [0, source])[1];
+  body = body.replace(/<!--[\s\S]*?-->/g, '')
+             .replace(/<(script|style|head|iframe|object|embed|svg|form|noscript|template|title)\b[\s\S]*?<\/\1\s*>/gi, '');
+
+  var out = [], stack = [], re = /<(\/?)([a-zA-Z][a-zA-Z0-9]*)([^>]*)>/g, last = 0, m;
+  var linkDepth = 0;
+  function closeTop() {
+    var top = stack.pop();
+    if (top.tag === 'a') linkDepth--;
+    out.push(top.close);
+  }
+  while ((m = re.exec(body)) !== null) {
+    out.push(body.substring(last, m.index));
+    last = re.lastIndex;
+    var closing = m[1] === '/', tag = m[2].toLowerCase(), attrs = m[3];
+    tag = RENAME[tag] || tag;
+
+    if (closing) {
+      var at = -1;
+      for (var i = stack.length - 1; i >= 0; i--) {
+        if (stack[i].tag === tag || (tag === 'a' && stack[i].tag === 'a-dead')) { at = i; break; }
+      }
+      if (at >= 0) { while (stack.length > at) closeTop(); }
+      continue;
+    }
+    if (tag === 'br' || tag === 'hr') { out.push('<' + tag + '>'); continue; }
+    if (tag === 'img') continue;
+    if (tag === 'span') {
+      var d = decorations(attr(attrs, 'class'), linkDepth > 0);
+      out.push(d.open);
+      stack.push({ tag: 'span', close: d.close });
+      continue;
+    }
+    if (tag === 'a') {
+      var href = safeHref(attr(attrs, 'href'));
+      if (!href) { stack.push({ tag: 'a-dead', close: '' }); continue; }
+      out.push('<a href="' + href + '">');
+      stack.push({ tag: 'a', close: '</a>' });
+      linkDepth++;
+      continue;
+    }
+    if (!KEEP[tag]) { stack.push({ tag: tag, close: '' }); continue; }
+    var extra = '';
+    if (tag === 'td' || tag === 'th') {
+      ['colspan', 'rowspan'].forEach(function (name) {
+        var v = parseInt(attr(attrs, name), 10);
+        if (v > 1 && v <= 50) extra += ' ' + name + '="' + v + '"';
+      });
+    }
+    out.push('<' + tag + extra + '>');
+    stack.push({ tag: tag, close: '</' + tag + '>' });
+  }
+  out.push(body.substring(last));
+  while (stack.length) closeTop();
+
+  var html = out.join('');
+  for (var pass = 0; pass < 3; pass++) {
+    html = html.replace(/<(p|li|strong|em|u|sub|sup|a|blockquote|h[2-4])>(?:\s|<br>|&nbsp;)*<\/\1>/g, '');
+  }
+  return html.trim();
 }
 
 function json(payload) {

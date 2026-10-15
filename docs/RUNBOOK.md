@@ -202,7 +202,7 @@ Roles bundle functional permission scopes. Scopes are never assigned to individu
 | `delegate` | Digital activity sheet submission, schedule review | Strictly scoped to self |
 | `chapter` | Team athletics registrations, publicity portfolio submission | Strictly scoped to own chapter |
 | `judge` | Pre-convention submission judging | Blind contest evaluation |
-| `activities` | Photo contest categories and every photo, with names (`#/photo-contest`) | Global, but opens no roster |
+| `activities` | Photo contest categories and every photo, with names (`#/photo-contest`); potluck activities and their approved helpers (`#/potluck`) | Global, but opens no roster |
 | `athletics` | Olympika events, every sign-up with a name, heats, brackets, results (`#/athletics`) | Global, but opens no roster |
 | `logistics` | The master convention schedule (`#/schedule/edit`) | Global, sees no people |
 

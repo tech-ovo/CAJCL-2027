@@ -87,7 +87,8 @@ rules), then `docs/design.md` for the visual rules.
   `accepting` switch, cached `drive_folder_id`/`drive_thumbs_id`) and
   `photo_entries` (one per delegate per category; replace on re-upload).
   New role `activities_chair` → scope `activities`: global but NOT in
-  `auth.ADMIN_SCOPES` (like `judge`; it opens no roster). Endpoints:
+  `auth.ADMIN_SCOPES` (like `judge`; it opens no roster); it also runs the
+  activities potluck (below). Endpoints:
   `/me/photos[/{category_id}[/file?size=thumb]]` (delegates only, adults
   refused, upload only while `accepting`, withdraw any time) and
   `/admin/photos`, `/admin/photos/categories[/{id}]` (POST/PATCH/DELETE —
@@ -101,6 +102,30 @@ rules), then `docs/design.md` for the visual rules.
   contest" for `activities`); thumbnails lazy-load 4 at a time. Redaction
   deletes a person's photos. Seed adds Marguerite Okonkwo (Activities chair)
   and opens two categories, but writes no photos. Tests: `test_photos.py`.
+- Activities potluck (migration 014): activities that need helpers. `lib/potluck.py`
+  (rules, `save_picks`, `decide`, `sync_schedule`, `forget_person`),
+  `queries/potluck.sql`, tables `potluck_activities` (name, blurb, location,
+  UTC `starts_at/ends_at`, `capacity`, `open`) and `potluck_signups`
+  (`pending|approved|declined`, who decided). NOT catalog items: the catalog
+  is replaced whole on every sheet save and cannot hold a decision. There is no
+  pick endpoint: both sheets carry `potluck` (read) and a `potluck: [ids]` list
+  in the PUT (absent = leave alone), saved by `forms.save_*_sheet` through
+  `potluck.save_picks`, which keeps rows a person keeps. Adult picks, and picks
+  entered by someone else (a sponsor on `/sponsor/people/{id}/activity-sheet`),
+  are approved at once; a delegate's own are `pending`. The cap counts pending
+  + approved; reversing a decline is refused if full; `open=0` stops NEW picks;
+  overlapping picks only warn. A declined pick stays on the sheet until picked
+  again. Sponsors decide via `/sponsor/people/{id}/potluck/{activity}/approve|decline`,
+  `/sponsor/potluck/approve-all`, and a panel in `js/pages/roster.js` fed by
+  `potluck_requests` in `GET /sponsor/roster`. The Activities chair (`activities`
+  scope) keeps activities at `#/potluck` (`js/pages/potluck.js`, `/admin/potluck`)
+  and sees APPROVED helpers by name and chapter only. The sheet section is
+  `js/potluck.js`. An activity with a time is pushed to `schedule_items`
+  (`source = 'potluck'`, `source_key` `potluck:<id>`, `potluck_activity_id`) by
+  `potluck.sync_schedule` in the same transaction; anything that changes an
+  activity's name/blurb/place/time MUST call it. Audit entries use
+  `entity_type = 'person'` so names link. Tests: `test_potluck.py`. Seed adds
+  three activities, an approved adult pick and a pending delegate pick.
 - Master schedule and Olympika (migration 013): `lib/schedule.py` (entry rules,
   `parse_span`), `lib/olympika.py` (event rules, `deal_heats`, `draw_bracket`,
   `time_games`, `record_result`, `sync_schedule`), `queries/schedule.sql` and

@@ -1,0 +1,68 @@
+<!doctype html>
+<!-- The frame around every text page (scripts/build_pages.py fills in the
+     {{PLACEHOLDERS}}). Not served: it lives outside frontend/public.
+
+     The masthead, footer, theme script and its CSP hash are copied from the
+     built index.html, so these pages cannot drift from the rest of the site.
+     No script runs here except that theme script. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}} · CAJCL</title>
+<meta name="description" content="{{TITLE}}: 72nd California Junior Classical League State Convention.">
+<link rel="preload" href="/fonts/literata-600.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/plex-sans-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="icon" href="/img/favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="icon" href="/img/favicon.png" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'none';
+  script-src '{{THEME_HASH}}';
+  style-src 'self';
+  img-src 'self' data:;
+  font-src 'self';
+  form-action 'none';
+  object-src 'none';
+  base-uri 'none'">
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/app.css">
+{{THEME_SCRIPT}}
+</head>
+<body>
+
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="masthead">
+  <div class="page">
+    <div class="masthead__bar">
+      <div>
+        <div class="masthead__slot" aria-hidden="true"></div>
+        <p class="masthead__mark"><a href="/">CAJCL</a></p>
+        <p class="masthead__line">{{MASTHEAD_LINE}}</p>
+      </div>
+      <p class="label">{{DATES}}</p>
+    </div>
+  </div>
+</header>
+
+<div class="page">
+  <nav class="nav" aria-label="Main">
+{{NAV}}
+  </nav>
+</div>
+
+<main id="main" class="page">
+  <article class="doc">
+    <h1>{{TITLE}}</h1>
+{{BODY}}
+  </article>
+</main>
+
+<footer class="page">
+  <hr class="hair">
+  <p class="label">{{FOOTER}}</p>
+</footer>
+
+</body>
+</html>

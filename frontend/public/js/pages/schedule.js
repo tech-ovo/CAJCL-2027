@@ -11,7 +11,8 @@
  * and every round of the Ultimate Frisbee bracket. The server writes them
  * there when the Director sets a time, so nothing here joins two lists. They
  * are marked "Olympika" and the editor shows them without Edit or Delete: they
- * are changed on the Athletics page and follow here.
+ * are changed on the Athletics page and follow here. Activities from the
+ * activities potluck are marked "Activity" and are kept on the Potluck page.
  *
  * TIMES ARE THE CLOCK AS IT READS IN THE HALL (see when.js). The editor sends
  * a date and a time and the server works out the zone.
@@ -42,8 +43,9 @@ function byDay(items) {
 }
 
 function sourcePill(item) {
-  return item.source === "olympika"
-    ? el("span", { class: "pill" }, "Olympika") : null;
+  if (item.source === "olympika") return el("span", { class: "pill" }, "Olympika");
+  if (item.source === "potluck") return el("span", { class: "pill" }, "Activity");
+  return null;
 }
 
 function titleCell(item) {
@@ -196,7 +198,9 @@ export async function scheduleEditorPage(host) {
                     variant: "btn--small btn--quiet btn--danger",
                     onclick: () => remove(item),
                   }))
-              : el("span", { class: "small muted" }, "Set on the Athletics page")) },
+              : el("span", { class: "small muted" },
+                  item.source === "potluck" ? "Set on the Potluck page"
+                                            : "Set on the Athletics page")) },
         ], day.items, { caption: `Entries for ${dayText(day.date)}` }))));
   }
 

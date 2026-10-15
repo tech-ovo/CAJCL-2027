@@ -56,3 +56,25 @@ WHERE id = ?;
 
 -- name: schedule.delete_for_event
 DELETE FROM schedule_items WHERE olympika_event_id = ?;
+
+-- name: schedule.for_potluck
+-- The one row an activities-potluck activity has on the schedule, if any:
+-- idx_schedule_items_potluck.
+SELECT id, title, description, location, starts_at, ends_at
+FROM schedule_items
+WHERE potluck_activity_id = ?;
+
+-- name: schedule.sync_insert_potluck
+INSERT INTO schedule_items (title, description, location, starts_at, ends_at,
+                            published, source, source_key, potluck_activity_id,
+                            created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, 1, 'potluck', ?, ?, ?, ?);
+
+-- name: schedule.sync_update_potluck
+UPDATE schedule_items
+SET title = ?, description = ?, location = ?, starts_at = ?, ends_at = ?,
+    updated_at = ?
+WHERE id = ?;
+
+-- name: schedule.delete_for_potluck
+DELETE FROM schedule_items WHERE potluck_activity_id = ?;

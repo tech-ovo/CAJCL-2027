@@ -38,6 +38,7 @@ import { contestsPage, chapterContestsPage,
          contestSubmissionsPage } from "./pages/contests.js";
 import { judgingPage, contestResultsPage } from "./pages/judging.js";
 import { photosPage, photoContestPage } from "./pages/photos.js";
+import { potluckPage } from "./pages/potluck.js";
 import { schedulePage, scheduleEditorPage } from "./pages/schedule.js";
 import { olympikaPage } from "./pages/olympika.js";
 import { athleticsPage } from "./pages/athletics.js";
@@ -109,6 +110,9 @@ const ROUTES = [
   // chair sees them all and runs the categories.
   [/^\/photos$/,                 photosPage,        { scope: "delegate" }],
   [/^\/photo-contest(?:\/(categories))?$/, photoContestPage, { scope: "activities" }],
+  // The activities potluck. Attendees pick on their own sheets; the Activities
+  // chair keeps the list of activities and sees who is helping.
+  [/^\/potluck$/,                potluckPage,       { scope: "activities" }],
   // The convention schedule. Everybody reads it; the Logistics chair keeps it.
   [/^\/schedule$/,               schedulePage,      { public: true }],
   [/^\/schedule\/edit$/,         scheduleEditorPage, { scope: "logistics" }],
@@ -576,7 +580,8 @@ function renderNav() {
       administrative.push(["#/judging", "Judging"]);
     }
     if (hasScope("activities")) {
-      administrative.push(["#/photo-contest", "Photo contest"]);
+      administrative.push(["#/photo-contest", "Photo contest"],
+                          ["#/potluck", "Potluck"]);
     }
     if (hasScope("athletics")) {
       administrative.push(["#/athletics", "Athletics"]);

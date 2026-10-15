@@ -33,7 +33,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from .lib import (auth, catalog, clock, codes, contests, drive, forms, joining,
-                  olympika, photos, printing, roster, schedule, settings, stats)
+                  olympika, pages, photos, potluck, printing, roster, schedule, settings,
+                  stats)
 from .lib.db import connect
 
 # GitHub Pages plus the custom domain, and nothing else. The frontend never
@@ -521,9 +522,14 @@ def get_roster(school_id: int | None = Query(default=None),
         # "Reopen form" button on every row is a control that does nothing.
         forms_closed = clock.is_past(
             settings.get_datetime(tx, "deadline.forms_lock"))
+        # Delegates' offers to help at the potluck that wait on this chapter's
+        # sponsor.
+        potluck_requests = [_potluck_request_view(r) for r in tx.all(
+            "potluck.requests_for_school", (school["id"],))]
     return {
         "school": _school_public(school, principal),
         "people": people,
+        "potluck_requests": potluck_requests,
         "stats": dict(counters) if counters else {},
         "chapter_entries": entries,
         "forms_closed": forms_closed,
@@ -2190,6 +2196,393 @@ def remove_photo_entry(entry_id: int, request: Request,
 
 
 # ===========================================================================
+# The activities potluck
+# ===========================================================================
+#
+# The Activities chair posts activities that need helpers. Attendees pick the
+# ones they would help run, ON THEIR OWN SHEET (see forms.py: the sheets carry
+# a `potluck` list), so there is no endpoint to pick one. What lives here:
+#
+#   /sponsor/people/{id}/potluck/{activity}/approve|decline
+#   /sponsor/potluck/approve-all     a sponsor deciding a delegate's picks. The
+#                                    waiting ones also come with the roster.
+#   /admin/potluck[...]              the Activities chair: the activities, and
+#                                    who is helping with each (approved only).
+#
+# An adult's pick is approved at once; a delegate's waits for their sponsor.
+# An activity with a time is written onto the master schedule in the same
+# transaction (potluck.sync_schedule).
+
+def _potluck_error(message: str) -> catalog.ValidationError:
+    return catalog.ValidationError([message])
+
+
+def _potluck_activity(tx, activity_id: int) -> dict:
+    row = tx.one("potluck.activity_get", (activity_id,))
+    if row is None:
+        raise _potluck_error("There is no such activity. It may have just been "
+                             "deleted; reload the page.")
+    return dict(row)
+
+
+def _potluck_delegate(tx, principal: auth.Principal, person_id: int) -> dict:
+    person = _person_of(tx, principal, person_id)
+    if person["person_type"] != "delegate":
+        raise auth.ForbiddenError("only a delegate's picks wait for a sponsor")
+    return person
+
+
+@app.post("/sponsor/people/{person_id}/potluck/{activity_id}/approve")
+def approve_potluck(person_id: int, activity_id: int, request: Request,
+                    principal: auth.Principal = guard("sponsor.potluck.approve",
+                                                      "sponsor", "registration",
+                                                      writes=True)):
+    """Say yes to a delegate helping with an activity."""
+    with database().tx(request_id=request_id(request)) as tx:
+        person = _potluck_delegate(tx, principal, person_id)
+        potluck.decide(tx, principal, person, activity_id, approve=True,
+                       now=clock.now_iso())
+    return {"ok": True}
+
+
+@app.post("/sponsor/people/{person_id}/potluck/{activity_id}/decline")
+def decline_potluck(person_id: int, activity_id: int, request: Request,
+                    principal: auth.Principal = guard("sponsor.potluck.decline",
+                                                      "sponsor", "registration",
+                                                      writes=True)):
+    """Say no. The delegate sees it on their sheet and may pick again."""
+    with database().tx(request_id=request_id(request)) as tx:
+        person = _potluck_delegate(tx, principal, person_id)
+        potluck.decide(tx, principal, person, activity_id, approve=False,
+                       now=clock.now_iso())
+    return {"ok": True}
+
+
+@app.post("/sponsor/potluck/approve-all")
+def approve_all_potluck(request: Request, payload: dict = Body(default={}),
+                        principal: auth.Principal = guard(
+                            "sponsor.potluck.approve_all", "sponsor",
+                            "registration", writes=True)):
+    """Approve every pick the chapter is waiting on, in one transaction."""
+    with database().tx(request_id=request_id(request)) as tx:
+        school = _school_of(tx, principal, payload.get("school_id"))
+        now = clock.now_iso()
+        waiting = [dict(r) for r in tx.all("potluck.requests_for_school",
+                                           (school["id"],))]
+        for r in waiting:
+            person = dict(tx.one("people.get", (r["person_id"],)))
+            potluck.decide(tx, principal, person, r["activity_id"],
+                           approve=True, now=now)
+    return {"ok": True, "approved": len(waiting)}
+
+
+def _potluck_request_view(r) -> dict:
+    return {"person_id": r["person_id"], "activity_id": r["activity_id"],
+            "first_name": r["first_name"], "last_name": r["last_name"],
+            "grade": r["grade"], "school_seq": r["school_seq"],
+            "activity_name": r["activity_name"], "location": r["location"],
+            **schedule.when(r["starts_at"], r["ends_at"]),
+            "requested_at": r["requested_at"]}
+
+
+# -- the Activities chair --------------------------------------------------------
+
+@app.get("/admin/potluck")
+def potluck_overview(principal: auth.Principal = guard("admin.potluck", "activities",
+                                                       school_rule="any")):
+    """Every activity, with its approved helpers by name and chapter and a count
+    of picks still waiting on a sponsor. Nothing else about anyone."""
+    with database().read() as tx:
+        activities = []
+        for row in tx.all("potluck.activities"):
+            helpers = [{"person_id": r["person_id"],
+                        "name": f"{r['first_name']} {r['last_name']}".strip(),
+                        "adult": r["person_type"] == "adult",
+                        "school_id": r["school_id"], "school_name": r["school_name"]}
+                       for r in tx.all("potluck.volunteers_for_activity", (row["id"],))]
+            activities.append({
+                **potluck.view(row), "sort_order": row["sort_order"],
+                "approved": row["approved"],
+                "waiting": row["taken"] - row["approved"],
+                "volunteers": helpers})
+    return {"activities": activities, "max_name": potluck.MAX_NAME,
+            "max_description": potluck.MAX_DESCRIPTION,
+            "max_location": potluck.MAX_LOCATION,
+            "max_capacity": potluck.MAX_CAPACITY}
+
+
+def _potluck_view_of(tx, activity_id: int) -> dict:
+    row = next(r for r in tx.all("potluck.activities") if r["id"] == activity_id)
+    return {**potluck.view(row), "sort_order": row["sort_order"],
+            "approved": row["approved"], "waiting": row["taken"] - row["approved"]}
+
+
+def _save_potluck_activity(tx, fields: dict, activity_id=None) -> int:
+    now = clock.now_iso()
+    columns = (fields["name"], fields["description"], fields["location"],
+               fields["starts_at"], fields["ends_at"], fields["capacity"],
+               fields["open"], fields["sort_order"])
+    try:
+        if activity_id is None:
+            activity_id = tx.insert("potluck.activity_create", (*columns, now, now))
+        else:
+            tx.run("potluck.activity_update", (*columns, now, activity_id))
+    except Exception as error:
+        if "unique" in str(error).lower():
+            raise _potluck_error(
+                f"There is already an activity called “{fields['name']}”.") from None
+        raise
+    potluck.sync_schedule(tx, activity_id, now)
+    return activity_id
+
+
+@app.post("/admin/potluck")
+def create_potluck_activity(request: Request, payload: dict = Body(...),
+                            principal: auth.Principal = guard(
+                                "admin.potluck.create", "activities",
+                                school_rule="any", writes=True)):
+    fields = potluck.check_activity(payload)
+    with database().tx(request_id=request_id(request)) as tx:
+        if "sort_order" not in payload:
+            fields["sort_order"] = 10 + max(
+                (r["sort_order"] for r in tx.all("potluck.activities")), default=0)
+        activity_id = _save_potluck_activity(tx, fields)
+        tx.audit("potluck.create",
+                 f"{principal.display_name} added the potluck activity {fields['name']}.",
+                 entity_type="potluck_activity", entity_id=activity_id,
+                 **_actor(principal))
+        view = _potluck_view_of(tx, activity_id)
+    return {"ok": True, "activity": {**view, "volunteers": []}}
+
+
+@app.patch("/admin/potluck/{activity_id}")
+def update_potluck_activity(activity_id: int, request: Request,
+                            payload: dict = Body(...),
+                            principal: auth.Principal = guard(
+                                "admin.potluck.update", "activities",
+                                school_rule="any", writes=True)):
+    """Rename, reword, move, resize, or open and close an activity. Picks
+    already made stay."""
+    with database().tx(request_id=request_id(request)) as tx:
+        current = _potluck_activity(tx, activity_id)
+        fields = potluck.check_activity(payload, current)
+        changed = [k for k in fields if fields[k] != current[k]]
+        if changed:
+            _save_potluck_activity(tx, fields, activity_id)
+            tx.audit("potluck.update_activity",
+                     f"{principal.display_name} changed the potluck activity "
+                     f"{fields['name']}.",
+                     entity_type="potluck_activity", entity_id=activity_id,
+                     changed_fields=changed, **_actor(principal))
+        view = _potluck_view_of(tx, activity_id)
+    return {"ok": True, "activity": view}
+
+
+@app.delete("/admin/potluck/{activity_id}")
+def delete_potluck_activity(activity_id: int, request: Request,
+                            principal: auth.Principal = guard(
+                                "admin.potluck.delete", "activities",
+                                school_rule="any", writes=True)):
+    """Remove an activity, every pick for it, and its row on the schedule."""
+    with database().tx(request_id=request_id(request)) as tx:
+        current = _potluck_activity(tx, activity_id)
+        tx.run("schedule.delete_for_potluck", (activity_id,))
+        tx.run("potluck.signups_delete_for_activity", (activity_id,))
+        tx.run("potluck.activity_delete", (activity_id,))
+        tx.audit("potluck.delete",
+                 f"{principal.display_name} removed the potluck activity "
+                 f"{current['name']}.",
+                 entity_type="potluck_activity", entity_id=activity_id,
+                 **_actor(principal))
+    return {"ok": True}
+
+
+# ===========================================================================
+# Site pages -- long text written in Google Docs
+# ===========================================================================
+#
+#   /public/pages             the published pages and where their HTML is.
+#                             Read by the site build. No credential.
+#   /admin/pages              the list, adding, editing and removing a page.
+#   /admin/pages/publish      convert every Doc, then rebuild the site.
+#
+# Any administrative scope may keep these (registration, academics, awards, or
+# `*`): the Academics chair owns the academic resources page, the registration
+# chairs own the instructions. See lib/pages.py for the whole flow.
+
+PAGES_SCOPES = ("registration", "academics", "awards")
+
+
+def _pages_error(message: str) -> catalog.ValidationError:
+    return catalog.ValidationError([message])
+
+
+def _site_page(tx, page_id: int) -> dict:
+    row = tx.one("pages.get", (page_id,))
+    if row is None:
+        raise _pages_error("There is no such page. It may have just been "
+                           "removed; reload the screen.")
+    return dict(row)
+
+
+def _page_list(tx) -> list[dict]:
+    return [pages.view(r) for r in tx.all("pages.all")]
+
+
+@app.get("/public/pages")
+def public_pages():
+    """Every page that has been converted at least once, with the address of its
+    HTML in Drive. Titles and public links only: nothing here is private, which
+    is why it needs no credential. The site build is its only caller."""
+    with database().read() as tx:
+        rows = tx.all("pages.published")
+    return JSONResponse({"pages": [pages.public_view(r) for r in rows]},
+                        headers={"Cache-Control": "public, max-age=10"})
+
+
+@app.get("/admin/pages")
+def admin_pages(principal: auth.Principal = guard("admin.pages", *PAGES_SCOPES,
+                                                  school_rule="any")):
+    with database().read() as tx:
+        listing = _page_list(tx)
+    return {"pages": listing, "actions_url": pages.actions_url(),
+            "max_title": pages.MAX_TITLE, "max_name": pages.MAX_NAME}
+
+
+def _save_page(tx, fields: dict, page_id=None) -> int:
+    now = clock.now_iso()
+    columns = (fields["slug"], fields["title"], fields["nav_label"],
+               fields["show_in_nav"], fields["sort_order"],
+               fields["doc_url"], fields["doc_id"])
+    try:
+        if page_id is None:
+            page_id = tx.insert("pages.create", (*columns, now, now))
+        else:
+            tx.run("pages.update", (*columns, now, page_id))
+    except Exception as error:
+        if "unique" in str(error).lower():
+            raise _pages_error(
+                f"There is already a page at /p/{fields['slug']}.html. "
+                "Choose a different address.") from None
+        raise
+    return page_id
+
+
+@app.post("/admin/pages")
+def create_site_page(request: Request, payload: dict = Body(...),
+                     principal: auth.Principal = guard(
+                         "admin.pages.create", *PAGES_SCOPES,
+                         school_rule="any", writes=True)):
+    fields = pages.check_page(payload)
+    with database().tx(request_id=request_id(request)) as tx:
+        if "sort_order" not in payload:
+            fields["sort_order"] = 10 + max(
+                (r["sort_order"] for r in tx.all("pages.all")), default=0)
+        page_id = _save_page(tx, fields)
+        tx.audit("site_page.create",
+                 f"{principal.display_name} added the page {fields['title']} "
+                 f"(/p/{fields['slug']}.html).",
+                 entity_type="site_page", entity_id=page_id, **_actor(principal))
+        row = tx.one("pages.get", (page_id,))
+    return {"ok": True, "page": pages.view(row)}
+
+
+@app.patch("/admin/pages/{page_id}")
+def update_site_page(page_id: int, request: Request, payload: dict = Body(...),
+                     principal: auth.Principal = guard(
+                         "admin.pages.update", *PAGES_SCOPES,
+                         school_rule="any", writes=True)):
+    """Retitle, move, show or hide a page, or point it at a different Doc.
+    Pointing it at a different Doc forgets the converted copy, so the old text
+    cannot be published under the new Doc's name."""
+    with database().tx(request_id=request_id(request)) as tx:
+        current = _site_page(tx, page_id)
+        fields = pages.check_page(payload, current)
+        changed = [k for k in fields if fields[k] != current[k]]
+        if changed:
+            _save_page(tx, fields, page_id)
+            if "doc_id" in changed:
+                tx.run("pages.reset_conversion", (page_id,))
+            tx.audit("site_page.update",
+                     f"{principal.display_name} changed the page {fields['title']}.",
+                     entity_type="site_page", entity_id=page_id,
+                     changed_fields=changed, **_actor(principal))
+        row = tx.one("pages.get", (page_id,))
+    return {"ok": True, "page": pages.view(row)}
+
+
+@app.delete("/admin/pages/{page_id}")
+def delete_site_page(page_id: int, request: Request,
+                     principal: auth.Principal = guard(
+                         "admin.pages.delete", *PAGES_SCOPES,
+                         school_rule="any", writes=True)):
+    """Takes the page off the list. It leaves the live site at the next
+    rebuild. The Google Doc itself is never touched; the converted copy goes to
+    Drive's trash."""
+    with database().tx(request_id=request_id(request)) as tx:
+        page = _site_page(tx, page_id)
+        tx.run("pages.delete", (page_id,))
+        tx.audit("site_page.delete",
+                 f"{principal.display_name} removed the page {page['title']}.",
+                 entity_type="site_page", entity_id=page_id, **_actor(principal))
+    _trash_quietly(page["html_file_id"])
+    return {"ok": True}
+
+
+@app.post("/admin/pages/publish")
+def publish_site_pages(request: Request, payload: dict = Body(default={}),
+                       principal: auth.Principal = guard(
+                           "admin.pages.publish", *PAGES_SCOPES,
+                           school_rule="any", writes=True)):
+    """Convert every Doc, then ask GitHub to rebuild the site.
+
+    A Doc that cannot be converted keeps its previous copy and reports why; the
+    rebuild still goes ahead, because a retitled, hidden or removed page needs
+    one too. Slow (each Doc is a round trip to Drive), so the page shows a
+    spinner and the Docs are converted a few at a time.
+    """
+    with database().read() as tx:
+        rows = [dict(r) for r in tx.all("pages.all")]
+        configured = settings.get(tx, "drive.contests_root")
+
+    results = []
+    if rows:
+        try:
+            store = drive.client("Page publishing")
+            folder = pages.folder_for_pages(store, configured)
+            results = pages.convert_all(rows, folder)
+        except drive.DriveUnavailable as error:
+            results = [{"id": r["id"], "ok": False, "file_id": "", "url": "",
+                        "error": str(error)} for r in rows]
+
+    with database().tx(request_id=request_id(request)) as tx:
+        now = clock.now_iso()
+        for result in results:
+            if tx.one("pages.get", (result["id"],)) is None:
+                continue                    # removed while we were converting
+            if result["ok"]:
+                tx.run("pages.synced",
+                       (result["file_id"], result["url"], now, result["id"]))
+            else:
+                tx.run("pages.sync_failed", (result["error"][:500], result["id"]))
+        failed = sum(1 for r in results if not r["ok"])
+        tx.audit("site_page.publish",
+                 f"{principal.display_name} published the site pages "
+                 f"({len(results) - failed} converted"
+                 + (f", {failed} failed" if failed else "") + ").",
+                 **_actor(principal))
+        listing = _page_list(tx)
+
+    rebuild = {"ok": True, "url": "", "error": ""}
+    try:
+        rebuild["url"] = pages.request_rebuild()
+    except pages.RebuildUnavailable as error:
+        rebuild.update(ok=False, error=str(error), url=pages.actions_url())
+    return {"ok": True, "pages": listing, "rebuild": rebuild,
+            "converted": len(results) - failed, "failed": failed}
+
+
+# ===========================================================================
 # The convention schedule, and Olympika
 # ===========================================================================
 #
@@ -2249,6 +2642,11 @@ def _schedule_item(tx, item_id: int) -> dict:
 
 def _manual_item(tx, item_id: int) -> dict:
     row = _schedule_item(tx, item_id)
+    if row["source"] == "potluck":
+        raise _olympika_error(
+            "That entry is an activity from the activities potluck. The "
+            "Activities chair changes it on the Potluck page and it follows "
+            "here.")
     if row["source"] != "manual":
         raise _olympika_error(
             "That entry is kept up to date from the Athletics Director's "
