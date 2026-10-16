@@ -102,6 +102,8 @@ graph LR
 | **Turso (ChiselStrike)**| Distributed libSQL (SQLite) Relational Database | SOC 2 Type II, AES-256 Volume Encryption | Executed standard platform DPA | Primary relational data, authentication HMACs |
 | **Google LLC** | Google Drive / Apps Script (Digital uploads & scans) | ISO 27001/27018, SOC 2/3 (Workspace infrastructure) | Google Cloud Data Processing Addendum (Workspace) | Contest digital files, photo contest images and thumbnails, scanned physical liability PDFs |
 
+**Status of the agreements.** The DPA column records the terms each vendor offers. Whether each has been signed or accepted, and a copy filed, is not recorded in this repository and is an open action (§12). The Google row applies once Drive moves to the `cajcl.org` Workspace; today the Drive and Apps Script run on a personal Gmail account, which the Workspace addendum does not cover.
+
 ---
 
 ## 5. Technical & Organizational Safeguards (TOMs)
@@ -123,7 +125,7 @@ graph LR
 
 ## 6. Written Data Retention & Purge Policy
 
-Pursuant to COPPA § 312.10 and SOPIPA § 22584(d)(2), the platform adheres to an automated data lifecycle:
+Pursuant to COPPA § 312.10 and SOPIPA § 22584(d)(2), the platform follows the data lifecycle below. **Status:** the dates are fixed and the deletion is a written procedure, but the script that performs it (`scripts/purge_convention_data.py`) is not built yet (target December 2026, §12). Until it exists and has been rehearsed on the seeded database, the purge is a manual, checklist-driven task for Backend Engineering, and the Presidents delete the Drive folders by hand.
 
 ```text
 [Convention Operations: March 12-13, 2027]
@@ -144,6 +146,24 @@ Pursuant to COPPA § 312.10 and SOPIPA § 22584(d)(2), the platform adheres to a
   • Preserves strictly: Year, Badge Number, Chapter, Grade, Latin Level, Competition Placements.
   • Zero student names, zero phone numbers, zero contact records.
 ```
+
+---
+
+## 7. Written Information Security Program (WISP)
+
+This section is the program required by Cal. Civ. Code § 1798.81.5 and COPPA § 312.8. It names the elements; the technical detail is in §5 and in `SECURITY.md`.
+
+| Element | What the program requires | Status |
+| :--- | :--- | :--- |
+| **Responsible person** | An adult privacy coordinator owns this document, answers `state@uhsjcl.org`, and reviews it each year. | **Not yet named** (§12) |
+| **Data inventory** | §3 lists every field, who it belongs to and when it is deleted. Any new field is added to §3 before it ships. | In place |
+| **Access control** | Every route declares a permission scope; sponsors are limited to their own chapter; board roles are narrow (`SECURITY.md` §3). Board roles are granted and revoked by a system administrator; the list of who holds a board role is to be reviewed before each convention. | Controls in place; the review and two-factor are not yet (`SECURITY.md` §7) |
+| **Safeguards** | Encryption in transit and at rest, hashed login tokens, rate limiting, parameterized queries, security headers, audit log (§5). | In place |
+| **Vendors** | Each sub-processor in §4 is reviewed for certification and for the terms that bind it. Copies of the accepted terms are kept on file. | **Copies not yet confirmed** (§12) |
+| **Retention and deletion** | §6, performed on April 12, 2027. | Procedure written; tooling due December 2026 |
+| **Incident response** | §8, with the failure playbooks in `RUNBOOK.md` §11 and the secret-rotation steps in `SECURITY.md` §6. | Written; not yet rehearsed |
+| **Training** | Sponsors and chairs are told, in the launch email and the chair SOP (`REGISTRATION.md`), what they may and may not do with exports and printed rosters and login tokens. | **Not yet written:** the SOP covers how to use the site, not how to handle printed data |
+| **Review** | This document and the data inventory are reviewed after every change that touches what is collected, who sees it, where it goes or how long it is kept, and once a year. | In place |
 
 ---
 
@@ -174,7 +194,7 @@ graph TD
 
 ## 9. Public Privacy Notice (Students & Parents)
 
-*This notice is displayed prominently on `state.uhsjcl.org` and linked on all registration entry screens:*
+*This notice is published on the site at `#/privacy` (`frontend/public/js/pages/privacy.js`), linked from the footer of every page and from the join page. The page is the plain-language version of the text below; change both together.*
 
 > ### CAJCL State Convention Privacy Notice
 > **Effective Date:** October 1, 2026  
@@ -209,10 +229,10 @@ When educational agencies participate in the CAJCL State Convention, CAJCL guara
 | :--- | :--- | :--- | :--- |
 | **Notice & Verifiable Consent** | COPPA § 312.4, § 312.5 | Sponsor-pasted rosters: physical signed parent waiver is collected before portal credentials are handed out. **Join-code registration reverses that order for the first entry:** the student types their own name, grade and Latin level (no email, no contact details) on the sponsor's handout *before* a parent has signed the waiver that is in the same packet. The record is pending and invisible to the public, to billing and to judges until the sponsor, acting as the school official, approves it; denial deletes it. | **Needs confirmation** (see §12) |
 | **Data Minimization** | COPPA § 312.7 | Zero student emails, zero financial data; optional fields strictly isolated. | **Compliant** |
-| **Reasonable Security Program** | COPPA § 312.8, Civ. Code § 1798.81.5 | Formal WISP established (§7); TLS 1.3 encryption; SOC 2 Type II vendors; salted HMACs. | **Compliant** |
-| **Retention & Timely Purge** | COPPA § 312.10, SOPIPA § 22584(d)(2) | Documented automated purge cycle executed on April 12, 2027. | **Compliant** |
+| **Reasonable Security Program** | COPPA § 312.8, Civ. Code § 1798.81.5 | Written program (§7); TLS 1.3 encryption; SOC 2 Type II vendors; keyed HMAC hashing. | **Largely in place:** no privacy coordinator named, no two-factor for board logins, 180-day sessions (§12) |
+| **Retention & Timely Purge** | COPPA § 312.10, SOPIPA § 22584(d)(2) | Written retention policy (§6) with a fixed deletion date of April 12, 2027. | **In progress:** purge script not yet built (§12) |
 | **Ban on Commercial Profiling** | SOPIPA § 22584(b) | Platform carries no advertisements, behavioral tracking pixels, or commercial integrations. | **Compliant** |
-| **Third-Party Contract Guarantees** | SOPIPA § 22584(b)(4)(E), AB 1584 | All sub-processors bound by formal Data Protection Agreements. | **Compliant** |
+| **Third-Party Contract Guarantees** | SOPIPA § 22584(b)(4)(E), AB 1584 | Each sub-processor in §4 is bound by its standard platform terms. | **Needs confirmation:** keep a copy of the accepted terms for each vendor (§12) |
 
 ---
 
@@ -223,6 +243,7 @@ When educational agencies participate in the CAJCL State Convention, CAJCL guara
 | **Google Workspace Migration** | Transition Drive puppet and medical upload destination from personal Gmail to official `cajcl.org` Google Workspace for Education account. | Technology Commissioners | Prior to Sponsor Launch |
 | **Under-13 Join-Code Self-Entry** | Decide whether COPPA's school-authorization route (the sponsor acts as the school's agent and approves each joiner) is sufficient for middle-school students typing their own name, grade and Latin level before the parent waiver is signed, or whether joining must be limited to high-school chapters / gated on the signed waiver. Record the decision here and in the school authorization form (§10). | CAJCL Board of Directors | Prior to Sponsor Launch |
 | **Photo Contest: Other People in Photos** | Decide whether photo contest categories may include photos of other identifiable attendees (most are minors), or should be limited to objects, places and the photographer's own group. Today the upload page asks students to get permission before photographing anyone, and the Activities chair can take any photo down at once. Also decide whether winning photos may be shown publicly (e.g. at the awards assembly), which would need the photographer's and any pictured person's consent. | CAJCL Board of Directors | Prior to Convention |
+| **Vendor Terms on File** | Obtain and file the accepted data-protection terms for GitHub, Modal, Turso and Google, and correct the "Executed" wording in §4 if any was only accepted online. | Technology Commissioners | Prior to Sponsor Launch |
 | **Privacy Officer Designation** | Formally name adult compliance coordinator and publish contact information across all legal notices. | CAJCL Board of Directors | Prior to Sponsor Launch |
-| **Automated Purge Tooling** | Deploy automated script `scripts/purge_convention_data.py` to execute zero-downtime deletion on April 12, 2027. | Backend Engineering | December 2026 |
+| **Automated Purge Tooling** | Build `scripts/purge_convention_data.py` (it does not exist yet), rehearse it on the seeded database, then run it on April 12, 2027. Until then §6 is a manual checklist. | Backend Engineering | December 2026 |
 | **Certamen PIN Security Hardening**| Implement Argon2id or bcrypt hashing on Certamen practice arena PINs to align with primary authentication standards. | Backend Engineering | Prior to Public Launch |

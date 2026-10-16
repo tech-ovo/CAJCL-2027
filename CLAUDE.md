@@ -211,6 +211,15 @@ rules), then `docs/design.md` for the visual rules.
   is kept must update `PRIVACY.md`. Decided facts: CAJCL (501(c)(3)) is the operator; deletion 12 Apr 2027,
   keeping only person number + chapter + grade + level + placements;
   Drive/Apps Script on a personal Gmail until the `cajcl.org` Workspace.
+- Sponsor privacy/security briefing (Oct 2026): an agenda, demo script and Q&A
+  live in a Claude Doc (not in the repo), built from `PRIVACY.md`/`SECURITY.md`.
+  The privacy notice is a public page, `#/privacy` (`js/pages/privacy.js`; the
+  plain-language version of PRIVACY §9, change both together), linked from the
+  footer (`index.html` AND the `footer` string in `scripts/build_snapshot.py`, as
+  `/#/privacy` so static `p/*.html` pages work) and from `#/join`. PRIVACY §7 is
+  now the written security program; §6/§11 say the purge script
+  (`scripts/purge_convention_data.py`) is NOT built yet, and vendor agreements
+  are unconfirmed (§12). The page must not name Turso (`test_frontend` forbids it).
 - `docs/` rewritten to professional PM specifications: `DEPLOY.md` (deployment runbook),
   `PRIVACY.md` (regulatory & privacy spec), `REGISTRATION.md` (chair SOP), `RISKS.md` (risk register),
   `RUNBOOK.md` (incident & ops runbook), `SECURITY.md` (threat model & security spec),

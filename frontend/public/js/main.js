@@ -23,6 +23,7 @@ import { joinPage } from "./pages/join.js";
 import { rosterPage } from "./pages/roster.js";
 import { importPage } from "./pages/import.js";
 import { resourcesPage } from "./pages/resources.js";
+import { privacyPage } from "./pages/privacy.js";
 import { teamsPage } from "./pages/teams.js";
 import { activitySheetPage } from "./pages/activity.js";
 import { adultSheetPage } from "./pages/adult.js";
@@ -59,6 +60,8 @@ const ROUTES = [
   // handout opens #/join/<code>, so the code arrives already typed.
   [/^\/join(?:\/(.+))?$/,         joinPage,          { public: true }],
   [/^\/resources$/,              resourcesPage,     { public: true }],
+  // What is collected, who sees it, when it is deleted. Linked from every footer.
+  [/^\/privacy$/,                privacyPage,       { public: true }],
   // Kept so an old link, a bookmark or a printed sheet still lands
   // somewhere. The arena is now reached from Resources.
   [/^\/certamen$/,               () => { window.location.href = "/certamen/"; }, { public: true }],

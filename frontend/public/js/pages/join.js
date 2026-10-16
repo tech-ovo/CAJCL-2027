@@ -120,6 +120,12 @@ export async function joinPage(host, params = []) {
             "You get a login token of your own, and can fill in your forms "
             + "straight away. Your sponsor then approves you.")),
         el("div", { class: "rail__item" },
+          el("p", { class: "label label--ink" }, "Your information"),
+          el("p", { class: "small muted" },
+            "We ask only for your name, grade and Latin level, and delete "
+            + "them after the convention. ",
+            el("a", { href: "#/privacy" }, "Read the privacy notice"), ".")),
+        el("div", { class: "rail__item" },
           el("p", { class: "label label--ink" }, "Already registered?"),
           el("p", { class: "small muted" },
             el("a", { href: "#/sign-in" }, "Sign in with your login token"),
