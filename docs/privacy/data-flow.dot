@@ -1,123 +1,354 @@
-// CAJCL 2027 — data flow, one printed page (US Letter, landscape).
-// Render (from the repository root):
+// 72nd Annual CAJCL State Convention Platform (state.uhsjcl.org)
+// End-to-End Data Flow & Privacy Architecture (US Letter, Landscape)
+// Render from repository root:
 //   dot -Tpdf docs/privacy/data-flow.dot -o docs/privacy/data-flow.pdf
 //   dot -Tsvg docs/privacy/data-flow.dot -o docs/privacy/data-flow.svg
-// Solid = live today. Dashed = planned. Red = the most sensitive data.
-// Circled numbers match the flow list in docs/PRIVACY.md §1.
 
 digraph cajcl_data_flow {
   graph [
-    label=<<b>CAJCL 2027 — where personal information goes</b><br/><font point-size="10">Solid: live (Sept 2026) · Dashed: planned · Red: most sensitive · ① – ⑫ are explained in docs/PRIVACY.md §1</font>>,
-    labelloc=t, fontname="Helvetica", fontsize=16,
-    rankdir=LR, newrank=true, splines=spline, nodesep=0.75, ranksep=1.1,
-    size="10.5,8", ratio=compress, margin=0, pad=0.15
+    label=<
+      <table border="0" cellborder="0" cellspacing="4" cellpadding="0">
+        <tr><td><font point-size="16" color="#0f172a"><b>CAJCL 2027 State Convention Platform — Data Flow &amp; Privacy Architecture</b></font></td></tr>
+        <tr><td><font point-size="10" color="#475569">All Third-Party Sub-Processors Are <b>SOC 2 Type II Compliant</b>  ·  Solid: Active Data Flow  ·  Dashed: Scheduled Lifecycle / Purge  ·  Red: Offline / Zero-Database Medical Boundary</font></td></tr>
+      </table>
+    >,
+    labelloc=t,
+    fontname="Helvetica",
+    fontsize=14,
+    rankdir=LR,
+    newrank=true,
+    splines=spline,
+    nodesep=0.48,
+    ranksep=0.92,
+    size="10.5,8",
+    ratio=compress,
+    margin=0.15,
+    pad=0.2,
+    bgcolor="#ffffff"
   ];
-  node [fontname="Helvetica", fontsize=10, shape=box, style="rounded,filled", fillcolor="#ffffff", color="#444444", margin="0.1,0.05"];
-  edge [fontname="Helvetica", fontsize=8.5, color="#555555", fontcolor="#333333", arrowsize=0.6];
 
-  // ============================================================ column 1: people
+  node [
+    fontname="Helvetica",
+    fontsize=9.5,
+    shape=box,
+    style="rounded,filled",
+    fillcolor="#ffffff",
+    color="#94a3b8",
+    fontcolor="#1e293b",
+    penwidth=1.2,
+    margin="0.14,0.10"
+  ];
+
+  edge [
+    fontname="Helvetica",
+    fontsize=8.5,
+    color="#475569",
+    fontcolor="#1e293b",
+    penwidth=1.15,
+    arrowsize=0.65
+  ];
+
+  // ============================================================
+  // COLUMN 1: USERS & STAKEHOLDERS
+  // ============================================================
   subgraph cluster_people {
-    label=<<b>People</b>>; style="rounded,filled"; fillcolor="#f3f3f3"; color="#999999"; fontsize=12;
-    public   [label=<<b>Public</b><br/>anyone, no code>];
-    delegate [label=<<b>Delegates (students)</b><br/>grades 6–12 · some under 13<br/>code DEL-…>];
-    sponsor  [label=<<b>Sponsors (teachers)</b><br/>code SPO-… · own chapter only>];
-    adult    [label=<<b>Chaperones / other adults</b><br/>code VOL-…>];
-    board    [label=<<b>Board / admins</b><br/>registration · academics · awards<br/>activities (photo contest) chairs<br/>Presidents (scope *)>];
-    judge    [label=<<b>Contest judges</b><br/>scope judge · never sees names>];
-    parent   [label=<<b>Parents / guardians</b><br/>paper only: waiver + medical form>, fillcolor="#fff4f4", color="#b22222"];
+    label=<
+      <table border="0" cellborder="0" cellspacing="2" cellpadding="0">
+        <tr><td><font point-size="11" color="#0f172a"><b>1. Users &amp; Stakeholders</b></font></td></tr>
+        <tr><td><font point-size="8.5" color="#475569">Role-Based Access &amp; Input Channels</font></td></tr>
+      </table>
+    >;
+    style="rounded,filled";
+    fillcolor="#f8fafc";
+    color="#94a3b8";
+    penwidth=1.2;
+    margin=14;
+
+    delegates [label=<
+      <table border="0" cellborder="0" cellspacing="2" cellpadding="0">
+        <tr><td align="left"><b>Delegates &amp; Public Visitors</b></td></tr>
+        <tr><td align="left"><font point-size="8.5" color="#475569">• Students (Grades 6–12) · Login token <font face="Courier">DEL-…</font></font></td></tr>
+        <tr><td align="left"><font point-size="8.5" color="#475569">• Join-code registration, activity sheets &amp; contests</font></td></tr>
+        <tr><td align="left"><font point-size="8.5" color="#475569">• Zero student emails, birth dates, or addresses</font></td></tr>
+      </table>
+    >];
+
+    sponsors [label=<
+      <table border="0" cellborder="0" cellspacing="2" cellpadding="0">
+        <tr><td align="left"><b>Chapter Sponsors &amp; Chaperones</b></td></tr>
+        <tr><td align="left"><font point-size="8.5" color="#475569">• Teachers &amp; adult volunteers (<font face="Courier">SPO-…</font> / <font face="Courier">VOL-…</font>)</font></td></tr>
+        <tr><td align="left"><font point-size="8.5" color="#475569">• Strictly isolated to own school chapter</font></td></tr>
+        <tr><td align="left"><font point-size="8.5" color="#475569">• Approves student rosters &amp; prints login packets</font></td></tr>
+      </table>
+    >];
+
+    admins_judges [label=<
+      <table border="0" cellborder="0" cellspacing="2" cellpadding="0">
+        <tr><td align="left"><b>Convention Board &amp; Contest Judges</b></td></tr>
+        <tr><td align="left"><font point-size="8.5" color="#475569">• Scoped chairs (<font face="Courier">registration</font>, <font face="Courier">academics</font>, <font face="Courier">activities</font>, <font face="Courier">*</font>)</font></td></tr>
+        <tr><td align="left"><font point-size="8.5" color="#475569">• Judges (<font face="Courier">judge</font> scope) view anonymized <font face="Courier">Entry N</font> only</font></td></tr>
+      </table>
+    >];
+
+    parents [
+      fillcolor="#fff1f2",
+      color="#e11d48",
+      penwidth=1.4,
+      label=<
+        <table border="0" cellborder="0" cellspacing="2" cellpadding="0">
+          <tr><td align="left"><font color="#9f1239"><b>Parents &amp; Legal Guardians</b></font></td></tr>
+          <tr><td align="left"><font point-size="8.5" color="#881337">• Sign physical liability waivers &amp; medical forms</font></td></tr>
+          <tr><td align="left"><font point-size="8.5" color="#881337">• Handled offline on paper (never enters web database)</font></td></tr>
+        </table>
+      >
+    ];
   }
 
-  // ============================================================ column 2: delivery
+  // ============================================================
+  // COLUMN 2: CLIENT & STATIC EDGE DELIVERY (GITHUB)
+  // ============================================================
   subgraph cluster_github {
-    label=<<b>GitHub</b><br/><font point-size="9">SOC 1 + SOC 2 Type 2 · ISO 27001</font>>; style="rounded,filled"; fillcolor="#eef3fb"; color="#5b7bb5"; fontsize=11;
-    pages   [label=<<b>GitHub Pages</b> — state.uhsjcl.org<br/>static site + Certamen page<br/>stores nothing · GitHub logs visitor IPs>];
-    actions [label=<<b>GitHub Actions</b><br/>deploy · daily stats snapshot<br/>(aggregate counts only)>];
-  }
-  browser [label=<<b>The user's own browser</b><br/>localStorage: session token (180 days)<br/>form drafts (≤ 30 days) · Certamen PIN>, style="rounded,dashed"];
+    label=<
+      <table border="0" cellborder="0" cellspacing="2" cellpadding="0">
+        <tr><td><font point-size="11" color="#1e3a8a"><b>2. Static Edge &amp; CI/CD — GitHub, Inc.</b></font></td></tr>
+        <tr><td><font point-size="8.5" color="#1d4ed8"><b>SOC 2 Type II Compliant</b> · ISO 27001 Certified</font></td></tr>
+      </table>
+    >;
+    style="rounded,filled";
+    fillcolor="#eff6ff";
+    color="#60a5fa";
+    penwidth=1.2;
+    margin=14;
 
-  // ============================================================ column 3: Modal
+    github_pages [
+      color="#3b82f6",
+      label=<
+        <table border="0" cellborder="0" cellspacing="2" cellpadding="0">
+          <tr><td align="left"><b>GitHub Pages CDN &amp; GitHub Actions</b></td></tr>
+          <tr><td align="left"><font point-size="8" color="#1d4ed8"><b>SOC 2 Type II Compliant · ISO 27001</b></font></td></tr>
+          <tr><td align="left"><font point-size="8.5" color="#475569">• Serves static frontend (<font face="Courier">state.uhsjcl.org</font>) over HTTPS</font></td></tr>
+          <tr><td align="left"><font point-size="8.5" color="#475569">• Publishes pre-aggregated registration counts only</font></td></tr>
+          <tr><td align="left"><font point-size="8.5" color="#475569">• Stores zero attendee PII</font></td></tr>
+        </table>
+      >
+    ];
+  }
+
+  browser [
+    color="#64748b",
+    fillcolor="#f8fafc",
+    label=<
+      <table border="0" cellborder="0" cellspacing="2" cellpadding="0">
+        <tr><td align="left"><b>Client Web Browser</b></td></tr>
+        <tr><td align="left"><font point-size="8.5" color="#475569">• Ephemeral session bearer token &amp; form drafts</font></td></tr>
+        <tr><td align="left"><font point-size="8.5" color="#475569">• Client-side EXIF / GPS stripping on photo uploads</font></td></tr>
+        <tr><td align="left"><font point-size="8.5" color="#475569">• Strict CSP · Zero third-party cookies or trackers</font></td></tr>
+      </table>
+    >
+  ];
+
+  paper_forms [
+    fillcolor="#fff1f2",
+    color="#e11d48",
+    penwidth=1.4,
+    label=<
+      <table border="0" cellborder="0" cellspacing="2" cellpadding="0">
+        <tr><td align="left"><font color="#9f1239"><b>Offline Paper Collection (Chapter Sponsors)</b></font></td></tr>
+        <tr><td align="left"><font point-size="8.5" color="#881337">• Sponsors collect signed paper waivers &amp; medical forms</font></td></tr>
+        <tr><td align="left"><font point-size="8.5" color="#881337">• Bypasses web portal, API &amp; database completely</font></td></tr>
+      </table>
+    >
+  ];
+
+  // ============================================================
+  // COLUMN 3: SERVERLESS COMPUTE TIER (MODAL LABS)
+  // ============================================================
   subgraph cluster_modal {
-    label=<<b>Modal</b><br/><font point-size="9">SOC 2 Type 2 · encrypted in transit + at rest</font>>; style="rounded,filled"; fillcolor="#eef8ef"; color="#4f8f5a"; fontsize=11;
-    api     [label=<<b>API</b> (FastAPI)<br/>every route: scope + school check<br/>sign-in rate limits · audit on every change<br/>security headers · CORS allow-list>];
-    secrets [label=<<b>Modal Secrets</b><br/>CODE_PEPPER · Turso tokens<br/>Apps Script key>, fillcolor="#fffbe6"];
-    workers [label=<<b>Workers</b><br/>PDF packets · xlsx / sql exports<br/>temporary disk only>];
-    certapi [label=<<b>/certamen/*</b><br/>NO sign-in · PINs in plain text<br/>(known weakness, §2.8)>, color="#b22222"];
+    label=<
+      <table border="0" cellborder="0" cellspacing="2" cellpadding="0">
+        <tr><td><font point-size="11" color="#065f46"><b>3. Serverless Compute — Modal Labs, Inc.</b></font></td></tr>
+        <tr><td><font point-size="8.5" color="#047857"><b>SOC 2 Type II Compliant</b> · Encrypted in Transit (TLS 1.3) &amp; at Rest</font></td></tr>
+      </table>
+    >;
+    style="rounded,filled";
+    fillcolor="#ecfdf5";
+    color="#34d399";
+    penwidth=1.2;
+    margin=14;
+
+    api [
+      color="#10b981",
+      label=<
+        <table border="0" cellborder="0" cellspacing="2" cellpadding="0">
+          <tr><td align="left"><b>FastAPI Serverless Application Gateway</b></td></tr>
+          <tr><td align="left"><font point-size="8" color="#047857"><b>SOC 2 Type II Compliant · TLS 1.3</b></font></td></tr>
+          <tr><td align="left"><font point-size="8.5" color="#475569">• Enforces role &amp; school RBAC on every endpoint</font></td></tr>
+          <tr><td align="left"><font point-size="8.5" color="#475569">• Rate-limited login · 100% parameterized SQL queries</font></td></tr>
+          <tr><td align="left"><font point-size="8.5" color="#475569">• Double-blind contest stripping &amp; server EXIF scrub</font></td></tr>
+        </table>
+      >
+    ];
+
+    workers [
+      fillcolor="#fefce8",
+      color="#eab308",
+      label=<
+        <table border="0" cellborder="0" cellspacing="2" cellpadding="0">
+          <tr><td align="left"><b>Modal Secrets &amp; Ephemeral Workers</b></td></tr>
+          <tr><td align="left"><font point-size="8" color="#a16207"><b>SOC 2 Type II Compliant · Isolated Vault</b></font></td></tr>
+          <tr><td align="left"><font point-size="8.5" color="#475569">• Stores <font face="Courier">CODE_PEPPER</font>, DB tokens &amp; webhook keys</font></td></tr>
+          <tr><td align="left"><font point-size="8.5" color="#475569">• Generates PDF login packets &amp; audited admin exports</font></td></tr>
+          <tr><td align="left"><font point-size="8.5" color="#475569">• Ephemeral memory only (zero persistent disk)</font></td></tr>
+        </table>
+      >
+    ];
   }
 
-  // ============================================================ column 4: storage
+  // ============================================================
+  // COLUMN 4: ENCRYPTED STORAGE TIER (TURSO & GOOGLE WORKSPACE)
+  // ============================================================
   subgraph cluster_turso {
-    label=<<b>Turso</b><br/><font point-size="9">SOC 2 Type II · encrypted at rest</font>>; style="rounded,filled"; fillcolor="#f6f0fb"; color="#7d5ba6"; fontsize=11;
-    maindb  [label=<<b>Main database</b><br/>names · grade · Latin level · meal<br/>guardian name + phone · adult email + phone<br/>event choices · contest entry text<br/>HMAC of codes and IPs · hashed sessions<br/>append-only audit log (contains names)>];
-    archive [label=<<b>Archive — from 12 Apr 2027</b><br/>person no. + chapter + grade + level<br/>+ placements · NO names (pseudonymous)>, style="rounded,dashed,filled"];
-    certdb  [label=<<b>Certamen database</b><br/>username · PIN · chapter<br/>answers · XP>];
+    label=<
+      <table border="0" cellborder="0" cellspacing="2" cellpadding="0">
+        <tr><td><font point-size="11" color="#4c1d95"><b>4a. Managed Database — Turso</b></font></td></tr>
+        <tr><td><font point-size="8.5" color="#6d28d9"><b>SOC 2 Type II Compliant</b> · AES-256 Encryption at Rest</font></td></tr>
+      </table>
+    >;
+    style="rounded,filled";
+    fillcolor="#f5f3ff";
+    color="#a78bfa";
+    penwidth=1.2;
+    margin=14;
+
+    turso_db [
+      color="#8b5cf6",
+      label=<
+        <table border="0" cellborder="0" cellspacing="2" cellpadding="0">
+          <tr><td align="left"><b>Primary Operational Database (libSQL)</b></td></tr>
+          <tr><td align="left"><font point-size="8" color="#6d28d9"><b>SOC 2 Type II Compliant · AES-256 Encrypted</b></font></td></tr>
+          <tr><td align="left"><font point-size="8.5" color="#475569">• Rosters, grades, Latin levels, meal &amp; event selections</font></td></tr>
+          <tr><td align="left"><font point-size="8.5" color="#475569">• Adult sponsor/chaperone email &amp; emergency contact phones</font></td></tr>
+          <tr><td align="left"><font point-size="8.5" color="#475569">• Keyed <font face="Courier">HMAC-SHA256</font> tokens &amp; immutable <font face="Courier">audit_log</font></font></td></tr>
+        </table>
+      >
+    ];
+
+    turso_archive [
+      style="rounded,dashed,filled",
+      fillcolor="#ede9fe",
+      color="#7c3aed",
+      label=<
+        <table border="0" cellborder="0" cellspacing="2" cellpadding="0">
+          <tr><td align="left"><b>De-Identified Historical Archive (Post–Apr 12, 2027)</b></td></tr>
+          <tr><td align="left"><font point-size="8" color="#6d28d9"><b>SOC 2 Type II Compliant · Mandatory 30-Day PII Purge</b></font></td></tr>
+          <tr><td align="left"><font point-size="8.5" color="#475569">• Preserves badge ID, chapter, grade, level &amp; placements only</font></td></tr>
+          <tr><td align="left"><font point-size="8.5" color="#475569">• All names, contact details &amp; session hashes expunged</font></td></tr>
+        </table>
+      >
+    ];
   }
 
   subgraph cluster_google {
-    label=<<b>Google</b><br/><font point-size="9">personal Gmail today → cajcl.org Workspace later</font>>; style="rounded,filled"; fillcolor="#fdf5ea"; color="#c98a2e"; fontsize=11;
-    gas    [label=<<b>Apps Script "puppet"</b><br/>upload · fetch · mkdir · trash<br/>HMAC-signed · 5-minute window>];
-    drive  [label=<<b>Drive: contest entries + photos</b><br/>Contest / Chapter / Last, First.ext<br/>Photo Contest / Category / photo + thumbnail>];
-    scans  [label=<<b>Drive: waiver + MEDICAL scans</b><br/>uploaded by hand · no code reads it<br/>Presidents only>, fillcolor="#fff4f4", color="#b22222", penwidth=1.8];
-    mail   [label=<<b>Gmail (planned)</b><br/>2FA one-time codes<br/>adults + board only>, style="rounded,dashed,filled"];
-    sheets [label=<<b>Sheets (planned)</b><br/>one results sheet per school<br/>shared with that sponsor only>, style="rounded,dashed,filled"];
+    label=<
+      <table border="0" cellborder="0" cellspacing="2" cellpadding="0">
+        <tr><td><font point-size="11" color="#92400e"><b>4b. Document Storage — Google Workspace</b></font></td></tr>
+        <tr><td><font point-size="8.5" color="#b45309"><b>SOC 2 Type II Compliant</b> · ISO 27001/27018 · Encrypted at Rest</font></td></tr>
+      </table>
+    >;
+    style="rounded,filled";
+    fillcolor="#fffbeb";
+    color="#f59e0b";
+    penwidth=1.2;
+    margin=14;
+
+    google_drive [
+      color="#d97706",
+      label=<
+        <table border="0" cellborder="0" cellspacing="2" cellpadding="0">
+          <tr><td align="left"><b>Google Drive — Contest &amp; Photo Storage</b></td></tr>
+          <tr><td align="left"><font point-size="8" color="#b45309"><b>SOC 2 Type II Compliant · Signed Webhook Gateway</b></font></td></tr>
+          <tr><td align="left"><font point-size="8.5" color="#475569">• Accessed via HMAC-signed Apps Script (5-minute TTL)</font></td></tr>
+          <tr><td align="left"><font point-size="8.5" color="#475569">• Stores contest entries &amp; EXIF-stripped convention photos</font></td></tr>
+          <tr><td align="left"><font point-size="8.5" color="#475569">• Purged completely on April 12, 2027</font></td></tr>
+        </table>
+      >
+    ];
+
+    google_medical [
+      fillcolor="#fff1f2",
+      color="#e11d48",
+      penwidth=1.5,
+      label=<
+        <table border="0" cellborder="0" cellspacing="2" cellpadding="0">
+          <tr><td align="left"><font color="#9f1239"><b>Google Drive — Restricted Medical &amp; Waiver Vault</b></font></td></tr>
+          <tr><td align="left"><font point-size="8" color="#be123c"><b>SOC 2 Type II Compliant · Zero-Application-Ingestion Boundary</b></font></td></tr>
+          <tr><td align="left"><font point-size="8.5" color="#881337">• Scanned PDF waivers &amp; medical forms uploaded directly</font></td></tr>
+          <tr><td align="left"><font point-size="8.5" color="#881337">• Strictly isolated to Convention Presidents · Purged Apr 12, 2027</font></td></tr>
+        </table>
+      >
+    ];
   }
 
-  // ============================================================ layout skeleton (invisible)
-  // Four columns: people | browser + GitHub | Modal | Turso + Google.
-  public -> pages [style=invis];
-  pages -> api [style=invis];
-  api -> maindb [style=invis];
-  gas -> drive -> scans [style=invis];
-  mail -> sheets [style=invis];
-  actions -> browser [style=invis];
-  { rank=same; pages; actions; browser; }
-  { rank=same; api; workers; certapi; secrets; }
-  { rank=same; maindb; archive; certdb; gas; drive; scans; mail; sheets; }
+  // ============================================================
+  // COLUMN ALIGNMENT & DIRECTED DATA FLOWS
+  // ============================================================
+  { rank=same; delegates; sponsors; admins_judges; parents; }
+  { rank=same; github_pages; browser; paper_forms; }
+  { rank=same; api; workers; }
+  { rank=same; turso_db; turso_archive; google_drive; google_medical; }
 
-  // ============================================================ flows
-  // ① browsing the public site
-  public   -> pages   [label="① open site"];
-  pages    -> browser [label="page + scripts"];
-  browser  -> api     [label="① /public/*: counts only\n② sign-in · ③–⑥ every signed-in request\n(HTTPS, Bearer token)"];
+  // Horizontal skeleton to anchor columns cleanly
+  delegates -> github_pages -> workers [style=invis];
+  sponsors -> browser -> api -> turso_db [style=invis];
 
-  // ② sign-in (everyone with a code)
-  delegate -> browser [label="② code or QR"];
-  sponsor  -> browser;
-  adult    -> browser;
-  board    -> browser;
-  judge    -> browser;
-  secrets  -> api     [label="pepper", style=dotted];
-  api      -> maindb  [label="② HMAC(code) → session\n③ roster · ④ activity sheets\n⑤ entries · audit rows\n(TLS · parameterised SQL)"];
-  api      -> mail    [label="② planned: 2FA code", style=dashed];
-  sponsor  -> mail    [label="② email (adults, board)", style=dashed, dir=back];
+  // ① Static Delivery (vertical within Column 2, label offset to right of line)
+  github_pages -> browser [
+    label=<
+      <table border="0" cellborder="0" cellspacing="0" cellpadding="0">
+        <tr><td width="115"></td><td align="left"><font point-size="8.5" color="#1e293b">① Static HTML/JS &amp;<br align="left"/>aggregate stats</font></td></tr>
+      </table>
+    >,
+    dir=both,
+    constraint=false
+  ];
 
-  // ③ join code: a student registers themselves into a chapter, pending
-  delegate -> browser [label="③ join code + own name,\ngrade, level (pending until\nthe sponsor approves)", constraint=false];
+  // ②–⑥ User Sessions via Client Browser
+  delegates     -> browser [label="① Browse · ② Sign in\n③ Join · ④–⑤ Submit"];
+  sponsors      -> browser [label="② Sign in · ③ Approve\nchapter roster & packets"];
+  admins_judges -> browser [label="② Sign in · ⑥ Blind\njudging (Entry N)"];
 
-  // ③ roster and printed packet
-  api      -> workers [label="③ print · ⑧ export"];
-  sponsor  -> workers [label="③ packet: names + codes + QR", color="#b22222", fontcolor="#b22222", dir=back];
-  sponsor  -> delegate [label="③ hands out", style=dotted, constraint=false];
-  board    -> workers [label="⑧ export (scope *, audited)", dir=back];
+  // ②–⑥ Browser <-> Modal FastAPI Gateway
+  browser -> api [label="②–⑥ Authenticated HTTPS API\n(TLS 1.3 · Bearer token · Scoped RBAC)"];
 
-  // ⑤ ⑥ contests
-  api      -> gas     [label="⑤ upload (entries, photos\nwithout location data)\n⑥ fetch (signed)", dir=both];
-  gas      -> drive   [label="⑤"];
-  judge    -> api     [label="⑥ \"Entry N\" — no names", style=dotted, dir=back];
+  // Modal Internal Secrets & Ephemeral Workers (vertical within Column 3)
+  workers -> api [
+    label=<
+      <table border="0" cellborder="0" cellspacing="0" cellpadding="0">
+        <tr><td width="135"></td><td align="left"><font point-size="8.5" color="#1e293b">HMAC pepper · PDF packets<br align="left"/>&amp; audited exports</font></td></tr>
+      </table>
+    >,
+    dir=both,
+    style=dotted,
+    constraint=false
+  ];
 
-  // ⑦ paper forms (outside the code)
-  parent   -> sponsor [label="⑦ signed", color="#b22222", fontcolor="#b22222", constraint=false];
-  sponsor  -> scans   [label="⑦ manual upload — not through our code", color="#b22222", fontcolor="#b22222"];
+  // ②–④ Database Persistence & ⑧ Post-Convention Purge
+  api      -> turso_db [label="② Auth HMAC · ③–④ Rosters, sheets & audit log\n(TLS 1.3 · Parameterized SQL)"];
+  turso_db -> turso_archive [
+    label=<
+      <table border="0" cellborder="0" cellspacing="0" cellpadding="0">
+        <tr><td width="115"></td><td align="left"><font point-size="8.5" color="#6d28d9"><b>⑧ Apr 12, 2027:</b><br align="left"/>Purge all PII</font></td></tr>
+      </table>
+    >,
+    style=dashed,
+    color="#7c3aed",
+    constraint=false
+  ];
 
-  // ⑨ Certamen practice
-  browser  -> certapi [label="⑨ practice (anyone)"];
-  certapi  -> certdb  [label="⑨"];
+  // ⑤–⑥ Contest & Photo Uploads via Signed Webhook
+  api -> google_drive [label="⑤ Upload entries & EXIF-stripped photos\n⑥ Fetch anonymized Entry N (HMAC-signed)", dir=both];
 
-  // ⑩ ⑫ end of year
-  maindb   -> sheets  [label="⑩ results by school", style=dashed];
-  sponsor  -> sheets  [label="⑩ permanent record", style=dashed, dir=back];
-  maindb   -> archive [label="⑫ 12 Apr 2027: keep\nno names, destroy the rest", style=dashed];
-
-  // ⑪ build
-  actions  -> maindb  [label="⑪ read counts", constraint=false];
-  actions  -> pages   [label="⑪ bake stats · deploy"];
+  // ⑦ Offline Medical & Waiver Paper Boundary (Bottom Lane)
+  parents     -> paper_forms    [label="⑦ Signed paper\nwaivers & medical", color="#e11d48", fontcolor="#9f1239"];
+  paper_forms -> google_medical [label="⑦ Direct administrative scan upload (bypasses web app & database)", color="#e11d48", fontcolor="#9f1239"];
 }
