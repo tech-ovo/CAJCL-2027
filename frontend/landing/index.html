@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>72nd CAJCL State Convention</title>
+<meta name="description" content="The 72nd California Junior Classical League State Convention, hosted by University High School in Irvine, March 12–13, 2027.">
+
+<link rel="icon" href="img/favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="icon" href="img/favicon.png" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Patrick+Hand&family=Fredoka:wght@500;600&display=swap">
+<link rel="preload" as="image" href="img/hero.webp">
+
+<style>
+  /* Layout: a red postage stamp. Desktop (landscape) fits one screen, two columns
+     like the mail club card; phones and portrait screens stack and scroll. */
+  :root {
+    --paper:   #fbf6f3;  /* page around the stamp */
+    --cream:   #fff8f5;  /* stamp face, from the artwork's ground */
+    --red:     #d13d4a;  /* vase / border red */
+    --red-dk:  #8f1d2e;  /* vase shadow, link color */
+    --sky:     #dce6ee;  /* cloud blue-gray cards */
+    --sky-dk:  #c9d7e3;
+    --sun:     #f6d9a4;
+    --ink:     #2a2326;
+
+    --display: "Fredoka", "Arial Rounded MT Bold", "Trebuchet MS", system-ui, sans-serif;
+    --hand:    "Patrick Hand", "Segoe Print", "Comic Sans MS", system-ui, sans-serif;
+
+    color-scheme: light;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html { font-size: 16px; }
+  body {
+    margin: 0;
+    min-height: 100%;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--hand);
+    line-height: 1.3;
+    padding-block: 16px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  img { max-width: 100%; display: block; }
+
+  /* ---------- Stamp ---------- */
+  .stamp {
+    --band: 1.3rem;               /* red border thickness */
+    --r: .5rem;                   /* perforation radius */
+    --step: calc(var(--r) * 3.1); /* perforation spacing */
+    --hole: radial-gradient(circle, var(--paper) var(--r), transparent calc(var(--r) + .5px));
+    padding: var(--band);
+    background:
+      var(--hole) left 0 top    calc(var(--r) * -1) / var(--step) calc(var(--r) * 2) round no-repeat,
+      var(--hole) left 0 bottom calc(var(--r) * -1) / var(--step) calc(var(--r) * 2) round no-repeat,
+      var(--hole) left  calc(var(--r) * -1) top 0 / calc(var(--r) * 2) var(--step) no-repeat round,
+      var(--hole) right calc(var(--r) * -1) top 0 / calc(var(--r) * 2) var(--step) no-repeat round,
+      radial-gradient(60% 50% at 8% 10%,  #c24a63 0%, transparent 70%),
+      radial-gradient(50% 60% at 92% 85%, #c44c66 0%, transparent 70%),
+      radial-gradient(45% 40% at 80% 8%,  #de6466 0%, transparent 70%),
+      radial-gradient(40% 50% at 15% 90%, #db5458 0%, transparent 70%),
+      var(--red);
+  }
+
+  .face {
+    background:
+      radial-gradient(45% 55% at 88% 12%, color-mix(in srgb, var(--sun) 45%, transparent), transparent 70%),
+      radial-gradient(40% 50% at 6% 92%, color-mix(in srgb, var(--sky-dk) 40%, transparent), transparent 70%),
+      var(--cream);
+    padding: 1.5rem 1.1rem 1.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  h1 {
+    margin: 0;
+    font-family: var(--display);
+    font-weight: 600;
+    text-transform: uppercase;
+    text-align: center;
+    letter-spacing: .02em;
+    line-height: 1.05;
+    font-size: clamp(1.55rem, 7.4vw, 2.6rem);
+    text-wrap: balance;
+  }
+
+  /* ---------- Content grid ---------- */
+  .grid {
+    display: grid;
+    gap: 1.1rem;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "d" "p" "n" "c";
+  }
+  .card {
+    background: linear-gradient(160deg, var(--sky), var(--sky-dk));
+    border-radius: 1.6em;
+    min-width: 0;
+  }
+
+  /* Date + place */
+  .when {
+    grid-area: d;
+    padding: 1.4em 1.2em;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    gap: .7em;
+  }
+  .date {
+    margin: 0;
+    font-size: clamp(1.1em, 4.6vw, 1.45em);
+    letter-spacing: .14em;
+    text-transform: uppercase;
+  }
+  .place {
+    font-size: clamp(1.1em, 4.7vw, 1.5em);
+    line-height: 1.2;
+    font-style: normal;
+  }
+  .place a { color: inherit; text-decoration-color: color-mix(in srgb, var(--red-dk) 55%, transparent); }
+
+  /* Photo */
+  .photo {
+    grid-area: p;
+    padding: .6em;
+    margin: 0;
+  }
+  .photo img {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1400 / 986;
+    object-fit: cover;
+    border-radius: 1.1em;
+  }
+
+  /* New this year */
+  .new {
+    grid-area: n;
+    padding: 1.2em 1.2em;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: .8em;
+  }
+  .new h2 {
+    margin: 0;
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: clamp(1.35em, 6.6vw, 2.1em);
+    line-height: 1.05;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--cream);
+    -webkit-text-stroke: .09em var(--ink);
+    paint-order: stroke fill;
+    text-shadow: .09em .09em 0 var(--red);
+    display: flex;
+    gap: .35em;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .new h2 span { display: block; }
+  .new ul {
+    margin: 0;
+    padding-left: 1.2em;
+    font-size: 1.2em;
+    line-height: 1.3;
+    letter-spacing: .02em;
+  }
+  .new li + li { margin-top: .25em; }
+  .new li::marker { color: var(--red); }
+
+  /* Registration + contact */
+  .contact {
+    grid-area: c;
+    text-align: center;
+    font-size: 1.45em;
+    line-height: 1.25;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: .35em;
+    padding-block: .25em;
+  }
+  .contact p { margin: 0; }
+  .contact .ask { text-wrap: balance; max-width: 18em; margin-inline: auto; }
+  .contact a { overflow-wrap: anywhere; }
+
+  a {
+    color: var(--red-dk);
+    text-decoration-thickness: .07em;
+    text-underline-offset: .14em;
+    transition: color .15s, text-decoration-color .15s;
+  }
+  a:hover { color: var(--red); text-decoration-color: var(--red); }
+  a:focus-visible { outline: .14em solid var(--red); outline-offset: .15em; border-radius: .2em; }
+
+  /* Mid phones / small tablets portrait: put NEW THIS YEAR beside its list */
+  @media (min-width: 480px) {
+    .new { flex-direction: row; justify-content: center; gap: 1.1em; }
+    .new h2 { flex-direction: column; gap: 0; font-size: 2.3em; }
+  }
+  @media (min-width: 560px) {
+    .stamp { --band: 1.8rem; --r: .65rem; }
+    .face { padding: 2rem 2rem 2.25rem; }
+  }
+
+  /* ---------- Desktop: one screen, scales with the window ---------- */
+  @media (min-width: 760px) and (min-aspect-ratio: 1/1) {
+    html {
+      font-size: min(1.42vw, 2.3vh);
+      height: 100%;
+      overflow: hidden;
+    }
+    body {
+      height: 100%;
+      padding-block: max(12px, 1.2vh);
+      padding-left: max(16px, env(safe-area-inset-left, 0px));
+      padding-right: max(16px, env(safe-area-inset-right, 0px));
+      display: flex;
+    }
+    .stamp {
+      --band: 2.3rem; --r: .6rem;
+      flex: 1;
+      display: flex;
+      min-height: 0;
+    }
+    .face {
+      flex: 1;
+      min-height: 0;
+      padding: 2.2rem 4rem 2.4rem;
+      gap: 1.8rem;
+    }
+    h1 { font-size: 2.75rem; }
+    .grid {
+      flex: 1;
+      min-height: 0;
+      width: 100%;
+      max-width: 80rem;
+      margin-inline: auto;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      grid-template-rows: 9fr 3fr 8fr;
+      grid-template-areas:
+        "d p"
+        "n p"
+        "n c";
+      gap: 1.6rem 3.4rem;
+    }
+    .when { font-size: 1.15rem; }
+    .date { font-size: 1.45em; }
+    .place { font-size: 1.5em; }
+    .photo { display: flex; padding: .75em; }
+    .photo img { height: 100%; aspect-ratio: auto; }
+    .new { font-size: 1.05rem; justify-content: center; gap: 1.4em; }
+    .new h2 { font-size: 2.3em; }
+    .new ul { font-size: 1.2em; }
+    .contact { font-size: 1.65rem; }
+  }
+</style>
+</head>
+<body>
+  <main class="stamp">
+    <div class="face">
+      <h1>What to know for 2027 CAJCL Convention</h1>
+
+      <div class="grid">
+        <section class="card when" aria-label="Date and location">
+          <p class="date">March 12–13, 2027</p>
+          <address class="place">
+            <a href="https://maps.app.goo.gl/mu5Bgz6LThpGYqC4A" target="_blank" rel="noopener">University High School<br>4771 Campus Drive, Irvine, CA</a>
+          </address>
+        </section>
+
+        <figure class="card photo">
+          <img src="img/hero.webp" width="1400" height="986"
+               alt="Official 2027 CAJCL convention artwork: a red Greek amphora breaking open into a watercolor sea, where a ship with a striped red sail rides the waves under the sun.">
+        </figure>
+
+        <section class="card new" aria-labelledby="new-title">
+          <h2 id="new-title"><span>New</span> <span>This</span> <span>Year</span></h2>
+          <ul>
+            <li>Website for registration, Olympika/Open Certamen, map, schedule, and more!</li>
+            <li>Streetamen</li>
+            <li>Midway Games</li>
+            <li>Matcha Stands</li>
+          </ul>
+        </section>
+
+        <section class="contact" aria-label="Registration and contact">
+          <p>Registration opens: 12/1</p>
+          <p class="ask">Questions? Contact <a href="mailto:state@uhsjcl.org">state@uhsjcl.org</a> or consult the <a href="https://docs.google.com/document/d/1q5xBGyAozf3JtL6N8blXZFfsGHOnn_J1VQzP8TvCXeY/preview" target="_blank" rel="noopener">white book</a></p>
+        </section>
+      </div>
+    </div>
+  </main>
+</body>
+</html>
