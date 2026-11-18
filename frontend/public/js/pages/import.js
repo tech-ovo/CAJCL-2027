@@ -195,7 +195,7 @@ export async function importPage(host, params = []) {
         })),
 
       el("p", { class: "small muted" },
-        "Each person is given their own access code. You will be able to print " +
+        "Each person is given their own login token. You will be able to print " +
         "their sheets from the roster."));
   }
 
@@ -347,7 +347,7 @@ export async function importPage(host, params = []) {
               + "codes were shown once, when it was first saved. If you no "
               + "longer have them, issue new ones from the roster.")
           : el("p", { class: "lede" },
-              "Everyone now has an access code. Print the sheets now and hand "
+              "Everyone now has a login token. Print the sheets now and hand "
               + "each one to the person named on it."),
 
         issued.length
@@ -382,10 +382,10 @@ export async function importPage(host, params = []) {
 
         issued.length
           ? el("table", { class: "table" },
-              el("caption", { class: "visually-hidden" }, "New access codes"),
+              el("caption", { class: "visually-hidden" }, "New login tokens"),
               el("thead", {}, el("tr", {},
                 el("th", { scope: "col" }, "Name"),
-                el("th", { scope: "col" }, "Access code"))),
+                el("th", { scope: "col" }, "Login token"))),
               el("tbody", {}, ...issued.map((row) => el("tr", {},
                 el("td", {}, `${row.first_name} ${row.last_name}`.trim()),
                 el("td", { class: "mono" }, row.code)))))

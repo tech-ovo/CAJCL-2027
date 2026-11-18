@@ -9,6 +9,11 @@ Turso + GitHub Pages, no Apps Script needed.
 **Something broken?** [`docs/RUNBOOK.md`](docs/RUNBOOK.md) — written for someone
 who did not build this and may be panicking.
 
+**Privacy, or a school or parent asking?** [`docs/PRIVACY.md`](docs/PRIVACY.md) —
+the data-flow diagram, what is stored and when it is deleted, the notice for
+families, the school authorization form, and COPPA / FERPA / SOPIPA / AB 1584
+provision by provision.
+
 ---
 
 ## Start here
@@ -18,6 +23,7 @@ pip install -r backend/requirements.txt
 pip install pytest httpx esprima fonttools brotli
 
 export CODE_PEPPER="anything-for-local-work"
+export DRIVE_LOCAL_DIR="$PWD/.drive-local"      # contest uploads, without Apps Script
 python scripts/seed.py --db dev.db --reset      # 12 chapters, ~150 delegates
 uvicorn backend.api:app --reload --port 8000
 
@@ -25,7 +31,7 @@ uvicorn backend.api:app --reload --port 8000
 python -m http.server 8080 --directory frontend/public
 ```
 
-Open <http://localhost:8080>. The seed prints the access codes you need.
+Open <http://localhost:8080>. The seed prints the login tokens you need.
 
 Run the tests with `python -m pytest backend/tests -q`.
 
@@ -49,6 +55,9 @@ backend
   tests/
 apps-script          the Drive puppet, mirrored with clasp
 scripts              seed, exports, font build, query-plan check, usage
+certamen-bot         the Certamen practice arena (React + Vite). Builds into
+                     frontend/public/certamen/ and links the site's own
+                     tokens.css and app.css, so it re-skins with the site.
 docs                 the specification, the risks, and the runbook
 ```
 

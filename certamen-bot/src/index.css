@@ -1,76 +1,232 @@
-@import "tailwindcss";
+/* The Certamen arena — only what the convention site does not already have.
+ *
+ * tokens.css and app.css are loaded first, from the site itself (see
+ * vite.config.ts), so .page, .masthead, .nav, .btn, .field, .table, .tabula,
+ * .stats, .dialog and the rest are the real thing, not imitations. Everything
+ * below is written against the same aliases, which is what makes the arena
+ * follow the theme toggle and any future re-skin. No colour is named here.
+ */
 
-@layer base {
-  :root {
-    --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    --font-serif: 'Cinzel', serif;
-    --font-editorial: 'Cormorant Garamond', Georgia, serif;
-  }
+/* ===========================================================================
+ * Gaps in the site's form rules
+ *
+ * app.css styles the input types the convention forms use. The arena also has
+ * a PIN, a URL and range sliders.
+ * ======================================================================== */
 
-  body {
-    font-family: var(--font-sans);
-    background-color: #f0f7ff;
-    color: #0f172a;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-  }
+input[type="password"], input[type="url"] {
+  width: 100%;
+  font-family: var(--font-sans); font-size: var(--size-base);
+  color: var(--text); background: var(--panel-bg);
+  border: 1px solid var(--input-border); border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+  min-height: var(--control-h);
+  transition: border-color var(--transition);
+}
+input[type="range"], input[type="checkbox"] { accent-color: var(--link); cursor: pointer; }
+input[type="range"] { width: 9rem; max-width: 100%; }
 
-  .font-display {
-    font-family: var(--font-serif);
-  }
+/* A field inside a grid should fill its column, not stop at 30rem. */
+.panel .field { max-width: none; }
 
-  .font-editorial {
-    font-family: var(--font-editorial);
-  }
+/* ===========================================================================
+ * Nav — the arena's sections are hash links, exactly like the site's.
+ * ======================================================================== */
 
-  .tabular-nums {
-    font-variant-numeric: tabular-nums;
-  }
+.nav__back { color: var(--text-muted) !important; }
+
+/* The profile button reads as a nav item, not a control. */
+.nav__profile {
+  font: inherit; color: var(--text);
+  background: none; border: 0; padding: var(--space-2) 0; cursor: pointer;
+  display: inline-flex; align-items: baseline; gap: var(--space-2);
+}
+.nav__profile:hover { color: var(--link); }
+.nav__profile .mono { color: var(--text-muted); font-size: var(--size-xs); }
+
+/* ===========================================================================
+ * Toggles — a .btn that stays pressed
+ * ======================================================================== */
+
+.btn[aria-pressed="true"] {
+  background: var(--link); border-color: var(--link); color: var(--on-link);
+}
+.seg { display: inline-flex; flex-wrap: wrap; gap: var(--space-1); }
+
+/* The rail's filter lists: text, one per line, the current one ruled. On a
+ * phone the rail becomes a strip and these run across it. */
+.filter { list-style: none; margin: var(--space-1) 0 0; padding: 0; }
+.filter li { margin: 0; }
+.filter button {
+  font: inherit; font-family: var(--font-sans); font-size: var(--size-sm);
+  color: var(--text); background: none; cursor: pointer; text-align: left;
+  border: 0; border-left: 2px solid transparent;
+  padding: var(--space-1) var(--space-3);
+  transition: color var(--transition), border-color var(--transition);
+}
+.filter button:hover { color: var(--link); }
+.filter button[aria-pressed="true"] {
+  color: var(--link); border-left-color: var(--link); font-weight: var(--weight-semi);
+}
+@media (max-width: 60rem) {
+  .filter { display: flex; flex-wrap: wrap; gap: 0 var(--space-1); }
+  .filter button { border-left: 0; border-bottom: 2px solid transparent; padding: var(--space-1) var(--space-2); }
+  .filter button[aria-pressed="true"] { border-bottom-color: var(--link); }
+  .rail__item + .rail__item { margin-top: 0; }
 }
 
-/* Classical Mediterranean Scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* In-page tabs that are buttons rather than links. */
+button.tabs__tab { background: none; border-top: 0; border-left: 0; border-right: 0; cursor: pointer; }
+
+/* ===========================================================================
+ * The stage
+ * ======================================================================== */
+
+.page-head { display: flex; flex-wrap: wrap; align-items: flex-end;
+  justify-content: space-between; gap: var(--space-3) var(--space-5);
+  margin-bottom: var(--space-5); }
+.page-head h1 { margin-bottom: var(--space-1); }
+.page-head p { margin: 0; }
+
+.stage { padding: var(--space-5) var(--space-6); }
+@media (max-width: 40rem) { .stage { padding: var(--space-4); } }
+
+.stage__meta { border-bottom: var(--border); padding-bottom: var(--space-3); margin-bottom: var(--space-4); }
+
+.stage__text {
+  font-family: var(--font-serif);
+  font-size: var(--size-lg);
+  line-height: var(--leading-body);
+  min-height: 7.5rem;
+  max-width: 44rem;
+  margin: 0 0 var(--space-4);
+  overflow-wrap: break-word;
+}
+.stage__idle {
+  min-height: 7.5rem; display: grid; align-content: center; justify-items: start;
+  gap: var(--space-3);
+}
+.stage__idle p { margin: 0; }
+
+/* The reading caret. */
+.caret {
+  display: inline-block; width: 0.5em; height: 1em; margin-left: 2px;
+  background: var(--link); vertical-align: -0.12em;
+  animation: pulse 1s ease-in-out infinite;
 }
 
-::-webkit-scrollbar-track {
-  background: #f0f7ff;
+/* How far through the question the reader is. A rule, not a progress widget. */
+.progress { height: 2px; background: var(--rule); margin: 0 0 var(--space-5); }
+.progress__fill { height: 100%; background: var(--link); transition: width 100ms linear; }
+
+/* THE BUZZER. The one control on the page that has to be found without
+ * looking, so it is the largest target and the only filled button while a
+ * question is being read. */
+.buzz {
+  min-height: 3.25rem; min-width: 12rem;
+  font-size: var(--size-md); letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+@media (max-width: 40rem) { .buzz { width: 100%; } }
+
+.key {
+  font-family: var(--font-mono); font-size: var(--size-xs);
+  font-weight: var(--weight-normal); letter-spacing: 0; text-transform: none;
+  border: 1px solid currentColor; border-radius: var(--radius);
+  padding: 0 var(--space-1); opacity: 0.8;
 }
 
-::-webkit-scrollbar-thumb {
-  background: #bae6fd;
-  border-radius: 9999px;
-  border: 1px solid #7dd3fc;
+.answer-row { display: flex; gap: var(--space-2); }
+.answer-row input { flex: 1; min-width: 0; }
+
+.timer { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text); }
+.timer--low { color: var(--danger); font-weight: var(--weight-medium); }
+
+/* The verdict. A glyph AND a word, never colour alone. */
+.verdict {
+  font-family: var(--font-sans); font-size: var(--size-md);
+  font-weight: var(--weight-semi); margin: 0 0 var(--space-3);
+  display: flex; align-items: baseline; gap: var(--space-2);
+}
+.verdict--right { color: var(--status-done); }
+.verdict--wrong { color: var(--text); }
+.verdict__latin { font-family: var(--font-serif); font-style: italic; font-weight: var(--weight-normal); color: var(--text-muted); }
+
+.answers { font-family: var(--font-sans); font-size: var(--size-sm); }
+.answers__matched { background: var(--tint); font-weight: var(--weight-semi); padding: 0 var(--space-1); }
+
+.note {
+  font-style: italic; color: var(--text-muted);
+  border-left: 2px solid var(--accent);
+  padding-left: var(--space-3); margin: var(--space-3) 0 0;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: #7dd3fc;
+.pulse-line {
+  display: flex; align-items: center; gap: var(--space-3);
+  font-family: var(--font-sans); font-size: var(--size-sm); color: var(--text-muted);
+  min-height: 7.5rem;
 }
 
-/* Classical UHSJCL Glass & Travertine Card Styling */
-.classical-card {
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(224, 242, 254, 0.85);
-  box-shadow: 0 10px 25px -5px rgba(12, 74, 110, 0.06), 0 8px 10px -6px rgba(12, 74, 110, 0.04);
+/* Under the stage: the reader's own dials. */
+.dials {
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: var(--space-3) var(--space-6);
+  padding-top: var(--space-2);
+  font-family: var(--font-sans); font-size: var(--size-sm);
+}
+.dial { display: flex; align-items: center; gap: var(--space-3); }
+.dial .label { white-space: nowrap; }
+.check { display: inline-flex; align-items: center; gap: var(--space-2); cursor: pointer; }
+
+/* ===========================================================================
+ * Analytics and the bank
+ * ======================================================================== */
+
+/* A bar inside a table cell. Thin, flat, and paired with the number. */
+.meter { display: flex; align-items: center; gap: var(--space-3); min-width: 9rem; }
+.meter__track { flex: 1; height: 4px; background: var(--tint); }
+.meter__fill { height: 100%; background: var(--link); }
+.meter .mono { min-width: 3ch; text-align: right; }
+
+.table tbody tr.is-you { background: var(--tint); font-weight: var(--weight-semi); }
+.table tbody tr.is-you td:first-child { padding-left: var(--space-2); }
+.table td.rank { font-family: var(--font-mono); width: 3.5rem; }
+
+.search { max-width: 22rem; margin: 0 0 var(--space-3); }
+
+.entry__head { display: flex; flex-wrap: wrap; justify-content: space-between;
+  align-items: baseline; gap: var(--space-2) var(--space-4); }
+.entry__text { font-size: var(--size-base); margin: var(--space-1) 0; max-width: 46rem; }
+.entry__answers { font-family: var(--font-sans); font-size: var(--size-sm); color: var(--text-muted); margin: 0; max-width: none; }
+.history .entry__text { margin: 0; }
+
+.status-note {
+  font-family: var(--font-sans); font-size: var(--size-sm);
+  border-left: 3px solid var(--link); background: var(--tint);
+  padding: var(--space-2) var(--space-3); margin: 0 0 var(--space-5);
 }
 
-.classical-card-elevated {
-  background: rgba(255, 255, 255, 0.96);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(186, 230, 253, 0.6);
-  box-shadow: 0 20px 35px -10px rgba(14, 116, 144, 0.08), 0 1px 3px rgba(0, 0, 0, 0.03);
+.more { margin-top: var(--space-4); }
+
+/* Settings: one row per setting, the control on the right. */
+.settings { border-top: var(--border-strong); margin-bottom: var(--space-6); }
+.setting {
+  display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center;
+  gap: var(--space-3) var(--space-5);
+  padding: var(--space-4) 0; border-bottom: var(--border);
+}
+.setting__name { font-family: var(--font-sans); font-weight: var(--weight-semi); margin: 0 0 2px; }
+.setting__help { font-size: var(--size-sm); color: var(--text-muted); margin: 0; }
+.setting__control { display: flex; align-items: center; gap: var(--space-3); }
+.setting__control select { width: auto; max-width: 20rem; }
+.setting__control input[type="url"] { width: 24rem; max-width: 100%; }
+@media (max-width: 40rem) {
+  .setting__control, .setting__control select, .setting__control input[type="url"] { width: 100%; max-width: none; }
 }
 
-.classical-hero-gradient {
-  background: linear-gradient(180deg, rgba(56, 189, 248, 0.15) 0%, rgba(240, 249, 255, 0.8) 100%);
-}
+/* The profile dialog's tabula sits flush with the dialog's own padding. */
+.dialog .tabula { margin-left: 0; margin-right: 0; border-left: var(--border-strong); border-right: var(--border-strong); }
+.dialog__close { float: right; }
 
-.starry-gold-accent {
-  color: #b45309;
-}
-
-
+/* Focus moves to <main> from the skip link; the ring belongs on controls. */
+main:focus { outline: none; }

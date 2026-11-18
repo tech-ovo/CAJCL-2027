@@ -81,7 +81,8 @@ def gather(db) -> dict[str, str]:
             "footer": (
                 f"California Junior Classical League &middot; "
                 f"<a href=\"mailto:{convention.get('convention.contact_email', '')}\">"
-                f"{convention.get('convention.contact_email', '')}</a>"),
+                f"{convention.get('convention.contact_email', '')}</a>"
+                f" &middot; <a href=\"/#/privacy\">Privacy</a>"),
             "hosts": convention.get("convention.hosts", ""),
             "schools_hs": f"{stats['schools_hs']:,}" if stats else "—",
             "schools_ms": f"{stats['schools_ms']:,}" if stats else "—",

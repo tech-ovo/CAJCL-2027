@@ -57,7 +57,12 @@ REDACT = {
     "sessions": ["token_hash", "user_agent", "ip_hash"],
     "login_attempts": ["attempted_code_hmac", "ip_hash"],
     "payments": ["note", "reference"],
-    "contest_submissions": ["original_name"],
+    # A student's own words, and the file name they chose -- which is very
+    # often their name. The Drive pointers lead straight to the work.
+    "contest_entries": ["title", "body_text", "translation", "link_url",
+                        "original_name", "drive_file_id", "drive_folder_id"],
+    # A judge's notes are free text about students' work.
+    "contest_ballots": ["comment"],
 }
 
 # Never exported at all, in either version. A session token is a live

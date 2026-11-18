@@ -29,8 +29,11 @@ app = modal.App("cajcl-2027")
 
 # Secrets live ONLY here and in GitHub Actions. Never in the repository, never
 # in the frontend. See docs/RUNBOOK.md for what each one is and what breaks when
-# it is rotated.
-secrets = [modal.Secret.from_name("cajcl-2027")]
+# it is rotated. `apps-script` holds only APPS_SCRIPT_URL and APPS_SCRIPT_KEY,
+# the Drive puppet's address and key; everything else is in `cajcl-2027`.
+# Deploys fail if either secret is missing.
+secrets = [modal.Secret.from_name("cajcl-2027"),
+           modal.Secret.from_name("apps-script")]
 
 # ---------------------------------------------------------------------------
 # TURN THIS ON BEFORE CONVENTION WEEKEND, AND OFF AFTERWARDS
@@ -196,7 +199,7 @@ def migrate_database(reset: bool = False) -> str:
 
 @app.function(image=slim_image, secrets=secrets, timeout=1800)
 def seed_database(reset: bool = False) -> dict:
-    """Load the demonstration data. Returns the access codes.
+    """Load the demonstration data. Returns the login tokens.
 
     The codes come back to the caller rather than being written to a file,
     because a file written inside a Modal container disappears with it.
@@ -237,22 +240,25 @@ def inspect_secret() -> str:
 
     lines = []
     for name in ("TURSO_DATABASE_URL", "TURSO_AUTH_TOKEN", "CODE_PEPPER",
-                 "CAJCL_ENV", "TURSO_PLATFORM_TOKEN", "TURSO_ORG", "TURSO_DB_NAME"):
+                 "CAJCL_ENV", "TURSO_PLATFORM_TOKEN", "TURSO_ORG", "TURSO_DB_NAME",
+                 "APPS_SCRIPT_URL", "APPS_SCRIPT_KEY",
+                 "GITHUB_DISPATCH_TOKEN", "GITHUB_REPO",
+                 "TURSO_CERTAMEN_DATABASE_URL", "TURSO_CERTAMEN_AUTH_TOKEN"):
         raw = os.environ.get(name)
         if raw is None:
-            lines.append(f"{name:<22} not set")
+            lines.append(f"{name:<28} not set")
             continue
 
         odd = sorted({c for c in raw if not (" " <= c <= "~")})
         described = ", ".join(f"U+{ord(c):04X}" for c in odd) or "none"
         # The URL is not a secret and is useful in full. The rest are shown
         # only at the ends, which is enough to spot a truncated paste.
-        if name == "TURSO_DATABASE_URL" or not raw:
+        if "DATABASE_URL" in name or not raw:
             shown = repr(raw)
         else:
             shown = f"{raw[:6]}...{raw[-4:]}"
         lines.append(
-            f"{name:<22} {len(raw):>4} chars  {shown}  odd characters: {described}")
+            f"{name:<28} {len(raw):>4} chars  {shown}  odd characters: {described}")
 
     from backend.lib.db import connect
     try:
@@ -262,16 +268,26 @@ def inspect_secret() -> str:
                 rows = tx.all("settings.all")
         finally:
             db.close()
-        lines.append(f"\nconnection OK - {len(rows)} setting(s) read back")
+        lines.append(f"\nconvention connection OK - {len(rows)} setting(s) read back")
     except Exception as error:
         text = str(error)
         if "no such table" in text:
             # Reaching the database and finding it bare is a success, not a
             # failure. It is what a brand new Turso database looks like.
-            lines.append("\nconnection OK - database is empty, so run "
+            lines.append("\nconvention connection OK - database is empty, so run "
                          "`modal run backend/app.py::setup` next")
         else:
-            lines.append(f"\nconnection FAILED - {type(error).__name__}: {error}")
+            lines.append(f"\nconvention connection FAILED - {type(error).__name__}: {error}")
+
+    try:
+        from backend.lib import certamen_db
+        res = certamen_db.ping()
+        if res.get("success"):
+            lines.append(f"certamen connection OK - {res.get('count', 0)} question(s) ({'remote Turso' if res.get('is_remote') else 'local'})")
+        else:
+            lines.append(f"certamen connection FAILED - {res.get('error')}")
+    except Exception as error:
+        lines.append(f"certamen connection FAILED - {type(error).__name__}: {error}")
 
     return "\n".join(lines)
 
@@ -419,7 +435,7 @@ def retire_adm_codes():
     text = add_board.report(result)
     print(text)
     pathlib.Path("board-codes.txt").write_text(
-        "Access codes reissued when the ADM prefix was retired.\n"
+        "Login tokens reissued when the ADM prefix was retired.\n"
         "REAL PEOPLE. Do not commit this file; it is gitignored.\n"
         "Each code is shown once. Everyone here needs a new sheet.\n\n" + text,
         encoding="utf-8")

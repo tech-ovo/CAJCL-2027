@@ -19,9 +19,11 @@ import { checkSymbolOk } from "./codes.js";
 
 import { welcomePage } from "./pages/welcome.js";
 import { signInPage } from "./pages/signin.js";
+import { joinPage } from "./pages/join.js";
 import { rosterPage } from "./pages/roster.js";
 import { importPage } from "./pages/import.js";
 import { resourcesPage } from "./pages/resources.js";
+import { privacyPage } from "./pages/privacy.js";
 import { teamsPage } from "./pages/teams.js";
 import { activitySheetPage } from "./pages/activity.js";
 import { adultSheetPage } from "./pages/adult.js";
@@ -33,18 +35,33 @@ import { academicsPage } from "./pages/academics.js";
 import { overviewPage } from "./pages/overview.js";
 import { checkinPage } from "./pages/checkin.js";
 import { accountPage } from "./pages/account.js";
+import { contestsPage, chapterContestsPage,
+         contestSubmissionsPage } from "./pages/contests.js";
+import { judgingPage, contestResultsPage } from "./pages/judging.js";
+import { photosPage, photoContestPage } from "./pages/photos.js";
+import { potluckPage } from "./pages/potluck.js";
+import { schedulePage, scheduleEditorPage } from "./pages/schedule.js";
+import { olympikaPage } from "./pages/olympika.js";
+import { athleticsPage } from "./pages/athletics.js";
+import { sitePagesPage } from "./pages/sitepages.js";
 
 export const state = {
   me: null,          // /auth/me, or null when signed out
   convention: {},    // public settings
   demoMode: false,
+  textPages: [],     // /pages.json, written by the build; empty if there is none
 };
 
 const ROUTES = [
   [/^\/?$/,                      welcomePage,       { public: true }],
   [/^\/enter\/(.+)$/,            magicLink,         { public: true }],
   [/^\/sign-in$/,                signInPage,        { public: true }],
+  // A student joining a chapter with its join code. The QR on the sponsor's
+  // handout opens #/join/<code>, so the code arrives already typed.
+  [/^\/join(?:\/(.+))?$/,         joinPage,          { public: true }],
   [/^\/resources$/,              resourcesPage,     { public: true }],
+  // What is collected, who sees it, when it is deleted. Linked from every footer.
+  [/^\/privacy$/,                privacyPage,       { public: true }],
   // Kept so an old link, a bookmark or a printed sheet still lands
   // somewhere. The arena is now reached from Resources.
   [/^\/certamen$/,               () => { window.location.href = "/certamen/"; }, { public: true }],
@@ -53,7 +70,11 @@ const ROUTES = [
   // A chair opening one chapter's roster. Same page, same endpoint -- the
   // server already accepts ?school_id for an administrative scope and refuses
   // it for everyone else, so this adds a route and no new authority.
-  [/^\/roster\/(\d+)$/,          rosterPage,        { scope: "registration" }],
+  // `/person/N` is the audit log's way of pointing at one row: the roster opens
+  // on that person and highlights them. A `#` inside the hash never worked --
+  // the router matches the whole thing, so "#/roster/5#person-9" matched
+  // nothing and landed on "not found".
+  [/^\/roster\/(\d+)(?:\/person\/(\d+))?$/, rosterPage, { scope: "registration" }],
   [/^\/roster\/import$/,         importPage,        { scope: "sponsor" }],
   // A chair pasting for a chapter that cannot get its own spreadsheet in.
   // Same page and the same two endpoints, both of which already accept a
@@ -78,6 +99,34 @@ const ROUTES = [
   [/^\/check-in$/,               checkinPage,       { scope: "registration" }],
   [/^\/dashboard$/,              dashboardPage,     { scope: "registration" }],
   [/^\/entries$/,                academicsPage,     { scope: ["academics", "awards"] }],
+  // Pre-convention contests. A delegate enters their own; a chapter enters
+  // Publicity, and a chair can open any chapter's page the way they open its
+  // roster. Judging is for judges ONLY; the chairs read the results, with
+  // names, and set the rules and how many places, but do not rank.
+  [/^\/contests$/,               contestsPage,      { scope: "delegate" }],
+  [/^\/chapter-contests$/,       chapterContestsPage, { scope: ["chapter", "registration", "academics"] }],
+  [/^\/chapter-contests\/(\d+)$/, chapterContestsPage, { scope: ["registration", "academics"] }],
+  [/^\/judging$/,                judgingPage,       { scope: "judge" }],
+  [/^\/judging\/(\d+)$/,         judgingPage,       { scope: "judge" }],
+  [/^\/contest-submissions$/,    contestSubmissionsPage, { scope: ["registration", "academics", "awards"] }],
+  [/^\/contest-results$/,        contestResultsPage, { scope: ["academics", "awards"] }],
+  [/^\/contest-results\/(\d+)(?:\/(rules))?$/, contestResultsPage, { scope: ["academics", "awards"] }],
+  // The at-convention photo contest. Delegates send photos; the Activities
+  // chair sees them all and runs the categories.
+  [/^\/photos$/,                 photosPage,        { scope: "delegate" }],
+  [/^\/photo-contest(?:\/(categories))?$/, photoContestPage, { scope: "activities" }],
+  // The activities potluck. Attendees pick on their own sheets; the Activities
+  // chair keeps the list of activities and sees who is helping.
+  [/^\/potluck$/,                potluckPage,       { scope: "activities" }],
+  // The convention schedule. Everybody reads it; the Logistics chair keeps it.
+  [/^\/schedule$/,               schedulePage,      { public: true }],
+  [/^\/schedule\/edit$/,         scheduleEditorPage, { scope: "logistics" }],
+  // Olympika. Delegates sign up; the Athletics Director runs it.
+  [/^\/olympika$/,               olympikaPage,      { scope: "delegate" }],
+  [/^\/athletics(?:\/(\d+))?$/,  athleticsPage,     { scope: "athletics" }],
+  // Long text pages written in Google Docs. The pages themselves are static
+  // files (/p/<slug>.html, scripts/build_pages.py); this is where they are kept.
+  [/^\/site-pages$/,             sitePagesPage,     { scope: ["registration", "academics"] }],
   [/^\/admin$/,                  adminPage,         { scope: "*" }],
   [/^\/audit$/,                  auditPage,         { scope: "*" }],
 ];
@@ -130,6 +179,7 @@ async function boot() {
   // The static snapshot in index.html is already on screen. Replace it quietly
   // once the API answers, and leave it alone if the API never does.
   loadPublicFacts();
+  loadTextPages();
 
   window.addEventListener("hashchange", route);
   await route();
@@ -147,6 +197,25 @@ async function loadPublicFacts() {
   }
   renderBanners();
   loadAnnouncements();
+}
+
+/* The long text pages the build wrote (scripts/build_pages.py). A file on this
+ * site, not an API call, so it works while the server is asleep. A site with no
+ * such pages, or a local checkout that never ran the build, has no file; either
+ * way the navigation simply has no extra links. */
+async function loadTextPages() {
+  try {
+    const response = await fetch("pages.json", { cache: "no-cache" });
+    if (!response.ok) return;
+    const list = await response.json();
+    if (Array.isArray(list)) {
+      state.textPages = list;
+      renderNav();
+      // Resources lists them too; if it is what the visitor landed on, it was
+      // drawn before the file arrived.
+      if (location.hash === "#/resources") route();
+    }
+  } catch (ignored) { /* no pages; nothing to add */ }
 }
 
 export function applySnapshot(convention) {
@@ -198,6 +267,14 @@ async function route() {
       if (stale()) return;
       if (!state.me) { location.hash = "#/sign-in"; return; }
 
+      // A student waiting for approval is told, the moment it happens, rather
+      // than whenever they next sign in. Only for them: everyone else's answer
+      // never changes while they are looking.
+      if (state.me.approval === "pending") {
+        await refreshApproval();
+        if (stale()) return;
+      }
+
       // THE NAV IS DRAWN FIRST, before anything can return early.
       //
       // It used to come after the scope check, so a signed-in person refused a
@@ -246,6 +323,13 @@ async function route() {
   }
 
   location.hash = "#/";
+}
+
+async function refreshApproval() {
+  try {
+    const fresh = await api.get("/auth/me");
+    if (state.me) state.me.approval = fresh.approval;
+  } catch (ignored) { /* the banner just stays as it was */ }
 }
 
 async function ensureSession({ quiet = false } = {}) {
@@ -450,7 +534,10 @@ function renderNav() {
     return a;
   };
 
-  add(nav, link("#/", "Welcome"));
+  add(nav, link("#/", "Welcome"), link("#/schedule", "Schedule"));
+  // Plain links to static pages, not routes: each is its own document.
+  add(nav, ...state.textPages.filter((page) => page.show_in_nav).map(
+    (page) => el("a", { href: page.path }, page.nav_label || page.title)));
 
   if (state.me) {
     /* TWO GROUPS, AND THE ORDER IS THE POINT.
@@ -480,7 +567,8 @@ function renderNav() {
     };
 
     if (state.me.person_type === "delegate") {
-      add(nav, ownLink("#/activity-sheet"));
+      add(nav, ownLink("#/activity-sheet"), link("#/contests", "Contests"),
+          link("#/olympika", "Olympika"), link("#/photos", "Photos"));
     } else if (state.me.person_type === "adult") {
       // NOT gated on scope. This used to be hidden from anyone holding `*`,
       // on the assumption that an administrator is not an attendee -- but a
@@ -495,6 +583,10 @@ function renderNav() {
     // them it is the whole reason they were given the role.
     if (hasScope("chapter")) {
       add(nav, link("#/teams", "Teams"));
+      // A sponsor's chapter-wide contests page. A chapter leader already has
+      // "Contests" for their own entries, so theirs is named for what it holds.
+      add(nav, link("#/chapter-contests",
+                    holdsRole("sponsor") ? "Contests" : "Publicity"));
     }
 
     const administrative = [];
@@ -506,10 +598,30 @@ function renderNav() {
       // for what they show: Overview, Chapters, Check-in.
       administrative.push(["#/overview", "Overview"],
                           ["#/dashboard", "Chapters"],
-                          ["#/check-in", "Check-in"]);
+                          ["#/check-in", "Check-in"],
+                          ["#/contest-submissions", "Submissions"]);
     }
     if (hasScope("academics") || hasScope("awards")) {
-      administrative.push(["#/entries", "Entries"]);
+      administrative.push(["#/entries", "Entries"],
+                          ["#/contest-results", "Results"]);
+    }
+    // By ROLE, not scope: `*` holds every scope, and an administrator is not
+    // thereby a judge. The Contest Judge role is what makes somebody one.
+    if (holdsRole("contest_judge")) {
+      administrative.push(["#/judging", "Judging"]);
+    }
+    if (hasScope("activities")) {
+      administrative.push(["#/photo-contest", "Photo contest"],
+                          ["#/potluck", "Potluck"]);
+    }
+    if (hasScope("athletics")) {
+      administrative.push(["#/athletics", "Athletics"]);
+    }
+    if (hasScope("logistics")) {
+      administrative.push(["#/schedule/edit", "Edit schedule"]);
+    }
+    if (hasScope("registration") || hasScope("academics")) {
+      administrative.push(["#/site-pages", "Site pages"]);
     }
     if (hasScope("*")) {
       administrative.push(["#/admin", "Settings"], ["#/audit", "Log"]);
@@ -622,6 +734,18 @@ function renderBanners() {
       el("span", { class: "banner__label" }, "Demonstration data"),
       el("span", {}, "Every chapter, delegate, and parent on this site is " +
                      "invented. No real student appears anywhere.")));
+  }
+
+  // A student who joined with the chapter's join code and has not been
+  // approved. Nothing is blocked for them; this only says why they are not yet
+  // counted.
+  if (state.me && state.me.approval === "pending") {
+    add(host, el("div", { class: "banner banner--info" },
+      el("span", { class: "banner__label" }, "Preliminary"),
+      el("span", {},
+        "Your sponsor has not approved your registration yet. You can fill in "
+        + "your forms now; you will be counted in your chapter's total once "
+        + "they do.")));
   }
 
   const impersonation = state.me && state.me.impersonation;

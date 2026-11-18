@@ -1,154 +1,103 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useCertamen } from '../context/CertamenContext';
-import {
-  Volume2,
-  VolumeX,
-  Settings,
-  Eye,
-  Headphones,
-  ExternalLink,
-} from 'lucide-react';
+
+export type Tab = 'arena' | 'stats' | 'leaderboard' | 'bank' | 'settings';
+
+export const TABS: { id: Tab; label: string }[] = [
+  { id: 'arena', label: 'Arena' },
+  { id: 'stats', label: 'Analytics' },
+  { id: 'leaderboard', label: 'Leaderboard' },
+  { id: 'bank', label: 'Questions' },
+  { id: 'settings', label: 'Settings' },
+];
 
 interface HeaderProps {
-  activeTab: 'arena' | 'stats' | 'leaderboard' | 'bank' | 'settings';
-  setActiveTab: (tab: 'arena' | 'stats' | 'leaderboard' | 'bank' | 'settings') => void;
+  activeTab: Tab;
   onOpenLogin: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({
-  activeTab,
-  setActiveTab,
-  onOpenLogin,
-}) => {
-  const { user, settings, updateSettings } = useCertamen();
+/* The same theme logic as the convention site's js/main.js: nothing stored
+ * means "follow the system", and the icon shows what you would GET. */
+function currentTheme(): 'dark' | 'light' {
+  try {
+    const stored = localStorage.getItem('theme');
+    if (stored === 'dark' || stored === 'light') return stored;
+  } catch {
+    /* storage blocked */
+  }
+  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+const SUN = ['M12 4.5v-2', 'M12 21.5v-2', 'M4.5 12h-2', 'M21.5 12h-2',
+  'M6.7 6.7 5.3 5.3', 'M18.7 18.7l-1.4-1.4', 'M6.7 17.3l-1.4 1.4', 'M18.7 5.3l-1.4 1.4',
+  'M12 7.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9z'];
+const MOON = ['M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z'];
+
+const ThemeToggle: React.FC = () => {
+  const [theme, setTheme] = useState(currentTheme);
+  const dark = theme === 'dark';
+  const label = dark ? 'Switch to light mode' : 'Switch to dark mode';
 
   return (
-    <header className="sticky top-0 z-40 px-4 sm:px-6 py-3.5 backdrop-blur-xl bg-white/90 border-b border-sky-200/60 shadow-sm">
-      <div className="max-w-5xl mx-auto flex items-center justify-between gap-3 sm:gap-6">
-        {/* UHSJCL Brand Mark */}
-        <div
-          onClick={() => setActiveTab('arena')}
-          className="flex items-center gap-2.5 cursor-pointer select-none group"
-        >
-          <div className="relative w-8 h-8 rounded-full overflow-hidden ring-2 ring-sky-400/40 group-hover:ring-sky-500 transition-all shadow-sm">
-            <img
-              src="./assets/logo.webp"
-              alt="UHSJCL Logo"
-              className="w-full h-full object-cover"
-            />
-          </div>
-          <div className="flex flex-col">
-            <div className="flex items-center gap-1.5">
-              <span className="font-display font-bold text-base tracking-wider text-slate-900 group-hover:text-sky-700 transition-colors">
-                UHSJCL
-              </span>
-              <span className="text-[10px] font-sans font-semibold uppercase px-2 py-0.5 bg-sky-100 text-sky-800 border border-sky-200 rounded-full">
-                Certamen
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Tab Navigation */}
-        <nav className="flex items-center gap-1 bg-sky-50/80 p-1 rounded-2xl border border-sky-200/60">
-          <button
-            onClick={() => setActiveTab('arena')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-              activeTab === 'arena'
-                ? 'bg-sky-600 text-white shadow-sm shadow-sky-600/30'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-sky-100/60'
-            }`}
-          >
-            Arena
-          </button>
-          <button
-            onClick={() => setActiveTab('stats')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-              activeTab === 'stats'
-                ? 'bg-sky-600 text-white shadow-sm shadow-sky-600/30'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-sky-100/60'
-            }`}
-          >
-            Analytics
-          </button>
-          <button
-            onClick={() => setActiveTab('leaderboard')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-              activeTab === 'leaderboard'
-                ? 'bg-sky-600 text-white shadow-sm shadow-sky-600/30'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-sky-100/60'
-            }`}
-          >
-            Leaderboard
-          </button>
-          <button
-            onClick={() => setActiveTab('bank')}
-            className={`hidden sm:inline-block px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-              activeTab === 'bank'
-                ? 'bg-sky-600 text-white shadow-sm shadow-sky-600/30'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-sky-100/60'
-            }`}
-          >
-            Treasury
-          </button>
-        </nav>
-
-        {/* Quick Actions & User Profile */}
-        <div className="flex items-center gap-1.5 sm:gap-2">
-          {/* Reader Mode Toggle */}
-          <button
-            onClick={() => updateSettings({ readerMode: settings.readerMode === 'visual' ? 'audio' : 'visual' })}
-            className="p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-sky-50 border border-transparent hover:border-sky-200 transition-all cursor-pointer"
-            title={settings.readerMode === 'visual' ? 'Visual Reading (Click to switch to Speech Moderator)' : 'Speech Reader Active (Click for Visual)'}
-          >
-            {settings.readerMode === 'visual' ? <Eye className="w-4 h-4" /> : <Headphones className="w-4 h-4 text-sky-600 animate-pulse" />}
-          </button>
-
-          {/* Sound Toggle */}
-          <button
-            onClick={() => updateSettings({ soundEnabled: !settings.soundEnabled })}
-            className="p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-sky-50 border border-transparent hover:border-sky-200 transition-all cursor-pointer"
-            title={settings.soundEnabled ? 'Mute Sound FX' : 'Enable Sound FX'}
-          >
-            {settings.soundEnabled ? <Volume2 className="w-4 h-4 text-sky-700" /> : <VolumeX className="w-4 h-4 text-slate-400" />}
-          </button>
-
-          {/* Settings */}
-          <button
-            onClick={() => setActiveTab('settings')}
-            className={`p-2 rounded-xl border transition-all cursor-pointer ${
-              activeTab === 'settings'
-                ? 'text-sky-800 bg-sky-100 border-sky-300'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-sky-50 border-transparent hover:border-sky-200'
-            }`}
-            title="Settings"
-          >
-            <Settings className="w-4 h-4" />
-          </button>
-
-          {/* Convention Back Link */}
-          <a
-            href="/"
-            className="hidden md:inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold text-sky-900 bg-sky-100/70 hover:bg-sky-200/80 border border-sky-200 shadow-sm transition-all"
-            title="Return to CAJCL Convention Site"
-          >
-            <span>← Convention</span>
-          </a>
-
-          {/* User Profile */}
-          <button
-            onClick={onOpenLogin}
-            className="flex items-center gap-2 pl-3 pr-3.5 py-1.5 rounded-full bg-white border border-sky-200 hover:border-sky-400 shadow-sm transition-all text-xs group cursor-pointer"
-          >
-            <span className="text-slate-800 font-semibold">{user.username}</span>
-            <span className="text-sky-700 font-bold ml-0.5 bg-sky-50 px-2 py-0.5 rounded-full border border-sky-200">
-              {user.stats.totalPoints} pts
-            </span>
-          </button>
-        </div>
-      </div>
-    </header>
+    <button
+      type="button"
+      className="nav__theme"
+      aria-label={label}
+      title={label}
+      onClick={() => {
+        const next = dark ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', next);
+        try {
+          localStorage.setItem('theme', next);
+        } catch {
+          /* the page still switches; it just will not persist */
+        }
+        setTheme(next);
+      }}
+    >
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+        strokeWidth="1.7" strokeLinecap="round" aria-hidden="true">
+        {(dark ? SUN : MOON).map((d) => <path key={d} d={d} />)}
+      </svg>
+    </button>
   );
 };
 
+export const Header: React.FC<HeaderProps> = ({ activeTab, onOpenLogin }) => {
+  const { user } = useCertamen();
 
+  return (
+    <>
+      <header className="masthead">
+        <div className="page">
+          <div className="masthead__bar">
+            <div>
+              <p className="masthead__mark"><a href="../">CAJCL</a></p>
+              <p className="masthead__line">Certamen Arena &middot; 72nd State Convention</p>
+            </div>
+            <p className="label">Practice</p>
+          </div>
+        </div>
+      </header>
+
+      <div className="page">
+        <nav className="nav" aria-label="Certamen">
+          {TABS.map((t) => (
+            <a key={t.id} href={`#/${t.id}`} aria-current={activeTab === t.id ? 'page' : undefined}>
+              {t.label}
+            </a>
+          ))}
+
+          <span className="nav__you">
+            <a className="nav__back" href="../">Convention site</a>
+            <button type="button" className="nav__profile" onClick={onOpenLogin}>
+              <span>{user.username}</span>
+              <span className="mono">{user.stats.totalPoints} pts</span>
+            </button>
+            <ThemeToggle />
+          </span>
+        </nav>
+      </div>
+    </>
+  );
+};

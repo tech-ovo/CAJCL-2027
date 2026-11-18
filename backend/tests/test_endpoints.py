@@ -75,8 +75,18 @@ ROUTES = [
     ("sponsor.people.edit", "PATCH", "/sponsor/people/{person}", {"first_name": "X"}),
     ("sponsor.people.cancel", "POST", "/sponsor/people/{person}/cancel", {}),
     ("sponsor.people.restore", "POST", "/sponsor/people/{person}/restore", {}),
+    ("sponsor.people.redact", "POST", "/sponsor/people/{person}/redact", {}),
     ("sponsor.people.regenerate", "POST",
      "/sponsor/people/{person}/regenerate-code", {}),
+    ("sponsor.people.approve", "POST", "/sponsor/people/{person}/approve", {}),
+    ("sponsor.people.deny", "POST", "/sponsor/people/{person}/deny", {}),
+    ("sponsor.approve_all", "POST", "/sponsor/approve-all",
+     {"school_id": "{school}"}),
+    ("sponsor.join.regenerate", "POST", "/sponsor/join/code",
+     {"school_id": "{school}"}),
+    ("sponsor.join.open", "POST", "/sponsor/join/open",
+     {"school_id": "{school}", "open": False}),
+    ("sponsor.join_sheet", "GET", "/sponsor/join-sheet?school_id={school}", None),
     ("sponsor.chapter_leader", "POST",
      "/sponsor/people/{person}/chapter-leader", {"granted": True}),
     ("sponsor.activity_sheet", "GET",
@@ -170,6 +180,94 @@ ROUTES = [
     ("admin.export", "POST", "/admin/export", {"format": "sql"}),
     ("admin.usage", "GET", "/admin/usage", None),
     ("admin.demo.reset", "POST", "/admin/demo/reset", {}),
+
+    ("me.contests", "GET", "/me/contests", None),
+    ("me.contests.submit", "POST", "/me/contests/1", {"text": "Latin lives"}),
+    ("me.contests.withdraw", "DELETE", "/me/contests/1", None),
+    ("me.contests.file", "GET", "/me/contests/1/file", None),
+    ("sponsor.contests", "GET", "/sponsor/contests?school_id={school}", None),
+    ("sponsor.contests.submit", "POST", "/sponsor/contests/1",
+     {"school_id": "{school}", "link_url": "https://docs.google.com/document/d/x",
+      "facets": ["Media"]}),
+    ("sponsor.contests.withdraw", "DELETE",
+     "/sponsor/contests/1?school_id={school}", None),
+    ("sponsor.contests.file", "GET", "/sponsor/contests/entries/{entry}/file", None),
+    ("judge.contests", "GET", "/judge/contests", None),
+    ("judge.contest", "GET", "/judge/contests/1", None),
+    ("judge.entries.file", "GET", "/judge/entries/{entry}/file", None),
+    ("judge.contests.ballot", "PUT", "/judge/contests/1/ballot",
+     {"division": "Open", "places": {}, "submit": True}),
+    ("admin.contests.list", "GET", "/admin/contests", None),
+    ("admin.contests.file", "GET", "/admin/contests/entries/{entry}/file", None),
+    ("admin.contests.submissions", "GET", "/admin/contests/submissions", None),
+    ("admin.contests.results", "GET", "/admin/contests/1/results", None),
+    ("admin.contests.update", "PUT", "/admin/contests/1", {"rules_md": "x", "places": 3}),
+
+    ("me.photos", "GET", "/me/photos", None),
+    ("me.photos.submit", "POST", "/me/photos/1", {"caption": "A rose"}),
+    ("me.photos.withdraw", "DELETE", "/me/photos/1", None),
+    ("me.photos.file", "GET", "/me/photos/1/file", None),
+    ("admin.photos", "GET", "/admin/photos", None),
+    ("admin.photos.categories.create", "POST", "/admin/photos/categories",
+     {"name": "Best stuffed animal photo"}),
+    ("admin.photos.categories.update", "PATCH", "/admin/photos/categories/1",
+     {"accepting": True}),
+    ("admin.photos.categories.delete", "DELETE", "/admin/photos/categories/1", None),
+    ("admin.photos.file", "GET", "/admin/photos/entries/{entry}/file", None),
+    ("admin.photos.entries.delete", "DELETE", "/admin/photos/entries/{entry}", None),
+
+    ("admin.schedule", "GET", "/admin/schedule", None),
+    ("admin.schedule.create", "POST", "/admin/schedule",
+     {"title": "Opening ceremony", "date": "2027-03-12", "start": "09:00"}),
+    ("admin.schedule.update", "PATCH", "/admin/schedule/1", {"title": "x"}),
+    ("admin.schedule.delete", "DELETE", "/admin/schedule/1", None),
+
+    ("me.olympika", "GET", "/me/olympika", None),
+    ("me.olympika.enter", "POST", "/me/olympika/1", {}),
+    ("me.olympika.rename", "PATCH", "/me/olympika/1", {"team_name": "Eagles"}),
+    ("me.olympika.withdraw", "DELETE", "/me/olympika/1", None),
+    ("admin.athletics", "GET", "/admin/athletics", None),
+    ("admin.athletics.event", "GET", "/admin/athletics/events/1", None),
+    ("admin.athletics.events.create", "POST", "/admin/athletics/events",
+     {"name": "Long jump", "kind": "individual"}),
+    ("admin.athletics.events.update", "PATCH", "/admin/athletics/events/1",
+     {"signup_open": True}),
+    ("admin.athletics.events.delete", "DELETE", "/admin/athletics/events/1", None),
+    ("admin.athletics.heats", "PUT", "/admin/athletics/events/1/heats", {"count": 2}),
+    ("admin.athletics.heats.update", "PATCH", "/admin/athletics/heats/1",
+     {"label": "Final"}),
+    ("admin.athletics.assign", "POST", "/admin/athletics/events/1/assign", {}),
+    ("admin.athletics.signups.update", "PATCH", "/admin/athletics/signups/1",
+     {"heat_id": None}),
+    ("admin.athletics.signups.delete", "DELETE", "/admin/athletics/signups/1", None),
+    ("admin.athletics.bracket", "POST", "/admin/athletics/events/1/bracket", {}),
+    ("admin.athletics.bracket.times", "POST",
+     "/admin/athletics/events/1/bracket/times",
+     {"date": "2027-03-13", "start": "13:00"}),
+    ("admin.athletics.bracket.delete", "DELETE",
+     "/admin/athletics/events/1/bracket", None),
+    ("admin.athletics.matches.update", "PATCH", "/admin/athletics/matches/1",
+     {"field": "A"}),
+    ("admin.athletics.teams.update", "PATCH", "/admin/athletics/teams/1",
+     {"name": "Hawks"}),
+    ("admin.athletics.teams.delete", "DELETE", "/admin/athletics/teams/1", None),
+
+    ("sponsor.potluck.approve", "POST", "/sponsor/people/{person}/potluck/1/approve", {}),
+    ("sponsor.potluck.decline", "POST", "/sponsor/people/{person}/potluck/1/decline", {}),
+    ("sponsor.potluck.approve_all", "POST", "/sponsor/potluck/approve-all",
+     {"school_id": "{school}"}),
+    ("admin.potluck", "GET", "/admin/potluck", None),
+    ("admin.potluck.create", "POST", "/admin/potluck", {"name": "Face painting"}),
+    ("admin.potluck.update", "PATCH", "/admin/potluck/1", {"name": "x"}),
+    ("admin.potluck.delete", "DELETE", "/admin/potluck/1", None),
+    ("admin.pages", "GET", "/admin/pages", None),
+    ("admin.pages.create", "POST", "/admin/pages",
+     {"title": "Hotel list",
+      "doc_url": "https://docs.google.com/document/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/edit"}),
+    ("admin.pages.update", "PATCH", "/admin/pages/1", {"title": "Hotels"}),
+    ("admin.pages.delete", "DELETE", "/admin/pages/1", None),
+    ("admin.pages.convert", "POST", "/admin/pages/1/convert", {}),
+    ("admin.pages.rebuild", "POST", "/admin/pages/rebuild", {}),
 ]
 
 
@@ -233,11 +331,20 @@ def test_no_route_is_accidentally_public():
     """Only the public and auth surfaces may be reached with no credential."""
     allowed = {
         "/public/stats", "/public/convention", "/public/announcements",
-        "/auth/redeem", "/health",
+        "/public/schedule", "/public/pages",
+        "/auth/redeem", "/auth/join", "/health",
         # These take any valid session and check authority in the handler.
         "/auth/me", "/auth/logout", "/auth/impersonate/end",
         "/me/adult-sheet",
         "/auth/sessions/{session_id}/revoke",
+        # Certamen public routes:
+        "/certamen/ping",
+        "/certamen/questions",
+        "/certamen/leaderboard",
+        "/certamen/sync-user",
+        "/certamen/log-attempt",
+        "/certamen/login",
+        "/certamen/questions/batch",
     }
     guarded_paths = set()
     for name, method, path, _ in ROUTES:
@@ -254,6 +361,14 @@ def test_no_route_is_accidentally_public():
                        .replace("{entry_id}", "{entry}") \
                        .replace("{item_id}", "1") \
                        .replace("{option_id}", "1") \
+                       .replace("{category_id}", "1") \
+                       .replace("{page_id}", "1") \
+                       .replace("{event_id}", "1") \
+                       .replace("{activity_id}", "1") \
+                       .replace("{heat_id}", "1") \
+                       .replace("{signup_id}", "1") \
+                       .replace("{match_id}", "1") \
+                       .replace("{team_id}", "1") \
                        .replace("{announcement_id}", "1") \
                        .replace("{key}", "welcome_body")
         assert template in guarded_paths, f"{path} has no declared guard"

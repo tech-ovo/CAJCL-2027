@@ -134,6 +134,10 @@ a:hover { text-decoration-thickness: 2px; }
 
 .lede { font-size: var(--size-md); color: var(--text); }
 .muted { color: var(--text-muted); }
+/* A name the page borrows from the interface -- a button or a link the reader
+ * is being told to find -- set in the interface's own face so it can be matched
+ * against the screen. */
+.term { font-family: var(--font-sans); font-weight: var(--weight-semi); color: var(--text); }
 .small { font-size: var(--size-sm); }
 
 hr.rule { border: 0; border-top: var(--border-strong); margin: var(--space-6) 0; }
@@ -556,7 +560,7 @@ footer.page > .hair { margin-top: 0; }
 }
 
 input[type="text"], input[type="email"], input[type="tel"], input[type="number"],
-input[type="search"], input[type="date"], select, textarea {
+input[type="search"], input[type="date"], input[type="time"], select, textarea {
   width: 100%;
   font-family: var(--font-sans); font-size: var(--size-base);
   color: var(--text); background: var(--panel-bg);
@@ -620,7 +624,7 @@ input.mono { font-family: var(--font-mono); }
 .form-errors h2 { font-family: var(--font-sans); font-size: var(--size-sm); margin-bottom: var(--space-2); }
 .form-errors ul { margin: 0; padding-left: var(--space-5); }
 
-/* The access code, one character per box.
+/* The login token, one character per box.
  *
  * The dashes are DRAWN, not typed. A single field looked like it wanted them,
  * and typing one into a field that strips and re-inserts them made the caret
@@ -790,6 +794,10 @@ legend { padding: 0; }
  * being printed in black and white. The row also carries the word
  * "Cancelled", so nothing depends on the styling. */
 .table tbody tr.is-inactive td { font-style: italic; }
+/* The row a link pointed at. A wash and a rule, so it holds up in both themes
+ * and for a reader who cannot tell the two tints apart. */
+.table tbody tr.is-target td { background: var(--tint); }
+.table tbody tr.is-target td:first-child { box-shadow: inset 3px 0 0 var(--link); }
 
 /* A right-aligned column must keep its right padding. Without it the heading
  * of the NEXT column starts at the exact pixel this one ends, and "Grade"
@@ -1015,6 +1023,71 @@ th[aria-sort] { color: var(--text); }
   font-size: var(--size-md); font-weight: var(--weight-semi); padding-top: var(--space-3); }
 .totals__row .mono { font-variant-numeric: tabular-nums; }
 
+/* Pre-convention contests.
+ *
+ * A judge reads a myth in the page, so its text keeps the student's line
+ * breaks -- a poem without them is not the poem. Long entries scroll inside
+ * their own box so the place picker beside them stays in view. */
+.entry-text {
+  white-space: pre-wrap; font-family: var(--font-serif);
+  line-height: var(--leading-body);
+  max-height: 70vh; overflow: auto;
+  padding: var(--space-4); margin: var(--space-4) 0;
+  background: var(--panel-bg); border: var(--border);
+}
+.entry-preview {
+  display: block; max-width: 100%; height: auto;
+  margin: var(--space-4) 0; border: var(--border); background: var(--panel-bg);
+}
+.entry-preview--document { width: 100%; height: 70vh; }
+
+/* The photo contest.
+ *
+ * Square frames, cropped to fill, so a grid of portrait and landscape photos
+ * still reads as a grid. The whole photo, uncropped, is one click away. */
+.photo-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: var(--space-5); margin: var(--space-3) 0 var(--space-6);
+}
+.photo-card { margin: 0; display: grid; gap: var(--space-2); align-content: start; }
+.photo-card__frame {
+  display: block; width: 100%; aspect-ratio: 1 / 1; padding: 0;
+  border: var(--border); background: var(--panel-bg); overflow: hidden;
+}
+button.photo-card__frame { cursor: zoom-in; }
+.photo-card__frame:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.photo-card__frame[hidden] { display: none; }
+.photo-card__img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.photo-card__img[aria-busy="true"] { visibility: hidden; }
+.photo-card__body { display: grid; gap: 2px; font-family: var(--font-sans); }
+.photo-card__body .btn-row { margin-top: var(--space-1); }
+.photo-mine {
+  display: grid; grid-template-columns: 10rem 1fr; gap: var(--space-5);
+  align-items: start; margin: var(--space-4) 0;
+}
+.photo-preview { max-width: 16rem; margin-bottom: var(--space-4); }
+.photo-full {
+  display: block; max-width: 100%; max-height: 70vh; margin: 0 auto var(--space-3);
+  border: var(--border);
+}
+.photo-description { display: block; white-space: pre-line; }
+
+@media (max-width: 40rem) {
+  .photo-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+  .photo-mine { grid-template-columns: 1fr; }
+  .photo-mine .photo-card__frame { max-width: 16rem; }
+}
+
+/* A judge's place picker sits in a table column and only ever says "12th";
+ * N itself is a number of the same size. */
+.place-picker { width: auto; min-width: 6rem; }
+.places-input { max-width: 7rem; font-variant-numeric: tabular-nums; }
+
+details > summary {
+  cursor: pointer; font-family: var(--font-sans); font-size: var(--size-sm);
+  color: var(--link); margin: var(--space-2) 0;
+}
+
 /* ===========================================================================
  * Motion and print
  * ======================================================================== */
@@ -1210,3 +1283,35 @@ th[aria-sort] { color: var(--text); }
  * has no bottom margin, and "13 of 13 have started" sat on top of "Meals". */
 .stats + section,
 .stats + * { margin-top: var(--space-7); }
+
+/* ===========================================================================
+ * Text pages written in Google Docs (/p/<slug>.html, scripts/build_pages.py)
+ *
+ * The Doc supplies only structure -- headings, paragraphs, lists, links,
+ * tables -- and this supplies the look. A table is wrapped in nothing by the
+ * cleaner, so it scrolls on its own on a phone rather than widening the page.
+ * ======================================================================== */
+
+.doc { padding-bottom: var(--space-5); }
+.doc h2 { margin-top: var(--space-6); }
+.doc h3, .doc h4 { margin-top: var(--space-5); }
+.doc table {
+  display: block; overflow-x: auto; max-width: 100%;
+  border-collapse: collapse; margin: 0 0 var(--space-5);
+  font-family: var(--font-sans); font-size: var(--size-sm);
+}
+.doc th, .doc td {
+  text-align: left; vertical-align: top;
+  padding: var(--space-2) var(--space-3) var(--space-2) 0;
+  border-bottom: var(--border);
+}
+.doc th { font-weight: var(--weight-semi); border-bottom: var(--border-strong); }
+.doc blockquote {
+  margin: 0 0 var(--space-4); padding-left: var(--space-4);
+  border-left: 2px solid var(--accent); color: var(--text-muted);
+}
+.doc img { max-width: 100%; height: auto; display: block; margin: 0 0 var(--space-4); }
+.doc pre, .doc code { font-family: var(--font-mono); font-size: 0.95em; }
+.doc pre { overflow-x: auto; margin: 0 0 var(--space-4); }
+.doc hr { border: 0; border-top: var(--border); margin: var(--space-5) 0; }
+.doc sub, .doc sup { font-size: 0.75em; }

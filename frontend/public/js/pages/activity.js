@@ -15,6 +15,7 @@ import * as api from "../api.js";
 import { add, el, clear, tabula, field, select, button, errorSummary,
          renderMarkdown, localDate, personNumber, guardUnsaved,
          draft, check, tell } from "../ui.js";
+import { potluckSection, potluckKey } from "../potluck.js";
 
 /* "No meal" is LAST and is never the default.
  *
@@ -49,6 +50,8 @@ export async function activitySheetPage(host, params = []) {
   let sheet = await api.get(base, { statusHost: host });
   let selected = new Set(sheet.selected);
   let options = { ...(sheet.selected_options || {}) };
+  // The activities potluck: the ids of the activities they would help with.
+  let helping = new Set(sheet.potluck ? sheet.potluck.selected : []);
   let level = sheet.person.latin_level || "";
   let grade = sheet.person.grade || "";
   let meal = sheet.person.meal || "";
@@ -100,6 +103,7 @@ export async function activitySheetPage(host, params = []) {
     meal = value.meal || meal;
     selected = new Set(value.selected || []);
     options = { ...(value.options || {}) };
+    helping = new Set(value.helping || [...helping]);
     restored = true;
     dirty = true;
   }
@@ -199,6 +203,13 @@ export async function activitySheetPage(host, params = []) {
       add(form, categorySection(category));
     }
 
+    // -- activities potluck ----------------------------------------------
+    const potluckNode = potluckSection({
+      potluck: sheet.potluck, selected: helping, locked: sheet.locked,
+      onChange: touch,
+    });
+    if (potluckNode) add(form, potluckNode);
+
     // -- chapter entries, read-only --------------------------------------
     if (sheet.chapter_entries && sheet.chapter_entries.length) {
       add(form, el("fieldset", {},
@@ -263,7 +274,7 @@ export async function activitySheetPage(host, params = []) {
     if (dirty) {
       held.save({
         snapshot: snapshot(), grade, level, meal,
-        selected: [...selected], options,
+        selected: [...selected], options, helping: [...helping],
       });
     } else {
       held.clear();
@@ -276,6 +287,7 @@ export async function activitySheetPage(host, params = []) {
       level: level || "",
       meal: meal || "",
       selected: [...selected].sort(),
+      helping: potluckKey(helping),
       options: Object.fromEntries(Object.entries(options)
         .filter(([, list]) => list && list.length)
         .map(([key, list]) => [key, [...list].sort()])),
@@ -557,6 +569,7 @@ export async function activitySheetPage(host, params = []) {
         meal: meal || null,
         selected: [...selected],
         selected_options: options,
+        potluck: [...helping],
       });          // the button shows the wait; see ui.js button()
 
       warnings = result.warnings || [];
@@ -564,6 +577,7 @@ export async function activitySheetPage(host, params = []) {
       sheet = await api.get(base);
       selected = new Set(sheet.selected);
       options = { ...(sheet.selected_options || {}) };
+      helping = new Set(sheet.potluck ? sheet.potluck.selected : []);
       grade = sheet.person.grade || "";
       level = sheet.person.latin_level || "";
       meal = sheet.person.meal || "";

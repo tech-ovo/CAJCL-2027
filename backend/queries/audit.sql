@@ -24,10 +24,14 @@ SELECT a.id, a.ts_utc, a.action, a.summary, a.entity_type, a.entity_id,
        actor.last_name   AS actor_last_name,
        imp.first_name    AS impersonator_first_name,
        imp.last_name     AS impersonator_last_name,
+       subject.first_name AS entity_first_name,
+       subject.last_name  AS entity_last_name,
        s.name            AS school_name
 FROM audit_log a
 LEFT JOIN people  actor ON actor.id = a.actor_person_id
 LEFT JOIN people  imp   ON imp.id   = a.impersonator_person_id
+-- The person an entry is ABOUT, so the log can name them beside their number.
+LEFT JOIN people  subject ON a.entity_type = 'person' AND subject.id = a.entity_id
 LEFT JOIN schools s     ON s.id     = a.school_id
 WHERE a.id < ?
 ORDER BY a.id DESC
@@ -42,10 +46,14 @@ SELECT a.id, a.ts_utc, a.action, a.summary, a.entity_type, a.entity_id,
        actor.last_name  AS actor_last_name,
        imp.first_name   AS impersonator_first_name,
        imp.last_name    AS impersonator_last_name,
+       subject.first_name AS entity_first_name,
+       subject.last_name  AS entity_last_name,
        s.name           AS school_name
 FROM audit_log a
 LEFT JOIN people  actor ON actor.id = a.actor_person_id
 LEFT JOIN people  imp   ON imp.id   = a.impersonator_person_id
+-- The person an entry is ABOUT, so the log can name them beside their number.
+LEFT JOIN people  subject ON a.entity_type = 'person' AND subject.id = a.entity_id
 LEFT JOIN schools s     ON s.id     = a.school_id
 WHERE a.school_id = ? AND a.id < ?
 ORDER BY a.id DESC
@@ -71,3 +79,28 @@ SELECT id, code_prefix, ip_hash, succeeded, attempted_at
 FROM login_attempts
 ORDER BY id DESC
 LIMIT ?;
+
+-- name: audit.redact_summary
+-- Update the summary of an audit log entry during redaction.
+-- Triggers enforce that id, ts_utc, and all other metadata remain untouched,
+-- and the new summary must contain 'REDACTED'.
+UPDATE audit_log SET summary = ? WHERE id = ?;
+
+-- name: audit.by_entity_person
+-- Find audit entries referencing a person as the entity.
+-- Uses idx_audit_entity (entity_type, entity_id).
+SELECT id, summary FROM audit_log
+WHERE entity_type = 'person' AND entity_id = ?;
+
+-- name: audit.by_actor_person
+-- Find audit entries where this person was the actor.
+-- Uses idx_audit_actor (actor_person_id, ts_utc).
+SELECT id, summary FROM audit_log
+WHERE actor_person_id = ?;
+
+-- name: audit.by_school_mentioning_name
+-- Search for audit rows for this school where summary mentions the name.
+-- Uses idx_audit_school (school_id, ts_utc).
+SELECT id, summary FROM audit_log
+WHERE school_id = ? AND summary LIKE ?;
+

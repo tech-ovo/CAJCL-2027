@@ -10,6 +10,8 @@ import { add, el, clear, tabula, table, button, emptyState, loadingRows,
          fullName, personNumber, ask, check, tell,
          field, input, select } from "../ui.js";
 import { state, route, hasScope, adopt } from "../main.js";
+import { joinCodePanel, formatJoinCode } from "./joincode.js";
+import { whenText } from "../when.js";
 
 export async function rosterPage(host, params = []) {
   // Set when a chapter is named in the URL. A sponsor reaching their own
@@ -21,6 +23,8 @@ export async function rosterPage(host, params = []) {
   // same question until a sponsor could cover a second chapter. Reaching that
   // one names it in the URL, and it is still their roster to work on.
   const asChair = schoolId !== null && hasScope("registration");
+  // A person to scroll to and highlight, named in the URL by the audit log.
+  const focusId = params[1] ? Number(params[1]) : null;
   const path = asChair ? `/sponsor/roster?school_id=${schoolId}` : "/sponsor/roster";
 
   let data = null;
@@ -34,7 +38,29 @@ export async function rosterPage(host, params = []) {
 
   add(host, loadingRows(8, "Loading the roster"));
   data = await api.get(path, { statusHost: host });
+  // A cancelled person is hidden until asked for; showing them is the only way
+  // a link to one can land anywhere.
+  if (focusId && data.people.some((p) => p.id === focusId
+                                   && p.approval !== "pending"
+                                   && p.status !== "active")) {
+    showCancelled = true;
+  }
   render();
+  if (focusId) showPerson(focusId);
+
+  function showPerson(id) {
+    const row = host.querySelector(`tr[data-id="${id}"]`);
+    if (!row) {
+      host.prepend(el("div", { class: "banner banner--info",
+                               style: "margin-bottom:1.5rem" },
+        el("span", { class: "banner__label" }, "Not on this roster"),
+        el("span", {}, `Person #${id} is not listed here. They may belong to `
+                     + "another chapter, or be an administrator.")));
+      return;
+    }
+    row.classList.add("is-target");
+    row.scrollIntoView({ block: "center" });
+  }
 
   async function reload() {
     data = await api.get(path);
@@ -46,11 +72,19 @@ export async function rosterPage(host, params = []) {
     const school = data.school;
     const stats = data.stats || {};
 
+    // STUDENTS WHO JOINED WITH THE CODE AND ARE WAITING live in their own
+    // panel, not among the roster. They are not billed or counted until
+    // approved, so a row that looked like everybody else's would mislead.
+    const waiting = data.people.filter(
+      (p) => p.approval === "pending" && p.status === "active");
+
     const people = data.people
+      .filter((p) => p.approval !== "pending")
       .filter((p) => showCancelled || p.status === "active")
       .sort(compare);
 
-    const cancelledCount = data.people.filter((p) => p.status !== "active").length;
+    const cancelledCount = data.people.filter(
+      (p) => p.approval !== "pending" && p.status !== "active").length;
 
     add(host, 
       tabula({
@@ -103,21 +137,45 @@ export async function rosterPage(host, params = []) {
             asChair
               ? "Everyone this chapter is bringing. To change a form or paste a "
                 + "roster, sign in as the sponsor."
-              : "Add people, correct details, and tick each paper form as it "
-                + "comes back to you.")),
+              : "Students join with your chapter's join code and appear here "
+                + "once you approve them. You can also add people yourself, "
+                + "correct details, and tick each paper form as it comes "
+                + "back to you.")),
         el("div", { class: "span-4" },
           el("dl", { class: "detail" },
             el("dt", {}, "Delegates"), el("dd", { class: "mono" }, stats.delegates_active || 0),
             el("dt", {}, "Adults"), el("dd", { class: "mono" }, stats.adults_active || 0),
+            waiting.length
+              ? el("dt", {}, "Waiting")
+              : null,
+            waiting.length
+              ? el("dd", { class: "mono" }, waiting.length)
+              : null,
             el("dt", {}, "Complete"),
             el("dd", { class: "mono" },
               `${(stats.delegates_complete || 0) + (stats.adults_complete || 0)}`)))),
+
+      // THE PREFERRED WAY IN, so it comes first and carries the weight. Pasting
+      // a roster still works and is one button away.
+      joinCodePanel({
+        school,
+        reload,
+        forChair: asChair,
+        print: () => openPrintView(asChair
+          ? `/sponsor/join-sheet?school_id=${schoolId}`
+          : "/sponsor/join-sheet"),
+      }),
+
+      waiting.length ? pendingPanel(waiting, school) : null,
+
+      (data.potluck_requests || []).length
+        ? potluckPanel(data.potluck_requests, school) : null,
 
       el("div", { class: "btn-row" },
         // A chair gets this too. A sponsor whose spreadsheet will not paste is
         // a support call, and until this existed the only answer was to find a
         // president to sign in as them.
-        el("a", { class: "btn btn--primary",
+        el("a", { class: "btn",
                   href: asChair ? `#/roster/${schoolId}/import` : "#/roster/import" },
           "Paste a roster"),
         button("Add one person", { onclick: () => addPerson(school) }),
@@ -142,7 +200,7 @@ export async function rosterPage(host, params = []) {
             const ok = await check({
               title: "Preview the packet",
               body: ["This is a preview, not something to hand out.",
-                     "Access codes are stored scrambled and cannot be read "
+                     "Login tokens are stored scrambled and cannot be read "
                      + "back, so the sheets will show blocks where the codes "
                      + "would be.",
                      "To give somebody a working sheet, use Issue new codes "
@@ -185,19 +243,179 @@ export async function rosterPage(host, params = []) {
               };
               render();
             },
+            rowId: (row) => row.id,
             rowClass: (row) => [
               row.status !== "active" ? "is-inactive" : null,
               row.person_type === "adult" ? "is-adult" : null,
             ].filter(Boolean).join(" ") || null,
             caption: `Roster for ${school.name}`,
           })
-        : emptyState(
-            "No delegates yet",
-            "Paste your roster to get started. Any format works — a spreadsheet " +
-            "column, a numbered list, or one name per line.",
-            el("a", { class: "btn btn--primary", href: "#/roster/import" },
-              "Paste your roster")),
+        : waiting.length
+          ? null
+          : emptyState(
+              "No delegates yet",
+              "Print the join sheet above and hand it to every student who "
+              + "might come: they register themselves with the code, and you "
+              + "approve them here. Or paste a roster — any format works, "
+              + "a spreadsheet column, a numbered list, or one name per line.",
+              el("a", { class: "btn", href: "#/roster/import" },
+                "Paste your roster")),
     );
+  }
+
+  /* Students who joined with the chapter's join code and are waiting for the
+   * sponsor. They have a login token, they can already fill in their forms,
+   * and nothing about them counts toward the invoice or the totals until they
+   * are approved. Denying one removes ALL of their data.
+   *
+   * A chair sees the list and the "Preliminary" label but not the buttons:
+   * whether a student belongs in a chapter is the sponsor's call, and a chair
+   * who needs to make it signs in as them. */
+  function pendingPanel(waiting, school) {
+    const rows = [...waiting].sort(compare);
+    return el("section", { class: "panel", style: "margin-bottom:1.5rem" },
+      el("h2", {}, `Waiting for approval (${rows.length})`),
+      el("p", { class: "small muted" },
+        "These students joined with your join code. Their registration is "
+        + "marked preliminary: it is not on your invoice and not in the totals "
+        + "until you approve it. Denying a student removes everything they "
+        + "entered."),
+      table([
+        { key: "name", label: "Name", sortable: true,
+          render: (row) => el("span", {}, fullName(row),
+            el("span", { class: "pill", style: "margin-left:.5rem" },
+               "Preliminary")) },
+        { key: "grade", label: "Grade", render: (row) => row.grade || "—" },
+        { key: "latin_level", label: "Latin",
+          render: (row) => row.latin_level || "—" },
+        { key: "form_status", label: "Activities", render: formState },
+        { key: "actions", label: "Actions",
+          render: (row) => asChair
+            ? el("span", { class: "muted" }, "—")
+            : el("span", { style: "display:flex; gap:.5rem; flex-wrap:wrap" },
+                button("Approve", {
+                  variant: "btn--small btn--primary",
+                  onclick: () => approve(row),
+                }),
+                button("Deny", {
+                  variant: "btn--small btn--danger",
+                  onclick: () => deny(row),
+                }),
+                button("New code", {
+                  variant: "btn--small btn--quiet",
+                  onclick: () => regenerate(row),
+                })) },
+      ], rows, { rowId: (row) => row.id,
+                 caption: `Students waiting for approval at ${school.name}` }),
+      asChair || rows.length < 2
+        ? null
+        : el("div", { class: "btn-row" },
+            button(`Approve all ${rows.length}`, {
+              onclick: async () => {
+                const ok = await check({
+                  title: `Approve all ${rows.length} students?`,
+                  body: "They join your roster and your invoice. You can "
+                      + "still cancel any of them afterwards.",
+                  confirmLabel: "Approve them all",
+                });
+                if (!ok) return;
+                try {
+                  await api.post("/sponsor/approve-all",
+                                 { school_id: school.id });
+                  await reload();
+                } catch (error) {
+                  await tell({ body: error.message });
+                }
+              },
+            })));
+  }
+
+  /* Students who ticked an activity at the potluck, waiting for the sponsor.
+   *
+   * Choosing one is an offer to help run it at convention, so it is the
+   * sponsor's call whether that student can be spared. Approving puts them on
+   * the Activities chair's list; declining tells the student on their own
+   * sheet, where they can ask again. A chair sees the list and not the
+   * buttons, as with the students above. */
+  function potluckPanel(requests, school) {
+    return el("section", { class: "panel", style: "margin-bottom:1.5rem" },
+      el("h2", {}, `Activities potluck: waiting for you (${requests.length})`),
+      el("p", { class: "small muted" },
+        "These students offered to help run an activity at convention. The "
+        + "Activities chair sees only the ones you approve."),
+      table([
+        { key: "name", label: "Student",
+          render: (row) => fullName(row) },
+        { key: "activity", label: "Activity",
+          render: (row) => el("span", {}, el("strong", {}, row.activity_name),
+            whenText(row) || row.location
+              ? el("span", { class: "small muted", style: "display:block" },
+                   [whenText(row), row.location].filter(Boolean).join(" · "))
+              : null) },
+        { key: "actions", label: "Actions",
+          render: (row) => asChair
+            ? el("span", { class: "muted" }, "—")
+            : el("span", { style: "display:flex; gap:.5rem; flex-wrap:wrap" },
+                button("Approve", {
+                  variant: "btn--small btn--primary",
+                  onclick: () => decidePotluck(row, "approve"),
+                }),
+                button("Decline", {
+                  variant: "btn--small btn--quiet",
+                  onclick: () => decidePotluck(row, "decline"),
+                })) },
+      ], requests, { caption: `Potluck offers waiting at ${school.name}` }),
+      asChair || requests.length < 2
+        ? null
+        : el("div", { class: "btn-row" },
+            button(`Approve all ${requests.length}`, {
+              onclick: async () => {
+                try {
+                  await api.post("/sponsor/potluck/approve-all",
+                                 { school_id: school.id });
+                  await reload();
+                } catch (error) {
+                  await tell({ body: error.message });
+                }
+              },
+            })));
+  }
+
+  async function decidePotluck(row, verb) {
+    try {
+      await api.post(
+        `/sponsor/people/${row.person_id}/potluck/${row.activity_id}/${verb}`, {});
+      await reload();
+    } catch (error) {
+      await tell({ body: error.message });
+    }
+  }
+
+  async function approve(row) {
+    try {
+      await api.post(`/sponsor/people/${row.id}/approve`, {});
+      await reload();
+    } catch (error) {
+      await tell({ body: error.message });
+    }
+  }
+
+  async function deny(row) {
+    const ok = await check({
+      title: `Deny ${fullName(row)}?`,
+      body: ["Everything they entered is removed, and their login token stops "
+             + "working. This cannot be undone.",
+             "If they still want to come they can join again with the code."],
+      confirmLabel: "Deny and remove", cancelLabel: "Keep waiting",
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await api.post(`/sponsor/people/${row.id}/deny`, {});
+      await reload();
+    } catch (error) {
+      await tell({ body: error.message });
+    }
   }
 
   /* Correct somebody's name, and their guardian's contact details.
@@ -231,7 +449,7 @@ export async function rosterPage(host, params = []) {
     const ok = await check({
       title: `Edit ${fullName(row)}`,
       body: [
-        el("p", {}, "Their access code does not change, and neither does "
+        el("p", {}, "Their login token does not change, and neither does "
                   + "anything they have filled in themselves."),
         field({ id: "edit-first", label: "First name", control: first, wide: true }),
         field({ id: "edit-middle", label: "Middle name", control: middle, wide: true }),
@@ -335,7 +553,7 @@ export async function rosterPage(host, params = []) {
     const ok = await check({
       title: `Add one person to ${school.name}`,
       body: [
-        el("p", {}, "This mints their access code, which you will see once on "
+        el("p", {}, "This mints their login token, which you will see once on "
                   + "the next screen. Everything else about them — grade, "
                   + "Latin level, meal — they fill in themselves."),
         field({ id: "person-first", label: "First name", control: first,
@@ -381,9 +599,9 @@ export async function rosterPage(host, params = []) {
   function showCode(name, code, note, personId = null) {
     clear(host);
     add(host, el("section", { class: "panel", role: "alertdialog",
-                              "aria-label": `Access code for ${name}` },
+                              "aria-label": `Login token for ${name}` },
       el("h2", {}, name),
-      el("p", { class: "label" }, "Access code"),
+      el("p", { class: "label" }, "Login token"),
       el("p", { class: "tabula__code mono", style: "font-size:1.5rem" }, code),
       el("p", {}, "This is the only time this code is shown, and nothing can "
                 + "recover it. " + note),
@@ -478,7 +696,7 @@ export async function rosterPage(host, params = []) {
           onclick: async () => {
             const ok = await check({
               title: `Remove ${row.first_name}'s access to ${school.name}?`,
-              body: "They keep their own chapter and their access code. This "
+              body: "They keep their own chapter and their login token. This "
                   + "only stops them seeing this one.",
               confirmLabel: "Remove access", danger: true,
             });
@@ -545,7 +763,7 @@ export async function rosterPage(host, params = []) {
     const ok = await check({
       title: `Add the sponsor for ${school.name}`,
       body: [
-        el("p", {}, "This creates their account and issues their access code. "
+        el("p", {}, "This creates their account and issues their login token. "
                   + "You will see the code once, on the next screen."),
         field({ id: "sponsor-first", label: "First name", required: true,
                 control: first, wide: true }),
@@ -579,7 +797,11 @@ export async function rosterPage(host, params = []) {
     }
 
     showCode(`${created.first_name} ${created.last_name}`.trim(), created.code,
-             "Send it to them now, in a message addressed to them alone.",
+             "Send it to them now, in a message addressed to them alone."
+             + (created.join_code
+               ? ` Put the chapter's join code, ${formatJoinCode(created.join_code)},`
+                 + " in the same email: it is how their students register."
+               : ""),
              created.id);
   }
 
@@ -691,9 +913,9 @@ export async function rosterPage(host, params = []) {
 
     clear(host);
     add(host, el("section", { class: "panel", role: "alertdialog",
-                              "aria-label": "New access codes" },
+                              "aria-label": "New login tokens" },
       el("h2", {}, result.issued.length === 1
-        ? "One new access code" : `${result.issued.length} new access codes`),
+        ? "One new login token" : `${result.issued.length} new login tokens`),
       el("p", {}, "This is the only time these are shown. Print the sheets "
                 + "now — nothing can recover a code after you leave this page."),
       el("table", { class: "table" },
@@ -900,7 +1122,7 @@ export async function rosterPage(host, params = []) {
       body: "You will see exactly what they see, read-only, for thirty "
           + "minutes. Both names appear in a banner on every page, and this is "
           + "recorded in the log.",
-      label: "Your own access code",
+      label: "Your own login token",
       confirmLabel: "Sign in as them",
       secret: true,
     });
@@ -1071,7 +1293,7 @@ export async function rosterPage(host, params = []) {
     const result = await api.post(`/sponsor/people/${row.id}/regenerate-code`, {});
     const dialog = el("div", { class: "panel", role: "alertdialog",
                                "aria-label": `New code for ${name}` },
-      el("p", { class: "label" }, "New access code"),
+      el("p", { class: "label" }, "New login token"),
       el("p", { class: "tabula__code mono", style: "font-size:1.5rem" }, result.code),
       el("p", {},
         "This is the only time this code is shown. Print the new sheet now and " +

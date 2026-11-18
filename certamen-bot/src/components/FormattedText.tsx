@@ -28,14 +28,14 @@ export const FormattedText: React.FC<FormattedTextProps> = ({ text, className })
     if (match[1] !== undefined) {
       // Bold match **...**
       elements.push(
-        <strong key={`b-${match.index}`} className="font-bold text-amber-200">
+        <strong key={`b-${match.index}`}>
           {match[1]}
         </strong>
       );
     } else if (match[2] !== undefined) {
       // Italic match *...*
       elements.push(
-        <em key={`i-${match.index}`} className="italic text-amber-300/90 font-serif">
+        <em key={`i-${match.index}`}>
           {match[2]}
         </em>
       );

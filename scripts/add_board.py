@@ -343,7 +343,7 @@ def retire_prefix(db, old_prefix: str = "ADM") -> dict:
             name = f"{person['first_name']} {person['last_name']}"
             tx.audit(
                 "person.code_regenerate",
-                f"{name}'s access code was reissued as {prefix} when the "
+                f"{name}'s login token was reissued as {prefix} when the "
                 f"{old_prefix} prefix was retired. The previous code and every "
                 f"device signed in with it stopped working.",
                 school_id=person["school_id"],

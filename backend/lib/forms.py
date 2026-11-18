@@ -16,7 +16,7 @@ WHOLE-FORM REPLACE
 
 from __future__ import annotations
 
-from . import catalog, clock, settings, stats
+from . import catalog, clock, potluck, settings, stats
 from .auth import ForbiddenError, Principal
 from .db import Tx
 
@@ -91,6 +91,9 @@ def activity_sheet(tx: Tx, person: dict) -> dict:
         "catalog": catalog.for_person(
             tx, person_type="delegate", school_level=person["school_level"],
             latin_level=person["latin_level"]),
+        # The activities potluck: which activities need helpers, and this
+        # delegate's own picks with their sponsor's decision on each.
+        "potluck": potluck.sheet_view(tx, person),
         # A delegate's chapter's team entries, shown read-only so they know
         # whether their chapter is fielding a kickball team without being able
         # to sign the chapter up for one.
@@ -126,6 +129,7 @@ def adult_sheet(tx: Tx, person: dict) -> dict:
         "catalog": catalog.for_person(
             tx, person_type="adult", school_level=person["school_level"],
             latin_knowledge=person["latin_knowledge"]),
+        "potluck": potluck.sheet_view(tx, person),
     }
 
 
@@ -168,6 +172,13 @@ def save_activity_sheet(tx: Tx, actor: Principal, person: dict, payload: dict) -
         for option_id in options.get(item_id, []):
             tx.run("forms.add_selection_option", (selection_id, option_id))
 
+    # The potluck is saved with the sheet but not replaced whole: a sponsor's
+    # decision lives in the signup row. Absent from the payload means "leave
+    # it alone", so an older page cannot wipe anybody's picks.
+    if "potluck" in payload:
+        warnings = [*warnings, *potluck.save_picks(
+            tx, actor, person, payload["potluck"] or [], now)]
+
     existing = tx.one("forms.get_submission", (person["id"], "student_activity"))
     first_time = existing is None or existing["status"] != "submitted"
     tx.run("forms.upsert_submission",
@@ -184,7 +195,7 @@ def save_activity_sheet(tx: Tx, actor: Principal, person: dict, payload: dict) -
         entity_type="form", entity_id=person["id"],
         # Field NAMES only. The log says Bob updated his forms, never what Bob
         # chose -- these are minors and the log is read by many people.
-        changed_fields=["grade", "latin_level", "meal", "selections"],
+        changed_fields=["grade", "latin_level", "meal", "selections", "potluck"],
     )
     stats.recompute(tx, person["school_id"], settings=settings.fee_settings(tx))
     return {"warnings": warnings}
@@ -220,6 +231,10 @@ def save_adult_sheet(tx: Tx, actor: Principal, person: dict, payload: dict) -> d
     for item_id in item_ids:
         tx.run("forms.add_adult_role", (person["id"], item_id, now))
 
+    if "potluck" in payload:
+        warnings = [*warnings, *potluck.save_picks(
+            tx, actor, person, payload["potluck"] or [], now)]
+
     existing = tx.one("forms.get_submission", (person["id"], "adult_registration"))
     first_time = existing is None or existing["status"] != "submitted"
     tx.run("forms.upsert_submission",
@@ -236,7 +251,7 @@ def save_adult_sheet(tx: Tx, actor: Principal, person: dict, payload: dict) -> d
         school_id=person["school_id"],
         entity_type="form", entity_id=person["id"],
         changed_fields=["meal", "cell_phone", "email", "latin_knowledge",
-                        "availability_note", "roles"],
+                        "availability_note", "roles", "potluck"],
     )
     stats.recompute(tx, person["school_id"], settings=settings.fee_settings(tx))
     return {"warnings": warnings}

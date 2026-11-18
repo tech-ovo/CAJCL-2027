@@ -128,6 +128,10 @@ def recompute_school(tx: Tx, school_id: int, *, settings: dict) -> dict:
         "meal_none": counts.get("meal_none") or 0,
         "adults_sponsors": counts.get("adults_sponsors") or 0,
         "adults_chaperones": counts.get("adults_chaperones") or 0,
+        # Students who joined with the chapter's join code and are waiting for
+        # their sponsor. In NO other figure here: not billed, not fed, not in
+        # the public count. See migration 011.
+        "delegates_pending": counts.get("delegates_pending") or 0,
     }
 
     delegates_billable, adults_billable = billable_counts(numbers)
@@ -164,6 +168,7 @@ def recompute_school(tx: Tx, school_id: int, *, settings: dict) -> dict:
         numbers["meal_gluten_free"], numbers["meal_unanswered"],
         numbers["meal_none"],
         numbers["adults_sponsors"], numbers["adults_chaperones"],
+        numbers["delegates_pending"],
         discount, owed, paid, clock.now_iso(),
     ))
 

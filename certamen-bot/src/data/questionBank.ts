@@ -560,3 +560,27 @@ export const INITIAL_QUESTION_BANK: Question[] = [
     source: 'Classical Repository',
   },
 ];
+
+export function flattenQuestions(questions: Question[]): Question[] {
+  const result: Question[] = [];
+  for (const q of questions) {
+    result.push({
+      ...q,
+      boni: undefined,
+    });
+    if (q.boni && q.boni.length > 0) {
+      for (const b of q.boni) {
+        result.push({
+          id: `${q.id}-b${b.boniNumber}`,
+          category: q.category,
+          difficulty: q.difficulty,
+          tossup: b.prompt,
+          answers: b.answers,
+          explanation: b.explanation || q.explanation,
+          source: q.source,
+        });
+      }
+    }
+  }
+  return result;
+}

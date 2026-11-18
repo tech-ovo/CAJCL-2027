@@ -758,7 +758,7 @@ export async function adminPage(host) {
     const key = input({ placeholder: "colloquia_chair" });
     const name = input({ placeholder: "Colloquia Chair" });
     const scopes = ["registration", "academics", "awards", "sponsor",
-                    "delegate", "chapter", "*"];
+                    "delegate", "chapter", "judge", "activities", "athletics", "logistics", "*"];
     const chosen = new Set();
 
     add(host, 
@@ -980,7 +980,7 @@ export async function adminPage(host) {
       body: "You will see exactly what they see, read-only, for thirty "
           + "minutes. Both names appear in a banner on every page, and this is "
           + "recorded in the log.",
-      label: "Your own access code",
+      label: "Your own login token",
       confirmLabel: "Sign in as them",
       secret: true,
     });
@@ -1071,7 +1071,11 @@ export async function adminPage(host) {
       awards: "Score entry, test printing, tabulation.",
       sponsor: "One chapter's roster. Always limited to their own school.",
       delegate: "Their own activity sheet.",
-      chapter: "Chapter team entries for their own school.",
+      chapter: "Chapter team entries and the Publicity portfolio for their own school.",
+      judge: "Scores pre-convention contest entries, without seeing whose they are.",
+      activities: "Runs the photo contest: its categories, and every photo with whose it is.",
+      athletics: "Runs Olympika: its events, every sign-up with a name, heats, brackets and results.",
+      logistics: "Keeps the master convention schedule. Sees no people.",
     }[scope] || "";
   }
 

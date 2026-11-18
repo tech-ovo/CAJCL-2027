@@ -55,6 +55,7 @@ export interface QuestionAttemptLog {
   buzzPercentage: number;
   timestamp: number;
   wasOverridden?: boolean;
+  wasSkipped?: boolean;
 }
 
 export interface UserProfile {
@@ -67,11 +68,12 @@ export interface UserProfile {
   lastSyncedAt?: number;
 }
 
-export interface LeaderboardEntry {
-  rank?: number;
-  username: string;
+/* One chapter's row on the leaderboard: its players' XP, summed. There is no
+ * individual leaderboard, so no player is named. */
+export interface ChapterStanding {
+  rank: number;
   school: string;
-  level: DifficultyLevel;
+  players: number;
   totalPoints: number;
   grammarPoints: number;
   mythologyPoints: number;
@@ -80,7 +82,6 @@ export interface LeaderboardEntry {
   literaturePoints: number;
   accuracy: number;
   totalAnswered: number;
-  lastActive: string;
 }
 
 export type ReaderMode = 'visual' | 'audio';
@@ -90,9 +91,11 @@ export interface AppSettings {
   readingSpeed: number; // words per minute or delay in ms
   timerDuration: number; // seconds after buzz to answer (standard Certamen is 5s)
   soundEnabled: boolean;
+  confettiEnabled: boolean;
   powerBuzzEnabled: boolean;
   speechRate: number; // rate for in-browser speech synthesis (e.g. 0.8 to 1.4)
   selectedVoiceURI?: string;
-  appsScriptUrl: string;
+  tursoUrl: string;
+  tursoAuthToken: string;
   theme: 'classical-gold' | 'imperial-purple' | 'marble-dark';
 }

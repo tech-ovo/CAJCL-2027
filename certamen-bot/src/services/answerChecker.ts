@@ -38,6 +38,7 @@ export interface MatchResult {
   matchedAnswer?: string;
   cleanedUserAnswer: string;
   feedback: string;
+  wasSkipped?: boolean;
 }
 
 /**

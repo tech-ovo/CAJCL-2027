@@ -1,0 +1,252 @@
+# CAJCL 2027 — notes for Claude
+
+The 72nd CAJCL State Convention site. Read `README.md` first (layout, the five
+rules), then `docs/design.md` for the visual rules.
+
+## Layout
+- `frontend/public/` — the site. Plain ES modules, no build step.
+  `tokens.css` is the ONLY place colours/fonts/spacing are defined; `app.css`
+  is the design system (`.masthead`, `.nav`, `.btn`, `.field`, `.table`,
+  `.tabula`, `.stats`, `.dialog`, `.empty`, `.waking`, …). Light/dark via
+  `data-theme` on `<html>` + `localStorage["theme"]`.
+- `backend/` — FastAPI (`api.py`), Modal wrapper (`app.py`), SQL in `queries/`.
+  `app.py` attaches two Modal secrets: `cajcl-2027` (database, pepper, …) and
+  `apps-script` (only `APPS_SCRIPT_URL`/`APPS_SCRIPT_KEY`); a missing one fails
+  the deploy. `modal run backend/app.py::doctor` shows what the container sees.
+  Every route needs a `guard(...)` AND a row in `tests/test_endpoints.py`
+  `ROUTES`; every named query needs a Python caller; a new migration needs
+  `python scripts/checksum_migrations.py`; a new table needs a block in
+  `docs/schema.md` and a size entry in `scripts/check_query_plans.py`.
+- Join codes and pending delegates (migration 011): the PREFERRED way a student
+  registers. Each chapter has `schools.join_code` (8 chars of the access-code
+  alphabet, plaintext, NOT a secret) and `join_open`; every new chapter gets one
+  (`create_school`), existing ones were backfilled. Student: `#/join[/CODE]`
+  (`js/pages/join.js`) → `POST /auth/join` (`lib/joining.py`) creates a delegate
+  with `people.approval = 'pending'`, signs them in, returns the login token
+  once. Pending ≠ blocked (they fill in forms) but they are in NO invoice,
+  public count, meal, completion, academics or whole-packet figure: every SUM in
+  `stats.count_school` carries `approval = 'approved'`; `school_stats.delegates_pending`
+  is the separate count (Chapters/Overview show it as "preliminary"). Sponsor:
+  roster page has `js/pages/joincode.js` (show/copy/print `GET /sponsor/join-sheet`,
+  close/reopen `POST /sponsor/join/open`, replace `POST /sponsor/join/code`) and a
+  "Waiting for approval" panel (`/sponsor/people/{id}/approve|deny`,
+  `/sponsor/approve-all`). Deny = `roster.redact` (anonymous tombstone,
+  `approval = 'denied'`, status always `cancelled`, never billable); redacting a
+  pending person is a denial. Same name already in the chapter is refused.
+  Limits: 150 pending per chapter, 30 wrong join codes per IP per 15 min (stored
+  in `login_attempts` with a leading `j`, so sign-in limits don't see them).
+  Pasting a roster still works and yields approved people. Printed prose is the
+  `join_instructions` document. CI `migrate-from-scratch` asserts 184 approved
+  attendees (`public_stats_cache`) and 3 pending delegates seeded at Uni. Open
+  question (PRIVACY.md §12): under-13 self-entry before the parent waiver is
+  signed.
+- Terminology: a **join code** is the chapter's `XXXX-XXXX`; a **login token**
+  is a person's own sign-in `ABC-XXXXX-XXXXX` (previously "access code" in the
+  UI, docs and printed sheets; code identifiers, the `access_code` field names
+  and the old migrations keep the old word). Never call either one just "code".
+  `joinCodePanel` takes `forChair` (copy for someone who is not approving),
+  `onDone` (adds its own Close, for popups) and `margin`. Dashboard popups sit
+  in a wrapper with `margin-bottom: var(--space-7)`.
+- Audit log (`js/pages/audit.js`): names appear inline as "Name (#id)" linking
+  to `#/roster/{school}/person/{id}`; the roster highlights that row (`.is-target`,
+  `table(..., {rowId})`) and un-hides cancelled people. `audit.recent*` queries
+  join the subject person for `entity_first_name`/`entity_last_name`. A second
+  `#` in a route never matches, so deep links use path segments.
+- Pre-convention contests (migrations 008, 009): `lib/contests.py` (rules, divisions,
+  word counts, ballots, ranking), `lib/drive.py` (Apps Script puppet client, or
+  `DRIVE_LOCAL_DIR` folder stand-in locally/tests), `queries/contests.sql`,
+  endpoints under `/me/contests`, `/sponsor/contests`, `/judge/...`,
+  `/admin/contests/...`. Pages: `js/pages/contests.js` (`#/contests`,
+  `#/chapter-contests`, `#/contest-submissions`) and `js/pages/judging.js` (`#/judging[/id]` for
+  judges, `#/contest-results[/id[/rules]]` for Academics/Awards chairs, nav
+  "Results"). No rubric (dropped in 009): per division (and Publicity
+  category) each judge hands in a ballot ranking their top N
+  (`contest_ballots` + `contest_ballot_places`, `PUT /judge/contests/{id}/ballot`);
+  N is `contests.places` (default 3), set on the "Rules and places" tab and
+  changeable any time. `contests.rank` scores a judge's 1st as N points down to
+  1 for Nth, sums across submitted ballots, breaks ties on count of 1sts, then
+  2nds, …, and shares a place if still level. Replacing/withdrawing an entry
+  removes it from ballots and reopens them as drafts (`api._unrank`).
+  `#/contest-submissions` (nav "Submissions" for registration chairs) lists
+  every entry with names and chapters, no scores, from
+  `GET /admin/contests/submissions`. Sponsors see their delegates' entries on
+  `#/chapter-contests` and download files from
+  `GET /sponsor/contests/entries/{id}/file` (entry's own school checked).
+  Scope `judge` (role `contest_judge`) is global but NOT in
+  `auth.ADMIN_SCOPES`; judging endpoints take `judge` only and
+  `_judge_only()` refuses anyone holding `academics`. Digital Art divisions
+  are by Latin level (MS-I..MS-III, HS-I..HS-III, HS-Advanced);
+  divisions have no editing screen. Judges never receive names, chapters or original file
+  names; files come back through the API as `Entry {id}.ext`. File bytes
+  travel base64 in JSON (20 MB cap; the body-size middleware exempts only
+  `POST /me/contests/{id}`). Settings: `deadline.contests`,
+  `drive.contests_root`.
+- At-convention photo contest (migration 012): `lib/photos.py` (JPG/PNG
+  check from bytes, Exif/XMP/IPTC stripping, category validation, Drive names),
+  `queries/photos.sql`, tables `photo_categories` (name unique NOCASE,
+  `accepting` switch, cached `drive_folder_id`/`drive_thumbs_id`) and
+  `photo_entries` (one per delegate per category; replace on re-upload).
+  New role `activities_chair` → scope `activities`: global but NOT in
+  `auth.ADMIN_SCOPES` (like `judge`; it opens no roster); it also runs the
+  activities potluck (below). Endpoints:
+  `/me/photos[/{category_id}[/file?size=thumb]]` (delegates only, adults
+  refused, upload only while `accepting`, withdraw any time) and
+  `/admin/photos`, `/admin/photos/categories[/{id}]` (POST/PATCH/DELETE —
+  delete removes its photos), `/admin/photos/entries/{id}[/file]` (GET/DELETE
+  = take down). Files go through the same Drive puppet and root
+  (`drive.contests_root`) under `Photo Contest/<category>/` with thumbnails in
+  `Thumbnails/`. The browser (`js/pages/photos.js`) re-encodes each photo to a
+  ≤2400 px JPEG + 480 px thumbnail before sending (base64 in JSON; the
+  body-size middleware exempts `POST /me/photos/{id}` too). Pages: `#/photos`
+  (delegate nav "Photos") and `#/photo-contest[/categories]` (nav "Photo
+  contest" for `activities`); thumbnails lazy-load 4 at a time. Redaction
+  deletes a person's photos. Seed adds Marguerite Okonkwo (Activities chair)
+  and opens two categories, but writes no photos. Tests: `test_photos.py`.
+- Activities potluck (migration 014): activities that need helpers. `lib/potluck.py`
+  (rules, `save_picks`, `decide`, `sync_schedule`, `forget_person`),
+  `queries/potluck.sql`, tables `potluck_activities` (name, blurb, location,
+  UTC `starts_at/ends_at`, `capacity`, `open`) and `potluck_signups`
+  (`pending|approved|declined`, who decided). NOT catalog items: the catalog
+  is replaced whole on every sheet save and cannot hold a decision. There is no
+  pick endpoint: both sheets carry `potluck` (read) and a `potluck: [ids]` list
+  in the PUT (absent = leave alone), saved by `forms.save_*_sheet` through
+  `potluck.save_picks`, which keeps rows a person keeps. Adult picks, and picks
+  entered by someone else (a sponsor on `/sponsor/people/{id}/activity-sheet`),
+  are approved at once; a delegate's own are `pending`. The cap counts pending
+  + approved; reversing a decline is refused if full; `open=0` stops NEW picks;
+  overlapping picks only warn. A declined pick stays on the sheet until picked
+  again. Sponsors decide via `/sponsor/people/{id}/potluck/{activity}/approve|decline`,
+  `/sponsor/potluck/approve-all`, and a panel in `js/pages/roster.js` fed by
+  `potluck_requests` in `GET /sponsor/roster`. The Activities chair (`activities`
+  scope) keeps activities at `#/potluck` (`js/pages/potluck.js`, `/admin/potluck`)
+  and sees APPROVED helpers by name and chapter only. The sheet section is
+  `js/potluck.js`. An activity with a time is pushed to `schedule_items`
+  (`source = 'potluck'`, `source_key` `potluck:<id>`, `potluck_activity_id`) by
+  `potluck.sync_schedule` in the same transaction; anything that changes an
+  activity's name/blurb/place/time MUST call it. Audit entries use
+  `entity_type = 'person'` so names link. Tests: `test_potluck.py`. Seed adds
+  three activities, an approved adult pick and a pending delegate pick.
+- Master schedule and Olympika (migration 013): `lib/schedule.py` (entry rules,
+  `parse_span`), `lib/olympika.py` (event rules, `deal_heats`, `draw_bracket`,
+  `time_games`, `record_result`, `sync_schedule`), `queries/schedule.sql` and
+  `queries/olympika.sql`. Two new narrow global scopes, NOT in
+  `auth.ADMIN_SCOPES` (`auth.CONVENTION_SCOPES`): `logistics` (role
+  `logistics_chair`, keeps `schedule_items`) and `athletics` (role
+  `athletics_director`, runs Olympika). Times are UTC instants like everywhere;
+  editors send a California `date` + `start`/`end` ("HH:MM") and the server
+  converts (`clock.local_to_utc`); every entry comes back as `date/start/end`
+  pieces, so `js/when.js` never does zone arithmetic. Pages: `js/pages/schedule.js`
+  (`#/schedule`, PUBLIC, nav "Schedule" for everyone; `#/schedule/edit` for
+  `logistics`), `js/pages/olympika.js` (`#/olympika`, delegates, nav
+  "Olympika"), `js/pages/athletics.js` (`#/athletics[/id]`, nav "Athletics").
+  Endpoints: `GET /public/schedule` (the only unauthenticated one, cached 20 s),
+  `/admin/schedule*`, `/me/olympika[/{event}]`, `/admin/athletics/...`.
+  `olympika_events.kind` is `individual` (heats; "Assign heats" deals entrants,
+  sizes within one, a chapter spread across heats, lanes shuffled) or `team`
+  (ONE delegate signs up per team and is its captain; "Draw bracket" makes a
+  single-elimination bracket with byes for the top seeds, chapters kept apart in
+  round one, optionally timing every game by waves across named fields). Events
+  are rows the Director adds/edits/deletes; migration 013 seeds only "Ultimate
+  Frisbee" (closed). **What the Director schedules is pushed to
+  `schedule_items`** by `sync_schedule` inside the same transaction (a heat =
+  one row, a bracket = one row per ROUND; `source = 'olympika'`, `source_key`
+  `heat:12`/`round:3:2`); the Logistics endpoints refuse to edit/delete those
+  rows. Anything that changes a heat, a game's time, or an event's name/place
+  MUST call `olympika.sync_schedule(tx, event_id, now)`. Only `active` +
+  `approved` delegates appear in any list or are dealt; a pending delegate may
+  not sign up. `roster.redact` calls `olympika.forget_person` (sign-ups
+  deleted; a captain's team deleted unless a bracket exists, then orphaned
+  nameless). Tests: `test_olympika.py`. Seed adds Theodora Vance (Athletics
+  Director), Rafael Quintero (Logistics chair), a two-day schedule, events in
+  every state and a six-team Frisbee bracket with one game scored. The older
+  activity-sheet "Olympika" catalog items and the sponsor's `#/teams` counts are
+  non-binding planning input and do not feed these tables.
+- Text pages from Google Docs (migration 015, `docs/PAGES.md`): an administrator
+  (scope `registration` or `academics`, plus `*`; viewing is public) adds a page on `#/site-pages`
+  (`js/pages/sitepages.js`) with a title and a Google Doc link;
+  the Publish button walks the pages calling `POST /admin/pages/{id}/convert` (ONE page per request: the web function times out at 60 s, Drive convert at 55 s) and then `POST /admin/pages/rebuild`; convert uses the Drive puppet's `convert` op
+  (`apps-script/Code.gs`, `Drive.convert` in `lib/drive.py`) rewrite
+  `page-<id>.html` (stable public link, under `<drive.contests_root>/Site Pages/`),
+  stores the link in `site_pages` (`lib/pages.py`, `queries/pages.sql`), then
+  calls GitHub `workflow_dispatch` on `deploy.yml` with `site_only=true`
+  (`GITHUB_DISPATCH_TOKEN`, optional `GITHUB_REPO`/`GITHUB_WORKFLOW`/`GITHUB_REF_NAME`
+  in the `cajcl-2027` Modal secret; no token = Docs convert, rebuild reported as
+  not started). `site_only` skips the migrate/API-deploy job
+  (`publish-site` runs on `!cancelled()`). The build step `scripts/build_pages.py`
+  (after `build_snapshot.py`) reads the unauthenticated `GET /public/pages`, downloads
+  each `html_url`, re-cleans with `lib/htmlclean.py` (allowlist; the Drive copy is
+  NOT trusted; Code.gs `cleanDocHtml` is a first pass kept in parity by a node
+  test), and writes `frontend/public/p/<slug>.html` (frame in
+  `frontend/page.template.html`; masthead/footer/theme script + CSP hash copied from
+  the built `index.html`) plus `pages.json` (both gitignored). `main.js` reads
+  `pages.json` into `state.textPages` for the nav bar and Resources. A page that
+  cannot be fetched or is empty FAILS the build (never silently dropped). A
+  failed conversion keeps the old copy (`sync_error`). Pictures: Code.gs exports the
+  Doc as a ZIP and embeds png/jpeg/gif as `data:` URIs; `htmlclean` keeps ONLY those
+  (alt kept); the build `extract_images` writes them to `p/img/<hash>.ext` after a
+  magic-byte check and `photos.strip_metadata` (limits: 4 MB each, 40 per page).
+  Static pages show the signed-out menu. `.doc` styles are in `app.css`.
+- `certamen-bot/` — Certamen practice arena, React 19 + Vite 6 (no Tailwind,
+  no icon library). `npm run build` outputs to `frontend/public/certamen/`
+  (committed). Connected to a separate Turso database via Modal endpoints (`/certamen/...`)
+  and `src/services/tursoService.ts` (no Google Sheets); credentials live in Modal secrets
+  (`TURSO_CERTAMEN_DATABASE_URL`, `TURSO_CERTAMEN_AUTH_TOKEN`) with fallback to local `certamen.db`.
+  Questions are flattened to tossup format. The built page links the
+  site's `../tokens.css` and `../app.css` via a plugin in `vite.config.ts`; a dev middleware
+  serves them from `frontend/public`. Components reuse site classes; `src/index.css` has
+  only arena-specific rules, token-only. Sections are hash routes
+  (`#/arena`, `#/stats`, `#/leaderboard`, `#/bank`, `#/settings`); the
+  profile editor is a native `<dialog>`. The leaderboard ranks chapters only
+  (no individual scoreboard): `certamen_db.get_leaderboard` and the direct-Turso
+  path in `tursoService.ts` both `GROUP BY LOWER(TRIM(school))`, sum XP, and
+  never return usernames; placeholder chapters (`PLACEHOLDER_CHAPTERS`: guest
+  "Roma Antiqua Academy", "Independent") are left out. Chapter is free text,
+  required in the profile dialog.
+- Privacy and compliance: `docs/PRIVACY.md` (data-flow architecture, safeguards,
+  inventory, written retention policy, incident response, family notice,
+  school authorization form, COPPA/FERPA/SOPIPA/AB 1584/Cal. Civ. Code
+  mapping, open decisions). Diagram source `docs/privacy/data-flow.dot`;
+  re-render `.svg` and `.pdf` with `dot` after editing (one Letter page).
+  A change to what is collected, who sees it, where it goes, or how long it
+  is kept must update `PRIVACY.md`. Decided facts: CAJCL (501(c)(3)) is the operator; deletion 12 Apr 2027,
+  keeping only person number + chapter + grade + level + placements;
+  Drive/Apps Script on a personal Gmail until the `cajcl.org` Workspace.
+- Sponsor privacy/security briefing (Oct 2026): an agenda, demo script and Q&A
+  live in a Claude Doc (not in the repo), built from `PRIVACY.md`/`SECURITY.md`.
+  The privacy notice is a public page, `#/privacy` (`js/pages/privacy.js`; the
+  plain-language version of PRIVACY §9, change both together), linked from the
+  footer (`index.html` AND the `footer` string in `scripts/build_snapshot.py`, as
+  `/#/privacy` so static `p/*.html` pages work) and from `#/join`. PRIVACY §7 is
+  now the written security program; §6/§11 say the purge script
+  (`scripts/purge_convention_data.py`) is NOT built yet, and vendor agreements
+  are unconfirmed (§12). The page must not name Turso (`test_frontend` forbids it).
+- `docs/` rewritten to professional PM specifications: `DEPLOY.md` (deployment runbook),
+  `PRIVACY.md` (regulatory & privacy spec), `REGISTRATION.md` (chair SOP), `RISKS.md` (risk register),
+  `RUNBOOK.md` (incident & ops runbook), `SECURITY.md` (threat model & security spec),
+  `TODO.md` (product roadmap & tracker), `design.md` (design system standard), `schema.md` (DDL & API spec),
+  `stack.md` (architecture blueprint), `structure.md` (PRD & functional spec), `PAGES.md` (Google Docs text pages guide).
+- `apps-script/`, `scripts/`, `docs/`. `scripts/seed.py` seeds demo data (`--reset` to wipe/re-migrate); seeds entries for Slogans & Publicity and a submitted ballot by Rosalind Achebe for English slogans (`contest_ballots`). Bulk question import: `python scripts/import_certamen_questions.py --file <path.json|path.csv>`.
+
+## Checks
+- `python -m pytest backend/tests -q` (on this machine the installed starlette
+  lacks `StarletteDeprecationWarning`, which `pytest.ini` references; run
+  single files with `-p no:warnings` until that is fixed).
+- `pip install esprima` or ~24 frontend tests skip silently. esprima 4 cannot
+  parse `??` or `?.`, so the site's JS avoids them.
+- `python scripts/check_query_plans.py`.
+- `backend/tests/test_site_pages.py` runs the Code.gs cleaner under `node` (skipped
+  if node is absent).
+- `backend/tests/test_frontend.py` fails on any hex colour outside
+  `tokens.css`, including the Certamen build's CSS.
+- `cd certamen-bot && npm run lint && npm run build`.
+
+## Known loose ends
+- Contest file uploads wait on deploying `apps-script/Code.gs` (now with a
+  `fetch` op; the HMAC string is `ts.op.folderId.name.fileId`) — see
+  `docs/TODO.md` §2.
+- Certamen routes are unauthenticated: `sync-user` overwrites any PIN, PINs
+  are plaintext and returned by `login`, `questions/batch?replace` wipes the
+  bank. Documented only (`SECURITY.md` §8), by the commissioners' choice.
+- Per-person redaction built (migration 010, `lib/roster.py:redact`, `POST /sponsor/people/{id}/redact`); archive/deletion script and durable backup remain — `PRIVACY.md` §8.
+- `certamen-bot/bun.lock` is stale (still lists tailwind and lucide-react);
+  npm's `package-lock.json` is current.

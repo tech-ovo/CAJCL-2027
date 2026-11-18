@@ -14,7 +14,7 @@ these people rather than duplicating them.
 No student. No parent. No guardian. Not one.
 
 The whole thing is reproducible from a fixed seed, so re-running it produces the
-same schools, the same rosters, and the same spread of completion. Access codes
+same schools, the same rosters, and the same spread of completion. Login tokens
 are the deliberate exception: they come from `secrets`, never from the seeded
 generator, because a reproducible credential is not a credential. The script
 prints the ones a presenter needs and writes them to demo-codes.txt, which is
@@ -30,6 +30,7 @@ presentation can be rerun cleanly if something goes wrong mid-demo.
 from __future__ import annotations
 
 import argparse
+import json
 import pathlib
 import random
 import sys
@@ -40,7 +41,8 @@ for _stream in (sys.stdout, sys.stderr):
     if hasattr(_stream, "reconfigure"):
         _stream.reconfigure(encoding="utf-8", errors="replace")
 
-from backend.lib import auth, clock, settings, stats  # noqa: E402
+from backend.lib import (auth, clock, contests, joining, olympika, potluck,  # noqa: E402
+                         settings, stats)
 from backend.lib.db import connect  # noqa: E402
 from backend.lib import migrate as migrate_runner  # noqa: E402
 
@@ -285,6 +287,16 @@ class Seeder:
         self._seed_scl(days_ago)
         step("payments")
         self._seed_payment(uni, days_ago)
+        step("pre-convention contests")
+        self._seed_contests(uni, days_ago)
+        step("students waiting on a join code")
+        self._seed_pending(uni, days_ago)
+        step("the photo contest")
+        self._seed_photos(uni, days_ago)
+        step("the activities potluck")
+        self._seed_potluck(uni, days_ago)
+        step("the schedule and Olympika")
+        self._seed_olympika(days_ago)
         step("done")
         self._finish()
         return self.codes
@@ -575,8 +587,343 @@ class Seeder:
                                    "previous_total_cents": 0},
                      ts=when)
 
+    def _seed_contests(self, uni: int, days_ago) -> None:
+        """Slogans, a Publicity portfolio, a judge, and a submitted ballot.
+
+        Text entries only: a file entry needs Drive, and the seed must run
+        without it. One division of English slogans is ranked so Results has
+        something to show and Judging still has work left to do.
+        """
+        english = [
+            "Latin: the language that never gets old",
+            "Veni, vidi, studied",
+            "Ask me about my declensions",
+            "JCL: where the past is present",
+            "Keep calm and conjugate",
+            "Honk if you love the ablative",
+        ]
+        latin = [
+            ("Lingua Latina numquam moritur", "The Latin language never dies"),
+            ("Carpe librum", "Seize the book"),
+            ("Disce, gaude, vince", "Learn, rejoice, win"),
+        ]
+        with self.db.tx() as tx:
+            by_key = {c["key"]: c for c in contests.load(tx)}
+            judge_id, code = self._person(
+                tx, uni, "Rosalind", "", "Achebe", person_type="adult",
+                adult_type="other", role="contest_judge", created=days_ago(30),
+                email="rosalind.achebe@example.org", latin_knowledge="advanced",
+                meal="regular")
+            self.codes["Contest judge: Rosalind Achebe (sees entries without names)"] = code
+
+            school = dict(tx.one("schools.get", (uni,)))
+            for index, pid in enumerate(self.uni_delegate_ids[:len(english)]):
+                person = dict(tx.one("people.get", (pid,)))
+                if person["status"] != "active":
+                    continue
+                when = days_ago(20 - index)
+                for key, text, translation in (
+                        [("slogan_english", english[index], None)]
+                        + ([("slogan_latin", *latin[index])] if index < len(latin) else [])):
+                    contest = by_key[key]
+                    entry_id = tx.insert("contests.entry_create", (
+                        contest["item_id"], uni, pid,
+                        contests.division_for(contest, school, person),
+                        None, text, translation, None, None, None, None,
+                        None, None, None, None, None, pid, when, when))
+                    tx.audit("contest.enter",
+                             f"{person['first_name']} {person['last_name']} entered "
+                             f"their {contest['name']}.",
+                             actor_person_id=pid, school_id=uni,
+                             entity_type="contest_entry", entity_id=entry_id, ts=when)
+
+            publicity = by_key["publicity"]
+            entry_id = tx.insert("contests.entry_create", (
+                publicity["item_id"], uni, None, "HS", None, None, None,
+                "https://docs.google.com/document/d/example-portfolio/edit",
+                "Media\nPosters/Displays at school\nBest Club Swag",
+                None, None, None, None, None, None, None,
+                self.uni_sponsor_id, days_ago(9), days_ago(9)))
+            tx.audit("contest.enter",
+                     "Mark Michalak entered University High School's Publicity.",
+                     actor_person_id=self.uni_sponsor_id, school_id=uni,
+                     entity_type="contest_entry", entity_id=entry_id, ts=days_ago(9))
+
+            # Rank one division so Results has something to show, and leave the
+            # others unranked so Judging still has work left to do.
+            slogan = by_key["slogan_english"]
+            rows = tx.all("contests.entries_for_judging", (slogan["item_id"],))
+            groups = contests.groups_of(slogan, rows)
+            if groups:
+                division, facet = groups[0]
+                in_group = [r["id"] for r in rows
+                            if r["division"] == division and facet in contests.facets_of(slogan, r)]
+                places = {entry_id: place for place, entry_id in enumerate(in_group[:slogan["places"]], 1)}
+                payload = {
+                    "division": division,
+                    "facet": facet,
+                    "places": places,
+                    "comment": "Sharp phrasing across the board.",
+                    "submit": True,
+                }
+                ballot = contests.check_ballot(slogan, rows, payload)
+                when = days_ago(3)
+                tx.run("contests.ballot_upsert", (
+                    slogan["item_id"], ballot["division"], ballot["facet"], judge_id,
+                    ballot["comment"], ballot["status"], when, when))
+                ballot_id = tx.value("contests.ballot_get", (
+                    slogan["item_id"], judge_id, ballot["division"], ballot["facet"]))
+                tx.run("contests.ballot_places_delete", (ballot_id,))
+                for place, entry_id in ballot["places"]:
+                    tx.run("contests.ballot_place_create", (ballot_id, place, entry_id))
+                where = ballot["division"] + (f", {ballot['facet']}" if ballot["facet"] else "")
+                tx.audit("contest.rank",
+                         f"Rosalind Achebe handed in a ranking for {slogan['name']} ({where}).",
+                         actor_person_id=judge_id, entity_type="contest",
+                         entity_id=slogan["item_id"], ts=when,
+                         changed_fields=["places", "comment", "status"])
+
+    def _seed_pending(self, uni: int, days_ago) -> None:
+        """Three students who joined University High with its join code and are
+        still waiting for a sponsor: the state the sponsor's "Waiting for
+        approval" panel and the chairs' "preliminary" figures exist for."""
+        with self.db.tx() as tx:
+            for first, last, grade, level in [
+                    ("Noor", "Castellanos", 10, "HS-2"),
+                    ("Theo", "Abernathy", 9, "HS-1"),
+                    ("Priya", "Lindqvist", 11, "HS-3")]:
+                pid, code = self._person(
+                    tx, uni, first, "", last, role="delegate",
+                    created=days_ago(2), grade=grade, latin_level=level,
+                    raw=f"{first} {last}")
+                tx.run("people.set_approval", ("pending", days_ago(2), pid))
+                tx.audit("person.join",
+                         f"{first} {last} joined University High School with "
+                         f"its join code and is waiting for approval.",
+                         actor_person_id=pid, school_id=uni,
+                         entity_type="person", entity_id=pid, ts=days_ago(2))
+                self.codes[f"Preliminary delegate: {first} {last} "
+                           f"(University High School)"] = code
+
+    def _seed_photos(self, uni: int, days_ago) -> None:
+        """An Activities chair, and the photo contest open with two categories.
+
+        No photos: every photo is a file in Drive, and the seed writes none.
+        Upload one from a delegate's Photos page with DRIVE_LOCAL_DIR set."""
+        with self.db.tx() as tx:
+            _, code = self._person(
+                tx, uni, "Marguerite", "", "Okonkwo", person_type="adult",
+                adult_type="other", role="activities_chair", created=days_ago(30),
+                email="marguerite.okonkwo@example.org", latin_knowledge="novice",
+                meal="regular")
+            self.codes["Activities chair: Marguerite Okonkwo (runs the photo contest)"] = code
+            flower = next(r for r in tx.all("photos.categories")
+                          if r["name"] == "Best flower photo")
+            tx.run("photos.category_update", (
+                flower["name"], flower["description"], 1, flower["sort_order"],
+                days_ago(1), flower["id"]))
+            plush_id = tx.insert("photos.category_create", (
+                "Best stuffed animal photo",
+                "A stuffed animal at convention. Bonus points for a toga.",
+                1, 20, days_ago(1), days_ago(1)))
+            tx.audit("photo_category.update",
+                     "Marguerite Okonkwo opened the photo category Best flower photo.",
+                     entity_type="photo_category", entity_id=flower["id"], ts=days_ago(1),
+                     changed_fields=["accepting"])
+            tx.audit("photo_category.create",
+                     "Marguerite Okonkwo added the photo category Best stuffed animal photo.",
+                     entity_type="photo_category", entity_id=plush_id, ts=days_ago(1))
+
+    def _seed_potluck(self, uni: int, days_ago) -> None:
+        """Three activities that need helpers, one on the schedule, and two
+        offers: an adult's (approved at once) and a delegate's (waiting on the
+        sponsor, so the roster's potluck panel has something in it)."""
+        with self.db.tx() as tx:
+            now = days_ago(2)
+            made = {}
+            for name, blurb, place, day, start, end, capacity, order in [
+                ("Face painting", "Paint faces at the welcome fair. No experience needed.",
+                 "Courtyard", "2027-03-12", "14:00", "15:30", 4, 10),
+                ("Sand art", "Help younger delegates fill bottles with coloured sand.",
+                 "Gallery", "2027-03-12", "14:00", "15:00", 3, 20),
+                ("Registration desk", "Greet arrivals and hand out packets.",
+                 None, None, None, None, None, 30),
+            ]:
+                starts = ends = None
+                if day:
+                    starts = clock.local_to_utc(day, start)
+                    ends = clock.local_to_utc(day, end)
+                made[name] = tx.insert("potluck.activity_create", (
+                    name, blurb, place, starts, ends, capacity, 1, order, now, now))
+                potluck.sync_schedule(tx, made[name], now)
+                tx.audit("potluck.create",
+                         f"Marguerite Okonkwo added the potluck activity {name}.",
+                         entity_type="potluck_activity", entity_id=made[name], ts=now)
+
+            rows = [r for r in tx.all("roster.list", (uni,)) if r["status"] == "active"
+                    and r["approval"] == "approved"]
+            adult = next((r for r in rows if r["person_type"] == "adult"), None)
+            delegate = next((r for r in rows if r["person_type"] == "delegate"), None)
+            if adult:
+                tx.run("potluck.signup_add", (adult["id"], made["Registration desk"],
+                                              "approved", now, now, adult["id"]))
+            if delegate:
+                tx.run("potluck.signup_add", (delegate["id"], made["Face painting"],
+                                              "pending", now, None, None))
+                tx.audit("potluck.update",
+                         f"{delegate['first_name']} {delegate['last_name']}'s "
+                         f"activities potluck picks were saved by themselves (1 chosen).",
+                         school_id=uni, entity_type="person", entity_id=delegate["id"],
+                         changed_fields=["potluck"], ts=now)
+
+    def _seed_olympika(self, days_ago) -> None:
+        """The master schedule, and Olympika part-way through its preparation.
+
+        A Logistics chair with a two-day schedule; an Athletics Director with
+        track events in every state (heats dealt, heats set but not dealt,
+        closed), a chess session, and Ultimate Frisbee with six teams, a
+        bracket drawn and timed, and its first game scored.
+        """
+        with self.db.tx() as tx:
+            pool = {}
+            for school_id in [r["id"] for r in tx.all("schools.all_ids")]:
+                pool[school_id] = [
+                    r["id"] for r in tx.all("roster.list", (school_id,))
+                    if r["person_type"] == "delegate" and r["status"] == "active"
+                    and r["approval"] == "approved"]
+            pool = {k: v for k, v in pool.items() if v}
+
+            director_id, code = self._person(
+                tx, self.uni_id, "Theodora", "", "Vance", person_type="adult",
+                adult_type="other", role="athletics_director", created=days_ago(30),
+                email="theodora.vance@example.org", latin_knowledge="novice",
+                meal="regular")
+            self.codes["Athletics Director: Theodora Vance (runs Olympika)"] = code
+            _, code = self._person(
+                tx, self.uni_id, "Rafael", "", "Quintero", person_type="adult",
+                adult_type="other", role="logistics_chair", created=days_ago(30),
+                email="rafael.quintero@example.org", latin_knowledge="novice",
+                meal="regular")
+            self.codes["Logistics chair: Rafael Quintero (keeps the schedule)"] = code
+
+            friday, saturday = "2027-03-12", "2027-03-13"
+
+            def stamp(day, time):
+                return clock.local_to_utc(day, time)
+
+            now = days_ago(3)
+            for title, description, place, day, start, end in [
+                ("Check-in and registration", "Pick up packets and name tags.",
+                 "Main lobby", friday, "08:00", "09:30"),
+                ("Opening ceremony", None, "Auditorium", friday, "09:30", "10:15"),
+                ("Academic testing", "Bring a pencil. Rooms are on your packet.",
+                 "Classroom wing", friday, "10:30", "12:00"),
+                ("Lunch", None, "Cafeteria", friday, "12:00", "13:00"),
+                ("Certamen preliminaries", None, "Library", friday, "16:00", "17:30"),
+                ("Banquet", "Dress is formal toga or business casual.",
+                 "Cafeteria", friday, "18:30", "20:00"),
+                ("Breakfast", None, "Cafeteria", saturday, "07:30", "08:30"),
+                ("Creative arts showcase", None, "Gallery", saturday, "10:00", "11:30"),
+                ("Lunch", None, "Cafeteria", saturday, "12:00", "13:00"),
+                ("Awards assembly", "Results of every contest and test.",
+                 "Auditorium", saturday, "16:00", "17:30"),
+                ("Departures", None, "Main lobby", saturday, "17:30", None),
+            ]:
+                tx.insert("schedule.create", (
+                    title, description, place, stamp(day, start),
+                    stamp(day, end) if end else None, 1, now, now))
+
+            def new_event(name, kind, place, opened, description, limit=None, order=0):
+                return {"id": tx.insert("olympika.event_create", (
+                    name, description, kind, place, 1 if opened else 0, limit,
+                    order, now, now)), "name": name}
+
+            def sign_up(event, count):
+                chapters = list(pool)
+                entered = 0
+                for index in range(count):
+                    school = chapters[index % len(chapters)]
+                    members = pool[school]
+                    person = members[(index // len(chapters)) % len(members)]
+                    if tx.one("olympika.signup_for_person", (event["id"], person)):
+                        continue
+                    tx.insert("olympika.signup_create",
+                              (event["id"], person, school, now))
+                    entered += 1
+                return entered
+
+            dash = new_event("100 m dash", "individual", "Track", True,
+                             "Sprint. Three entrants per chapter.", limit=3, order=10)
+            olympika.set_heat_count(tx, dash, 4, olympika.check_heat_plan({
+                "date": friday, "start": "14:00", "minutes_between": 15,
+                "minutes_long": 10}), now)
+            sign_up(dash, 34)
+            olympika.assign_heats(tx, dash, self.rng, now)
+
+            run = new_event("400 m run", "individual", "Track", True,
+                            "One lap.", order=20)
+            olympika.set_heat_count(tx, run, 2, olympika.check_heat_plan({
+                "date": friday, "start": "15:15", "minutes_between": 20,
+                "minutes_long": 15}), now)
+            sign_up(run, 18)
+
+            new_event("Mile run", "individual", "Track", False,
+                      "Four laps. Sign-up opens at convention.", order=30)
+
+            chess = new_event("Chess", "individual", "Library", True,
+                              "Rounds are paired on arrival.", order=40)
+            olympika.set_heat_count(tx, chess, 1, olympika.check_heat_plan({
+                "date": saturday, "start": "09:00", "minutes_between": 0,
+                "minutes_long": 150}), now)
+            sign_up(chess, 12)
+
+            new_event("Kickball", "team", "Back field", True,
+                      "A team from one chapter. One delegate signs up for it.",
+                      limit=2, order=60)
+
+            frisbee = dict(next(r for r in tx.all("olympika.events")
+                                if r["name"] == "Ultimate Frisbee"))
+            tx.run("olympika.event_update", (
+                frisbee["name"], frisbee["description"], frisbee["kind"],
+                "Main lawn", 1, frisbee["max_per_school"], frisbee["sort_order"],
+                now, frisbee["id"]))
+            mascots = ["Flying Aquilae", "Fighting Gladiators", "Ultimate Ursae",
+                       "Disc Dominus", "Lupi Volantes", "Rapid Rhetores"]
+            for school, mascot in zip(list(pool)[:6], mascots):
+                captain = pool[school][0]
+                school_row = tx.one("schools.get", (school,))
+                tx.insert("olympika.team_create", (
+                    frisbee["id"], school, captain,
+                    f"{school_row['name'].split()[0]} {mascot}", now, now))
+            olympika.form_bracket(tx, frisbee, self.rng, olympika.check_game_plan({
+                "date": saturday, "start": "13:00", "minutes": 30,
+                "fields": "Field 1, Field 2"}), now)
+            first = next(m for m in tx.all("olympika.matches_for_event", (frisbee["id"],))
+                         if not olympika.is_bye(m))
+            olympika.record_result(tx, dict(first), first["team_a_id"], 11, 8, now)
+
+            for event in (dash, run, chess, frisbee):
+                olympika.sync_schedule(tx, event["id"], now)
+
+            tx.audit("olympika_event.create",
+                     "Theodora Vance set up the Olympika events, heats and "
+                     "the Ultimate Frisbee bracket.",
+                     actor_person_id=director_id, entity_type="olympika_event",
+                     ts=now)
+
     def _finish(self) -> None:
         """Recompute every counter, and raise the demonstration-data marker."""
+        # Every chapter gets its join code, as a chapter made on the dashboard
+        # would. Shown beside the login tokens: a presenter needs both.
+        with self.db.tx() as tx:
+            for school in tx.all("schools.all_including_organizations"):
+                if school["kind"] != "chapter":
+                    continue
+                code = joining.ensure_code(tx, dict(school))
+                self.codes[f"Join code: {school['name']}"] = joining.display(code)
+            tx.audit("school.join_code",
+                     "Demonstration join codes were created for every chapter.")
+
         with self.db.tx() as tx:
             tx.run("settings.update", ("1", clock.now_iso(), None, "ops.demo_mode"))
             tx.audit("settings.update",
@@ -615,7 +962,7 @@ def main() -> int:
           f"({public['schools_ms']} middle school, {public['schools_hs']} high school)")
     print(f"  {public['delegates']} delegates, {public['adults']} adults")
     print()
-    print("ACCESS CODES FOR THE DEMO (also written to demo-codes.txt)")
+    print("LOGIN TOKENS FOR THE DEMO (also written to demo-codes.txt)")
     print("These are freshly generated every run: a reproducible code is not a code.")
     print()
     lines = [f"{label}\n    {code}" for label, code in codes.items()]
@@ -624,7 +971,7 @@ def main() -> int:
 
     out = pathlib.Path("demo-codes.txt")
     out.write_text(
-        "Demonstration access codes - fabricated data, safe to lose.\n"
+        "Demonstration login tokens - fabricated data, safe to lose.\n"
         "Regenerated every time scripts/seed.py runs.\n\n" + "\n".join(lines) + "\n",
         encoding="utf-8")
 

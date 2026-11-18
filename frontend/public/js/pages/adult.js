@@ -15,6 +15,7 @@
 import * as api from "../api.js";
 import { add, el, clear, tabula, field, input, select, button, errorSummary,
          renderMarkdown, personNumber, guardUnsaved, draft } from "../ui.js";
+import { potluckSection, potluckKey } from "../potluck.js";
 
 // Last and never the default; see the note in activity.js.
 const MEALS = [["", "Choose one"], ["regular", "Regular"],
@@ -50,6 +51,8 @@ function shortType(value) {
 export async function adultSheetPage(host) {
   let sheet = await api.get("/me/adult-sheet", { statusHost: host });
   let selected = new Set(sheet.selected);
+  // The activities potluck: the ids of the activities they would help with.
+  let helping = new Set(sheet.potluck ? sheet.potluck.selected : []);
   let person = { ...sheet.person };
   /* A SPONSOR IS A LATIN TEACHER. Defaulting them to "None" made every one of
    * them correct the form, and the ones who did not were quietly excluded from
@@ -91,6 +94,7 @@ export async function adultSheetPage(host) {
     person = { ...person, ...(value.person || {}) };
     knowledge = value.knowledge || knowledge;
     selected = new Set(value.selected || []);
+    helping = new Set(value.helping || [...helping]);
     restored = true;
     dirty = true;
   }
@@ -120,6 +124,7 @@ export async function adultSheetPage(host) {
       availability_note: person.availability_note || "",
       knowledge,
       selected: [...selected].sort(),
+      helping: potluckKey(helping),
     });
   }
 
@@ -128,7 +133,7 @@ export async function adultSheetPage(host) {
     refreshSubmit();
     if (dirty) {
       held.save({ snapshot: snapshot(), person, knowledge,
-                  selected: [...selected] });
+                  selected: [...selected], helping: [...helping] });
     } else {
       held.clear();
     }
@@ -232,6 +237,12 @@ export async function adultSheetPage(host) {
         el("div", { class: "choices choices--two" },
           ...category.items.map((item) => choice(category, item)))));
     }
+
+    const potluckNode = potluckSection({
+      potluck: sheet.potluck, selected: helping, locked: sheet.locked,
+      onChange: touch,
+    });
+    if (potluckNode) add(form, potluckNode);
 
     add(form, 
       el("fieldset", {},
@@ -381,6 +392,7 @@ export async function adultSheetPage(host) {
         latin_knowledge: knowledge,
         availability_note: person.availability_note || null,
         selected: [...selected],
+        potluck: [...helping],
       });          // the button shows the wait; see ui.js button()
 
       warnings = result.warnings || [];
@@ -388,6 +400,7 @@ export async function adultSheetPage(host) {
       sheet = await api.get("/me/adult-sheet");
       person = { ...sheet.person };
       selected = new Set(sheet.selected);
+      helping = new Set(sheet.potluck ? sheet.potluck.selected : []);
       knowledge = person.latin_knowledge
         || (person.adult_type === "sponsor" ? "advanced" : "none");
       // What is now on the server becomes the new baseline, and the local

@@ -8,7 +8,7 @@
 -- The login lookup. SEARCH people USING INDEX idx_people_code_hmac.
 SELECT p.id, p.school_id, p.person_type, p.adult_type, p.first_name,
        p.middle_name, p.last_name, p.suffix, p.status, p.code_prefix,
-       p.pepper_version, p.forms_unlocked, p.latin_level, p.grade,
+       p.pepper_version, p.forms_unlocked, p.approval, p.latin_level, p.grade,
        p.latin_knowledge, p.meal, p.email, p.cell_phone,
        s.name AS school_name, s.level AS school_level, s.kind AS school_kind,
        s.number AS school_number, p.school_seq,
@@ -16,6 +16,20 @@ SELECT p.id, p.school_id, p.person_type, p.adult_type, p.first_name,
 FROM people p
 JOIN schools s ON s.id = p.school_id
 WHERE p.code_hmac = ?;
+
+-- name: auth.person_by_id
+-- The same row the login lookup returns, by primary key. For a session opened
+-- in the transaction that created the person (joining with a chapter code).
+SELECT p.id, p.school_id, p.person_type, p.adult_type, p.first_name,
+       p.middle_name, p.last_name, p.suffix, p.status, p.code_prefix,
+       p.pepper_version, p.forms_unlocked, p.approval, p.latin_level, p.grade,
+       p.latin_knowledge, p.meal, p.email, p.cell_phone,
+       s.name AS school_name, s.level AS school_level, s.kind AS school_kind,
+       s.number AS school_number, p.school_seq,
+       s.billing_exempt, s.status AS school_status
+FROM people p
+JOIN schools s ON s.id = p.school_id
+WHERE p.id = ?;
 
 -- name: auth.scopes_for_person
 -- The ONLY path from a person to a scope: person_roles -> roles -> role_scopes.
@@ -51,7 +65,7 @@ SELECT sess.id AS session_id, sess.person_id, sess.impersonator_person_id,
        sess.last_seen_at,
        p.school_id, p.person_type, p.adult_type, p.first_name, p.middle_name,
        p.last_name, p.suffix, p.status, p.code_prefix, p.forms_unlocked,
-       p.latin_level, p.grade, p.latin_knowledge, p.meal, p.email, p.cell_phone,
+       p.approval, p.latin_level, p.grade, p.latin_knowledge, p.meal, p.email, p.cell_phone,
        s.name AS school_name, s.level AS school_level, s.kind AS school_kind,
        s.number AS school_number, p.school_seq,
        s.billing_exempt, s.status AS school_status,
@@ -118,7 +132,18 @@ VALUES (?, ?, ?, ?, ?);
 -- via idx_login_attempts_ip.
 SELECT COUNT(*) AS failures
 FROM login_attempts
-WHERE ip_hash = ? AND succeeded = 0 AND attempted_at > ?;
+WHERE ip_hash = ? AND succeeded = 0 AND attempted_at > ?
+  AND attempted_code_hmac NOT LIKE 'j%';
+
+-- name: auth.join_failures_by_ip
+-- Wrong JOIN codes from one network. Counted apart from sign-in failures
+-- (their attempted hash is stored with a leading 'j', which a hex digest never
+-- has) and with a more generous limit in auth.py: a whole classroom typing a
+-- code off one printed sheet from one school address is the normal case.
+SELECT COUNT(*) AS failures
+FROM login_attempts
+WHERE ip_hash = ? AND succeeded = 0 AND attempted_at > ?
+  AND attempted_code_hmac LIKE 'j%';
 
 -- name: auth.attempts_by_code
 -- 5 failures per code per hour, via idx_login_attempts_code. This is what

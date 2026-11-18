@@ -17,7 +17,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 # Set before anything imports auth, so the pepper is deterministic across a run.
 os.environ.setdefault("CODE_PEPPER", "test-pepper")
 
-from backend.lib import auth, clock, settings, stats  # noqa: E402
+from backend.lib import auth, clock, joining, settings, stats  # noqa: E402
 from backend.lib.db import connect  # noqa: E402
 from backend.lib.migrate import migration_files  # noqa: E402
 
@@ -28,6 +28,7 @@ class Fixture:
     def __init__(self, tmp_path):
         self.path = str(pathlib.Path(tmp_path) / "test.db")
         self.codes: dict[str, str] = {}
+        self.join_codes: dict[str, str] = {}
         self._principals: dict[str, int] = {}
 
     def __enter__(self) -> "Fixture":
@@ -57,6 +58,9 @@ class Fixture:
             discount_cents, discount_reason, None,
             clock.now_iso(), clock.now_iso()))
         tx.run("schools.stats_init", (school_id, clock.now_iso()))
+        if kind == "chapter":
+            self.join_codes[name] = joining.ensure_code(
+                tx, {"id": school_id, "join_code": None})
         return school_id
 
     def _person(self, tx, key, school_id, *, person_type="delegate",

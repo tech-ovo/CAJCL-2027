@@ -19,8 +19,12 @@ EVERY ENDPOINT DECLARES ITS SCOPE AND ITS SCHOOL RULE
 
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import os
+import random
+import re
 import uuid
 from dataclasses import dataclass
 
@@ -28,7 +32,9 @@ from fastapi import Body, Depends, FastAPI, Header, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
-from .lib import auth, catalog, clock, codes, forms, printing, roster, settings, stats
+from .lib import (auth, catalog, clock, codes, contests, drive, forms, joining,
+                  olympika, pages, photos, potluck, printing, roster, schedule, settings,
+                  stats)
 from .lib.db import connect
 
 # GitHub Pages plus the custom domain, and nothing else. The frontend never
@@ -54,13 +60,29 @@ app = FastAPI(title="CAJCL 2027 Convention",
 # mistake or a probe, and either way the answer is the same.
 MAX_BODY_BYTES = 1_048_576
 
+# THE TWO EXCEPTIONS: a pre-convention contest entry and a photo contest
+# entry, which carry their file base64-encoded. contests.MAX_FILE_BYTES is the
+# real limit and is checked on the decoded bytes; this is that, plus base64's
+# third, plus room for the rest of the form and a photo's thumbnail. Only
+# those two paths, and only POST.
+MAX_UPLOAD_BODY_BYTES = contests.MAX_FILE_BYTES * 4 // 3 + 1_048_576
+_UPLOAD_PATH = re.compile(r"^/me/(?:contests|photos)/\d+$")
+
 
 @app.middleware("http")
 async def limit_body_size(request: Request, call_next):
     declared = request.headers.get("content-length")
     if declared is not None:
         try:
-            if int(declared) > MAX_BODY_BYTES:
+            upload = (request.method == "POST"
+                      and bool(_UPLOAD_PATH.match(request.url.path)))
+            limit = MAX_UPLOAD_BODY_BYTES if upload else MAX_BODY_BYTES
+            if upload and int(declared) > limit:
+                message = (f"That file is too large. The limit is "
+                           f"{contests.MAX_FILE_BYTES // 1048576} MB.")
+                return JSONResponse(status_code=413,
+                                    content={"error": message, "detail": message})
+            if int(declared) > limit:
                 return JSONResponse(
                     status_code=413,
                     content={"detail": "That is too large to send. If you are "
@@ -310,6 +332,34 @@ def redeem(request: Request, payload: dict = Body(...)):
     return {"token": token, "person": body}
 
 
+@app.post("/auth/join")
+def join_chapter(request: Request, payload: dict = Body(...)):
+    """Join a chapter with its join code. Public: the code is the credential.
+
+    Creates a PENDING delegate, signs them in, and returns their login token
+    ONCE -- the same kind of code a pasted roster produces, which is the only
+    way back in afterwards. They may fill in their forms at once; their sponsor
+    approves them later. See backend/lib/joining.py.
+    """
+    result = joining.join(
+        database(), payload.get("join_code") or "", payload,
+        ip=client_ip(request), user_agent=request.headers.get("User-Agent"))
+
+    with database().read() as tx:
+        demo = settings.get_bool(tx, "ops.demo_mode")
+    body = result.principal.to_public_dict()
+    body["demo_mode"] = demo
+    body["registration_complete"] = False
+    return {
+        "token": result.token,
+        "person": body,
+        "code": result.code,
+        "school": {"id": result.school["id"], "name": result.school["name"]},
+        "note": "This is the only time this login token is shown. Write it "
+                "down or take a screenshot: it is how you sign in again.",
+    }
+
+
 @app.get("/auth/me")
 def me(principal: auth.Principal = Depends(any_session)):
     with database().read() as tx:
@@ -472,9 +522,14 @@ def get_roster(school_id: int | None = Query(default=None),
         # "Reopen form" button on every row is a control that does nothing.
         forms_closed = clock.is_past(
             settings.get_datetime(tx, "deadline.forms_lock"))
+        # Delegates' offers to help at the potluck that wait on this chapter's
+        # sponsor.
+        potluck_requests = [_potluck_request_view(r) for r in tx.all(
+            "potluck.requests_for_school", (school["id"],))]
     return {
         "school": _school_public(school, principal),
         "people": people,
+        "potluck_requests": potluck_requests,
         "stats": dict(counters) if counters else {},
         "chapter_entries": entries,
         "forms_closed": forms_closed,
@@ -554,6 +609,8 @@ def edit_person(person_id: int, request: Request, payload: dict = Body(...),
                                                   "registration", writes=True)):
     with database().tx(request_id=request_id(request)) as tx:
         person = _person_of(tx, principal, person_id)
+        if person.get("first_name") == "REDACTED":
+            raise auth.ForbiddenError("A redacted attendee cannot be edited.")
         now = clock.now_iso()
 
         if person["person_type"] == "delegate":
@@ -617,6 +674,18 @@ def restore_person(person_id: int, request: Request,
         person, school = _person_and_school(tx, principal, person_id)
         roster.restore(tx, school, principal, person)
     return {"ok": True}
+
+
+@app.post("/sponsor/people/{person_id}/redact")
+def redact_person(person_id: int, request: Request,
+                  principal: auth.Principal = guard("sponsor.people.redact",
+                                                    "sponsor", "registration",
+                                                    writes=True)):
+    with database().tx(request_id=request_id(request)) as tx:
+        person, school = _person_and_school(tx, principal, person_id)
+        roster.redact(tx, school, principal, person)
+    return {"ok": True}
+
 
 
 @app.post("/sponsor/people/{person_id}/regenerate-code")
@@ -699,6 +768,75 @@ def regenerate_many(request: Request, payload: dict = Body(...),
         "note": "These codes are shown once. Print the sheets before leaving "
                 "this page.",
     }
+
+
+@app.post("/sponsor/people/{person_id}/approve")
+def approve_person(person_id: int, request: Request,
+                   principal: auth.Principal = guard("sponsor.people.approve",
+                                                     "sponsor", "registration",
+                                                     writes=True)):
+    """Accept a student who joined with the chapter's join code."""
+    with database().tx(request_id=request_id(request)) as tx:
+        person, school = _person_and_school(tx, principal, person_id)
+        roster.approve(tx, school, principal, person)
+    return {"ok": True}
+
+
+@app.post("/sponsor/people/{person_id}/deny")
+def deny_person(person_id: int, request: Request,
+                principal: auth.Principal = guard("sponsor.people.deny",
+                                                  "sponsor", "registration",
+                                                  writes=True)):
+    """Turn a joining student down. Removes ALL of their data; see roster.deny."""
+    with database().tx(request_id=request_id(request)) as tx:
+        person, school = _person_and_school(tx, principal, person_id)
+        roster.deny(tx, school, principal, person)
+    return {"ok": True}
+
+
+@app.post("/sponsor/approve-all")
+def approve_all(request: Request, payload: dict = Body(default={}),
+                principal: auth.Principal = guard("sponsor.approve_all",
+                                                  "sponsor", "registration",
+                                                  writes=True)):
+    """Approve everyone currently waiting in the chapter, in one transaction."""
+    with database().tx(request_id=request_id(request)) as tx:
+        school = _school_of(tx, principal, payload.get("school_id"))
+        waiting = [dict(r) for r in tx.all("roster.list", (school["id"],))
+                   if r["approval"] == "pending" and r["status"] == "active"]
+        for person in waiting:
+            roster.approve(tx, school, principal, person)
+    return {"ok": True, "approved": len(waiting)}
+
+
+@app.post("/sponsor/join/code")
+def regenerate_join_code(request: Request, payload: dict = Body(default={}),
+                         principal: auth.Principal = guard("sponsor.join.regenerate",
+                                                           "sponsor", "registration",
+                                                           writes=True)):
+    """Replace the chapter's join code. The old one stops working at once.
+
+    Not a secret like a login token, so it is returned and shown whenever it is
+    wanted. Students who already joined keep their own login tokens.
+    """
+    with database().tx(request_id=request_id(request)) as tx:
+        school = _school_of(tx, principal, payload.get("school_id"))
+        code = joining.regenerate(tx, school, principal)
+    return {"join_code": code, "join_open": bool(school["join_open"])}
+
+
+@app.post("/sponsor/join/open")
+def set_join_open(request: Request, payload: dict = Body(...),
+                  principal: auth.Principal = guard("sponsor.join.open",
+                                                    "sponsor", "registration",
+                                                    writes=True)):
+    """Close or reopen joining without changing the code."""
+    is_open = bool(payload.get("open"))
+    with database().tx(request_id=request_id(request)) as tx:
+        school = _school_of(tx, principal, payload.get("school_id"))
+        code = joining.ensure_code(tx, school)
+        joining.set_open(tx, school, principal, is_open)
+    return {"join_code": code, "join_open": is_open}
 
 
 @app.post("/sponsor/people/{person_id}/chapter-leader")
@@ -965,6 +1103,2341 @@ def _self(tx, principal: auth.Principal) -> dict:
 
 
 # ===========================================================================
+# Pre-convention contests
+# ===========================================================================
+#
+# THREE AUDIENCES, THREE SETS OF ENDPOINTS.
+#   /me/contests        a delegate's own entries
+#   /sponsor/contests   a chapter's Publicity portfolio, and its delegates' entries
+#   /judge/...          entries WITHOUT names, and the judge's own rankings.
+#                       Scope `judge` ONLY: the chairs who read the results
+#                       with names attached do not also rank the entries.
+#   /admin/contests     results WITH names, the rules and N, for the chairs
+#
+# A file entry is two steps that cannot share a transaction: Drive first, then
+# the row. Drive is slow, and holding the single write lock across a 20 MB
+# upload would queue every other request on the site behind one student. If
+# the row then fails to write, the file just uploaded is put in Drive's trash.
+
+def _contest_error(message: str) -> catalog.ValidationError:
+    return catalog.ValidationError([message])
+
+
+def _contests_open(tx) -> None:
+    deadline = settings.get(tx, "deadline.contests")
+    if deadline and clock.is_past(deadline):
+        raise _contest_error(
+            f"Pre-convention contests closed on "
+            f"{clock.render_local(deadline, with_time=False)}. Entries can no "
+            f"longer be submitted, changed or withdrawn.")
+
+
+def _deadline_view(tx) -> dict:
+    deadline = settings.get(tx, "deadline.contests")
+    return {"deadline": deadline or None,
+            "closed": bool(deadline) and clock.is_past(deadline)}
+
+
+def _own_entry_view(row) -> dict:
+    """An entry as the person who made it sees it -- including the file name
+    they chose, which a judge never sees."""
+    if row is None:
+        return None
+    return {
+        "id": row["id"],
+        "division": row["division"],
+        "title": row["title"],
+        "text": row["body_text"] if not row["drive_file_id"] else None,
+        "translation": row["translation"],
+        "link_url": row.get("link_url"),
+        "facets": contests.split_lines(row.get("facets")),
+        "word_count": row["word_count"],
+        "word_count_source": row["word_count_source"],
+        "original_name": row["original_name"],
+        "size_bytes": row["size_bytes"],
+        "has_file": bool(row["drive_file_id"]),
+        "submitted_at": row["submitted_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+def _decode_upload(payload: dict, key: str = "file") -> tuple[str, bytes] | None:
+    upload = payload.get(key)
+    if not upload:
+        return None
+    if not isinstance(upload, dict):
+        raise _contest_error("That file did not arrive intact. Try again.")
+    name = str(upload.get("name") or "").strip()[:200]
+    try:
+        data = base64.b64decode(str(upload.get("data") or ""), validate=True)
+    except (binascii.Error, ValueError):
+        raise _contest_error("That file did not arrive intact. Try again.") from None
+    if not name:
+        raise _contest_error("That file has no name.")
+    return name, data
+
+
+def _prepare_entry(contest: dict, payload: dict, existing, person, school) -> dict:
+    """Validate an entry and, for a file, put it in Drive. Returns the columns."""
+    fields = {
+        "title": contests.check_title(contest, payload),
+        "body_text": None, "translation": None, "link_url": None, "facets": None,
+        "word_count": None, "word_count_source": None,
+        "drive_file_id": None, "drive_folder_id": None, "original_name": None,
+        "mime_type": None, "size_bytes": None, "uploaded": False,
+    }
+    kind = contest["entry_kind"]
+    if kind == "text":
+        fields["body_text"], fields["translation"] = \
+            contests.check_text_entry(contest, payload)
+        return fields
+    if kind == "link":
+        fields["link_url"], fields["facets"] = \
+            contests.check_link_entry(contest, payload)
+        return fields
+
+    upload = _decode_upload(payload)
+    counts_words = contest["min_words"] is not None or contest["max_words"] is not None
+
+    if upload is None:
+        # Changing the title, or a declared length, without sending the file
+        # again. A first entry has nothing to keep.
+        if existing is None or not existing["drive_file_id"]:
+            raise _contest_error("Choose the file to upload.")
+        for key in ("body_text", "word_count", "word_count_source", "drive_file_id",
+                    "drive_folder_id", "original_name", "mime_type", "size_bytes"):
+            fields[key] = existing[key]
+        if counts_words and existing["word_count_source"] != "counted":
+            fields["word_count"] = contests.declared_words(payload)
+            fields["word_count_source"] = "declared"
+        return fields
+
+    name, data = upload
+    extension, mime = contests.check_file(contest, name, data)
+    text = contests.read_text(extension, data)
+    if text is not None:
+        fields["body_text"] = text[:contests.MAX_TEXT_KEPT]
+    if counts_words:
+        if text is not None:
+            fields["word_count"] = contests.count_words(text)
+            fields["word_count_source"] = "counted"
+        else:
+            fields["word_count"] = contests.declared_words(payload)
+            fields["word_count_source"] = "declared"
+
+    with database().read() as tx:
+        configured = settings.get(tx, "drive.contests_root")
+    store = drive.client()
+    root = drive.root_folder(configured)
+    contest_folder = store.mkdir(root, contest["name"])
+    chapter_folder = store.mkdir(contest_folder, contests.chapter_folder_name(school))
+    fields["drive_file_id"] = store.upload(
+        chapter_folder, contests.drive_name(person, school, extension), mime, data)
+    fields.update(drive_folder_id=chapter_folder, original_name=name,
+                  mime_type=mime, size_bytes=len(data), uploaded=True)
+    return fields
+
+
+def _write_entry(request: Request, principal: auth.Principal, contest: dict,
+                 school: dict, person: dict | None, division: str,
+                 fields: dict) -> dict:
+    """The row, and its audit entry. Returns the entry as its owner sees it."""
+    now = clock.now_iso()
+    person_id = person["id"] if person else None
+    replaced_file = None
+    who = principal.display_name
+    subject = "their" if person and person["id"] == principal.person_id else (
+        f"{school['name']}'s" if person is None else
+        f"{person['first_name']} {person['last_name']}'s")
+    try:
+        with database().tx(request_id=request_id(request)) as tx:
+            _contests_open(tx)
+            existing = (tx.one("contests.entry_for_person", (person_id, contest["item_id"]))
+                        if person else
+                        tx.one("contests.entry_for_chapter", (school["id"], contest["item_id"])))
+            columns = (division, fields["title"], fields["body_text"],
+                       fields["translation"], fields["link_url"], fields["facets"],
+                       fields["word_count"], fields["word_count_source"],
+                       fields["drive_file_id"], fields["drive_folder_id"],
+                       fields["original_name"], fields["mime_type"],
+                       fields["size_bytes"], principal.person_id)
+            if existing is None:
+                entry_id = tx.insert("contests.entry_create", (
+                    contest["item_id"], school["id"], person_id, *columns, now, now))
+                action, summary = "contest.enter", \
+                    f"{who} entered {subject} {contest['name']}."
+            else:
+                entry_id = existing["id"]
+                tx.run("contests.entry_replace", (*columns, now, entry_id))
+                # Judges ranked the work that was there before.
+                _unrank(tx, entry_id, now)
+                if existing["drive_file_id"] and \
+                        existing["drive_file_id"] != fields["drive_file_id"]:
+                    replaced_file = existing["drive_file_id"]
+                action, summary = "contest.replace", \
+                    f"{who} replaced {subject} {contest['name']} entry."
+            tx.audit(action, summary,
+                     actor_person_id=principal.person_id,
+                     impersonator_person_id=principal.impersonator_person_id,
+                     school_id=school["id"], entity_type="contest_entry",
+                     entity_id=entry_id,
+                     changed_fields=[k for k in ("title", "body_text", "translation",
+                                                 "link_url", "facets", "drive_file_id")
+                                     if fields[k] is not None])
+            row = tx.one("contests.entry_get", (entry_id,))
+    except Exception as error:
+        if fields["uploaded"]:
+            _trash_quietly(fields["drive_file_id"])
+        if "unique" in str(error).lower():
+            raise _contest_error(
+                "That entry was just submitted from somewhere else. Reload the "
+                "page to see it.") from None
+        raise
+
+    if replaced_file:
+        _trash_quietly(replaced_file)
+    return _own_entry_view(row)
+
+
+def _trash_quietly(file_id: str | None) -> None:
+    """Best effort. A stray file in Drive's trash costs nothing; failing the
+    request over it would tell somebody their entry failed when it did not."""
+    if not file_id:
+        return
+    try:
+        drive.client().trash(file_id)
+    except Exception:
+        pass
+
+
+def _unrank(tx, entry_id: int, now: str) -> None:
+    """Take an entry off every judge's ballot, and put those ballots back to
+    draft so the judge sees the gap and hands the list in again."""
+    tx.run("contests.ballots_reopen_for_entry", (now, entry_id))
+    tx.run("contests.ballot_places_delete_for_entry", (entry_id,))
+
+
+def _withdraw_entry(request: Request, principal: auth.Principal, contest: dict,
+                    school: dict, person: dict | None) -> dict:
+    with database().tx(request_id=request_id(request)) as tx:
+        _contests_open(tx)
+        existing = (tx.one("contests.entry_for_person", (person["id"], contest["item_id"]))
+                    if person else
+                    tx.one("contests.entry_for_chapter", (school["id"], contest["item_id"])))
+        if existing is None:
+            raise _contest_error("There is no entry to withdraw.")
+        _unrank(tx, existing["id"], clock.now_iso())
+        tx.run("contests.entry_delete", (existing["id"],))
+        tx.audit("contest.withdraw",
+                 f"{principal.display_name} withdrew "
+                 + ("their" if person and person["id"] == principal.person_id
+                    else f"{school['name']}'s")
+                 + f" {contest['name']} entry.",
+                 actor_person_id=principal.person_id,
+                 impersonator_person_id=principal.impersonator_person_id,
+                 school_id=school["id"], entity_type="contest_entry",
+                 entity_id=existing["id"])
+    _trash_quietly(existing["drive_file_id"])
+    return {"ok": True}
+
+
+def _file_response(row, filename: str) -> Response:
+    if not row["drive_file_id"]:
+        raise auth.ForbiddenError("that entry has no file")
+    data = drive.client().fetch(row["drive_file_id"])
+    return Response(content=data, media_type=row["mime_type"],
+                    headers={
+                        "Content-Disposition": f'inline; filename="{filename}"',
+                        # A judge's laptop may be a shared one.
+                        "Cache-Control": "private, no-store",
+                    })
+
+
+@app.exception_handler(drive.DriveUnavailable)
+async def _drive_unavailable(request: Request, exc: drive.DriveUnavailable):
+    return JSONResponse({"error": str(exc), "kind": "drive"}, status_code=503)
+
+
+# -- a delegate's own entries ----------------------------------------------
+
+@app.get("/me/contests")
+def my_contests(principal: auth.Principal = guard("me.contests", "delegate",
+                                                  school_rule="self")):
+    with database().read() as tx:
+        person = _self(tx, principal)
+        school = dict(tx.one("schools.get", (person["school_id"],)))
+        mine = {row["item_id"]: row
+                for row in tx.all("contests.entries_for_person", (person["id"],))}
+        listed = []
+        for contest in contests.load(tx):
+            if contest["entered_by"] != "delegate":
+                continue
+            view = contests.public_view(contest)
+            try:
+                view["division"] = contests.division_for(contest, school, person)
+                view["division_problem"] = None
+            except catalog.ValidationError as problem:
+                view["division"] = None
+                view["division_problem"] = problem.errors[0]
+            view["entry"] = _own_entry_view(mine.get(contest["item_id"]))
+            listed.append(view)
+        return {
+            **_deadline_view(tx),
+            "can_enter": person["person_type"] == "delegate",
+            "person": {"first_name": person["first_name"], "grade": person["grade"],
+                       "school_name": school["name"], "school_level": school["level"]},
+            "max_file_bytes": contests.MAX_FILE_BYTES,
+            "contests": listed,
+        }
+
+
+def _my_contest(tx, principal: auth.Principal, item_id: int):
+    person = _self(tx, principal)
+    if person["person_type"] != "delegate":
+        raise _contest_error(
+            "Pre-convention contests are entered by delegates. Adults cannot enter.")
+    contest = contests.by_item(tx, item_id)
+    if contest["entered_by"] != "delegate":
+        raise _contest_error(
+            f"{contest['name']} is entered by the chapter, from the sponsor's "
+            f"Contests page.")
+    school = dict(tx.one("schools.get", (person["school_id"],)))
+    return person, school, contest
+
+
+@app.post("/me/contests/{item_id}")
+def submit_my_entry(item_id: int, request: Request, payload: dict = Body(...),
+                    principal: auth.Principal = guard("me.contests.submit", "delegate",
+                                                      school_rule="self", writes=True)):
+    with database().read() as tx:
+        person, school, contest = _my_contest(tx, principal, item_id)
+        _contests_open(tx)
+        division = contests.division_for(contest, school, person)
+        existing = tx.one("contests.entry_for_person", (person["id"], item_id))
+    fields = _prepare_entry(contest, payload, existing, person, school)
+    return {"ok": True,
+            "entry": _write_entry(request, principal, contest, school, person,
+                                  division, fields)}
+
+
+@app.delete("/me/contests/{item_id}")
+def withdraw_my_entry(item_id: int, request: Request,
+                      principal: auth.Principal = guard("me.contests.withdraw",
+                                                        "delegate", school_rule="self",
+                                                        writes=True)):
+    with database().read() as tx:
+        person, school, contest = _my_contest(tx, principal, item_id)
+    return _withdraw_entry(request, principal, contest, school, person)
+
+
+@app.get("/me/contests/{item_id}/file")
+def my_entry_file(item_id: int,
+                  principal: auth.Principal = guard("me.contests.file", "delegate",
+                                                    school_rule="self")):
+    with database().read() as tx:
+        person, _, _ = _my_contest(tx, principal, item_id)
+        row = tx.one("contests.entry_for_person", (person["id"], item_id))
+    if row is None:
+        raise auth.ForbiddenError("there is no entry")
+    return _file_response(row, row["original_name"].replace('"', "'"))
+
+
+# -- a chapter's entries -----------------------------------------------------
+
+@app.get("/sponsor/contests")
+def chapter_contests(school_id: int | None = Query(default=None),
+                     principal: auth.Principal = guard("sponsor.contests", "chapter",
+                                                       "registration", "academics")):
+    """The chapter's Publicity portfolio, and -- for a sponsor or a chair --
+    which of the chapter's delegates have entered what.
+
+    A chapter leader is a delegate, and gets the portfolio without the list of
+    their classmates' entries.
+    """
+    with database().read() as tx:
+        school = _school_of(tx, principal, school_id)
+        rows = [dict(r) for r in tx.all("contests.entries_for_school", (school["id"],))]
+        catalog_ = contests.load(tx)
+        names = {c["item_id"]: c["name"] for c in catalog_}
+        chapter = []
+        for contest in catalog_:
+            if contest["entered_by"] != "chapter":
+                continue
+            view = contests.public_view(contest)
+            try:
+                view["division"] = contests.division_for(contest, school, None)
+                view["division_problem"] = None
+            except catalog.ValidationError as problem:
+                view["division"] = None
+                view["division_problem"] = problem.errors[0]
+            mine = next((r for r in rows if r["item_id"] == contest["item_id"]
+                         and r["person_id"] is None), None)
+            view["entry"] = None if mine is None else {
+                "id": mine["id"], "division": mine["division"],
+                "link_url": mine["link_url"],
+                "facets": contests.split_lines(mine["facets"]),
+                "submitted_at": mine["submitted_at"], "updated_at": mine["updated_at"],
+            }
+            chapter.append(view)
+
+        sees_students = principal.has_any("sponsor", "registration", "academics")
+        students = [{
+            "id": r["id"],
+            "item_id": r["item_id"],
+            "contest": names.get(r["item_id"], "—"),
+            "person_id": r["person_id"],
+            "first_name": r["first_name"], "last_name": r["last_name"],
+            "school_seq": r["school_seq"], "status": r["status"],
+            "division": r["division"], "title": r["title"],
+            "text": r["body_text"] if r["original_name"] is None else None,
+            "translation": r["translation"],
+            "file": r["original_name"],
+            "has_file": bool(r["has_file"]),
+            "size_bytes": r["size_bytes"],
+            "word_count": r["word_count"],
+            "updated_at": r["updated_at"],
+        } for r in rows if r["person_id"] is not None] if sees_students else None
+
+        return {**_deadline_view(tx),
+                "school": _school_public(school, principal),
+                "contests": chapter,
+                "students": students}
+
+
+@app.get("/sponsor/contests/entries/{entry_id}/file")
+def chapter_entry_file(entry_id: int,
+                       principal: auth.Principal = guard("sponsor.contests.file",
+                                                         "sponsor", "registration",
+                                                         "academics")):
+    """A delegate's file, for their sponsor. The entry's own chapter is what
+    is checked: a sponsor naming another school's entry is refused."""
+    with database().read() as tx:
+        row = tx.one("contests.entry_get", (entry_id,))
+        if row is None:
+            raise auth.ForbiddenError("no such entry")
+        _school_of(tx, principal, row["school_id"])
+        person = (tx.one("people.get", (row["person_id"],))
+                  if row["person_id"] is not None else None)
+        contest = contests.by_item(tx, row["item_id"])
+    extension = contests.extension_of(row["original_name"] or "")
+    who = f"{person['last_name']}, {person['first_name']}" if person else "Chapter"
+    name = f"{contest['name']} - {who}.{extension}".replace('"', "'")
+    return _file_response(row, name)
+
+
+def _chapter_contest(tx, principal: auth.Principal, school_id, item_id: int):
+    school = _school_of(tx, principal, school_id)
+    contest = contests.by_item(tx, item_id)
+    if contest["entered_by"] != "chapter":
+        raise _contest_error(
+            f"{contest['name']} is entered by each delegate, from their own "
+            f"Contests page.")
+    return school, contest
+
+
+@app.post("/sponsor/contests/{item_id}")
+def submit_chapter_entry(item_id: int, request: Request, payload: dict = Body(...),
+                         principal: auth.Principal = guard("sponsor.contests.submit",
+                                                           "chapter", "registration",
+                                                           writes=True)):
+    with database().read() as tx:
+        school, contest = _chapter_contest(tx, principal, payload.get("school_id"), item_id)
+        _contests_open(tx)
+        division = contests.division_for(contest, school, None)
+        existing = tx.one("contests.entry_for_chapter", (school["id"], item_id))
+    fields = _prepare_entry(contest, payload, existing, None, school)
+    return {"ok": True,
+            "entry": _write_entry(request, principal, contest, school, None,
+                                  division, fields)}
+
+
+@app.delete("/sponsor/contests/{item_id}")
+def withdraw_chapter_entry(item_id: int, request: Request,
+                           school_id: int | None = Query(default=None),
+                           principal: auth.Principal = guard("sponsor.contests.withdraw",
+                                                             "chapter", "registration",
+                                                             writes=True)):
+    with database().read() as tx:
+        school, contest = _chapter_contest(tx, principal, school_id, item_id)
+    return _withdraw_entry(request, principal, contest, school, None)
+
+
+# -- judging -----------------------------------------------------------------
+
+def _judge_only(principal: auth.Principal) -> None:
+    """An Academics chair does not judge, even holding the judge role as well.
+
+    The chairs read the results with names attached; a chair who also scored
+    would be judging entries they can identify. Checked against the scopes a
+    person actually holds, so `*` alone -- which implies every scope -- is not
+    what trips it.
+    """
+    if "academics" in principal.scopes:
+        raise auth.ForbiddenError(
+            "Academics chairs read the results and do not judge. Ask for the "
+            "Contest Judge role to be given to somebody else.")
+
+
+@app.get("/judge/contests")
+def judge_contests(principal: auth.Principal = guard("judge.contests", "judge",
+                                                     school_rule="any")):
+    _judge_only(principal)
+    with database().read() as tx:
+        progress = {r["item_id"]: dict(r)
+                    for r in tx.all("contests.judge_progress", (principal.person_id,))}
+        listed = []
+        for contest in contests.load(tx):
+            counts = progress.get(contest["item_id"], {})
+            groups = contests.groups_of(
+                contest, tx.all("contests.entry_groups", (contest["item_id"],)))
+            listed.append({"item_id": contest["item_id"], "name": contest["name"],
+                           "entered_by": contest["entered_by"],
+                           "division_label": contest["division_label"],
+                           "facet_count": len(contest["facet_list"]),
+                           "places": contest["places"],
+                           "entries": counts.get("entries", 0),
+                           "groups": len(groups),
+                           "handed_in": counts.get("handed_in", 0)})
+        return {**_deadline_view(tx), "contests": listed}
+
+
+@app.get("/judge/contests/{item_id}")
+def judge_contest(item_id: int,
+                  principal: auth.Principal = guard("judge.contest", "judge",
+                                                    school_rule="any")):
+    _judge_only(principal)
+    with database().read() as tx:
+        contest = contests.by_item(tx, item_id)
+        rows = tx.all("contests.entries_for_judging", (item_id,))
+        ballots = tx.all("contests.ballots_for_judge", (item_id, principal.person_id))
+        return {**_deadline_view(tx),
+                "contest": contests.public_view(contest),
+                **contests.judge_view(contest, rows, ballots)}
+
+
+@app.put("/judge/contests/{item_id}/ballot")
+def judge_ballot(item_id: int, request: Request, payload: dict = Body(...),
+                 principal: auth.Principal = guard("judge.contests.ballot", "judge",
+                                                   school_rule="any", writes=True)):
+    """One judge's top N for one division (and Publicity category).
+
+    `{division, facet, places: {entry_id: place}, comment, submit}`. Saving
+    replaces the whole list, so a place left empty is cleared.
+    """
+    _judge_only(principal)
+    now = clock.now_iso()
+    with database().tx(request_id=request_id(request)) as tx:
+        contest = contests.by_item(tx, item_id)
+        rows = tx.all("contests.entries_for_judging", (item_id,))
+        ballot = contests.check_ballot(contest, rows, payload)
+        tx.run("contests.ballot_upsert", (
+            item_id, ballot["division"], ballot["facet"], principal.person_id,
+            ballot["comment"], ballot["status"], now, now))
+        ballot_id = tx.value("contests.ballot_get", (
+            item_id, principal.person_id, ballot["division"], ballot["facet"]))
+        tx.run("contests.ballot_places_delete", (ballot_id,))
+        for place, entry_id in ballot["places"]:
+            tx.run("contests.ballot_place_create", (ballot_id, place, entry_id))
+        where = ballot["division"] + (f", {ballot['facet']}" if ballot["facet"] else "")
+        tx.audit("contest.rank",
+                 f"{principal.display_name} "
+                 + ("handed in" if ballot["status"] == "submitted" else "saved a draft of")
+                 + f" a ranking for {contest['name']} ({where}).",
+                 actor_person_id=principal.person_id,
+                 impersonator_person_id=principal.impersonator_person_id,
+                 entity_type="contest", entity_id=item_id,
+                 changed_fields=["places", "comment", "status"])
+    return {"ok": True, "status": ballot["status"],
+            "places": {str(e): p for p, e in ballot["places"]}}
+
+
+@app.get("/judge/entries/{entry_id}/file")
+def judge_entry_file(entry_id: int,
+                     principal: auth.Principal = guard("judge.entries.file", "judge",
+                                                       school_rule="any")):
+    _judge_only(principal)
+    with database().read() as tx:
+        row = tx.one("contests.entry_get", (entry_id,))
+    if row is None:
+        raise auth.ForbiddenError("no such entry")
+    extension = contests.extension_of(row["original_name"] or "")
+    return _file_response(row, contests.anonymous_name(row, extension))
+
+
+# -- the chairs --------------------------------------------------------------
+
+@app.get("/admin/contests")
+def contests_overview(principal: auth.Principal = guard("admin.contests.list",
+                                                        "academics", "awards",
+                                                        school_rule="any")):
+    """Every contest, how many entries it has, and how far judging has got."""
+    with database().read() as tx:
+        counts = {r["item_id"]: dict(r) for r in tx.all("contests.results_overview")}
+        listed = []
+        for contest in contests.load(tx):
+            row = counts.get(contest["item_id"], {})
+            listed.append({"item_id": contest["item_id"], "name": contest["name"],
+                           "entered_by": contest["entered_by"],
+                           "division_label": contest["division_label"],
+                           "facet_count": len(contest["facet_list"]),
+                           "places": contest["places"],
+                           "entries": row.get("entries", 0),
+                           "ballots": row.get("ballots", 0),
+                           "judges": row.get("judges", 0)})
+        return {**_deadline_view(tx), "contests": listed,
+                "can_edit": principal.has_scope("academics")}
+
+
+@app.get("/admin/contests/entries/{entry_id}/file")
+def contest_entry_file(entry_id: int,
+                       principal: auth.Principal = guard("admin.contests.file",
+                                                         "registration", "academics",
+                                                         "awards", school_rule="any")):
+    """A file entry for the chairs, who already see whose it is."""
+    with database().read() as tx:
+        row = tx.one("contests.entry_get", (entry_id,))
+    if row is None:
+        raise auth.ForbiddenError("no such entry")
+    extension = contests.extension_of(row["original_name"] or "")
+    return _file_response(row, contests.anonymous_name(row, extension))
+
+
+@app.get("/admin/contests/submissions")
+def contest_submissions(principal: auth.Principal = guard("admin.contests.submissions",
+                                                          "registration", "academics",
+                                                          "awards", school_rule="any")):
+    """Every entry in every contest, with its delegate and chapter. No scores:
+    this is who has sent what, for the chairs answering "did it arrive?"."""
+    with database().read() as tx:
+        listed, entries = [], []
+        for contest in contests.load(tx):
+            rows = tx.all("contests.submissions_for_item", (contest["item_id"],))
+            listed.append({"item_id": contest["item_id"], "name": contest["name"],
+                           "entered_by": contest["entered_by"],
+                           "entry_kind": contest["entry_kind"],
+                           "entries": len(rows)})
+            for r in rows:
+                entries.append({
+                    "id": r["id"], "item_id": r["item_id"],
+                    "contest": contest["name"], "division": r["division"],
+                    "title": r["title"],
+                    "text": r["body_text"] if r["original_name"] is None else None,
+                    "translation": r["translation"],
+                    "link_url": r["link_url"],
+                    "facets": contests.split_lines(r["facets"]),
+                    "word_count": r["word_count"],
+                    "word_count_source": r["word_count_source"],
+                    "file": r["original_name"], "has_file": bool(r["has_file"]),
+                    "size_bytes": r["size_bytes"],
+                    "submitted_at": r["submitted_at"], "updated_at": r["updated_at"],
+                    "person_id": r["person_id"],
+                    "first_name": r["first_name"], "last_name": r["last_name"],
+                    "person_status": r["person_status"],
+                    "school_seq": r["school_seq"],
+                    "school_id": r["school_id"], "school_name": r["school_name"],
+                    "school_number": r["school_number"],
+                })
+        return {**_deadline_view(tx), "contests": listed, "entries": entries}
+
+
+@app.get("/admin/contests/{item_id}/results")
+def contest_results(item_id: int,
+                    principal: auth.Principal = guard("admin.contests.results",
+                                                      "academics", "awards",
+                                                      school_rule="any")):
+    """Standings with names. For the Academics and Awards chairs only."""
+    with database().read() as tx:
+        contest = contests.by_item(tx, item_id)
+        entries = [dict(r) for r in tx.all("contests.results_entries", (item_id,))]
+        ballots = [dict(r) for r in tx.all("contests.results_ballots", (item_id,))]
+        return {**_deadline_view(tx),
+                "contest": contests.public_view(contest),
+                "groups": contests.rank(contest, entries, ballots),
+                "entry_count": len(entries),
+                "can_edit": principal.has_scope("academics")}
+
+
+@app.put("/admin/contests/{item_id}")
+def update_contest(item_id: int, request: Request, payload: dict = Body(...),
+                   principal: auth.Principal = guard("admin.contests.update",
+                                                     "academics", school_rule="any",
+                                                     writes=True)):
+    """The rules text, and N: how many places the contest awards and so how
+    many entries each judge ranks.
+
+    N MAY CHANGE AFTER JUDGING. The results read it fresh: a ballot longer
+    than N counts only its first N places, and one shorter is counted as it
+    stands and shown to its judge as needing more.
+
+    Divisions are NOT editable here. They are the Convention Book's rule, and
+    each entry's division is worked out when it arrives -- see contests.divisions
+    in migration 008.
+    """
+    changed = []
+    with database().tx(request_id=request_id(request)) as tx:
+        contest = contests.by_item(tx, item_id)
+
+        if "rules_md" in payload:
+            rules = str(payload.get("rules_md") or "").strip()[:20000]
+            tx.run("contests.update_rules", (rules or None, item_id))
+            changed.append("rules_md")
+
+        if "places" in payload:
+            try:
+                places = int(payload.get("places"))
+            except (TypeError, ValueError):
+                places = 0
+            if not 1 <= places <= 20:
+                raise _contest_error("Places must be a whole number from 1 to 20.")
+            if places != contest["places"]:
+                tx.run("contests.update_places", (places, item_id))
+                changed.append("places")
+
+        if changed:
+            tx.audit("contest.update",
+                     f"{principal.display_name} changed the {contest['name']} contest.",
+                     actor_person_id=principal.person_id,
+                     impersonator_person_id=principal.impersonator_person_id,
+                     entity_type="contest", entity_id=item_id,
+                     changed_fields=changed)
+    return {"ok": True}
+
+
+# ===========================================================================
+# The photo contest
+# ===========================================================================
+#
+# During convention, delegates upload a photo for each category the Activities
+# chair has opened -- "Best flower photo", "Best stuffed animal photo" -- from
+# their phones. The chair sees every photo, with whose it is, and runs the
+# categories.
+#
+#   /me/photos      a delegate's own photos, one per category
+#   /admin/photos   every photo, and the categories. Scope `activities` only.
+#
+# The same Drive connection and root as contest entries, under
+# "Photo Contest/<category>", with a small thumbnail beside each photo so the
+# chair's page does not pull a hundred full-size photos through Apps Script.
+# As with a contest file, Drive first and the row second, never in one
+# transaction; a row that fails to write puts its files in Drive's trash.
+
+def _photo_error(message: str) -> catalog.ValidationError:
+    return catalog.ValidationError([message])
+
+
+def _photo_category(tx, category_id: int) -> dict:
+    row = tx.one("photos.category_get", (category_id,))
+    if row is None:
+        raise _photo_error("There is no such photo category. It may have just "
+                           "been deleted; reload the page.")
+    return dict(row)
+
+
+def _category_view(row) -> dict:
+    return {"id": row["id"], "name": row["name"],
+            "description": row["description"],
+            "accepting": bool(row["accepting"]),
+            "sort_order": row["sort_order"]}
+
+
+def _own_photo_view(row) -> dict | None:
+    if row is None:
+        return None
+    return {"id": row["id"], "caption": row["caption"],
+            "original_name": row["original_name"],
+            "size_bytes": row["size_bytes"],
+            "has_thumb": bool(row["drive_thumb_id"]),
+            "submitted_at": row["submitted_at"],
+            "updated_at": row["updated_at"]}
+
+
+def _photo_file_response(row, size: str) -> Response:
+    """The photo, or its thumbnail when one was asked for and exists."""
+    thumb = size == "thumb" and bool(row["drive_thumb_id"])
+    data = drive.client().fetch(row["drive_thumb_id"] if thumb else row["drive_file_id"])
+    mime = "image/jpeg" if thumb else row["mime_type"]
+    extension = "png" if mime == "image/png" else "jpg"
+    return Response(content=data, media_type=mime, headers={
+        "Content-Disposition": f'inline; filename="Photo {row["id"]}.{extension}"',
+        # A photo of somebody's child, on what may be a shared laptop.
+        "Cache-Control": "private, no-store",
+    })
+
+
+def _my_photo_category(tx, principal: auth.Principal, category_id: int):
+    person = _self(tx, principal)
+    if person["person_type"] != "delegate":
+        raise _photo_error("The photo contest is for delegates. Adults cannot enter.")
+    category = _photo_category(tx, category_id)
+    school = dict(tx.one("schools.get", (person["school_id"],)))
+    return person, school, category
+
+
+def _photo_folders(category: dict) -> tuple[str, str]:
+    """The category's photo and thumbnail folders in Drive, found or made."""
+    if category["drive_folder_id"] and category["drive_thumbs_id"]:
+        return category["drive_folder_id"], category["drive_thumbs_id"]
+    with database().read() as tx:
+        configured = settings.get(tx, "drive.contests_root")
+    store = drive.client()
+    top = store.mkdir(drive.root_folder(configured), photos.ROOT_FOLDER)
+    folder = store.mkdir(top, category["name"])
+    return folder, store.mkdir(folder, photos.THUMBS_FOLDER)
+
+
+@app.get("/me/photos")
+def my_photos(principal: auth.Principal = guard("me.photos", "delegate",
+                                                school_rule="self")):
+    with database().read() as tx:
+        person = _self(tx, principal)
+        mine = {row["category_id"]: row
+                for row in tx.all("photos.entries_for_person", (person["id"],))}
+        listed = []
+        for row in tx.all("photos.categories"):
+            view = _category_view(row)
+            view["entry"] = _own_photo_view(mine.get(row["id"]))
+            listed.append(view)
+    return {"can_enter": person["person_type"] == "delegate",
+            "max_photo_bytes": photos.MAX_PHOTO_BYTES,
+            "categories": listed}
+
+
+@app.post("/me/photos/{category_id}")
+def submit_my_photo(category_id: int, request: Request, payload: dict = Body(...),
+                    principal: auth.Principal = guard("me.photos.submit", "delegate",
+                                                      school_rule="self", writes=True)):
+    """`{photo: {name, data}, thumbnail, caption}`, base64. Without a photo,
+    an existing entry keeps its photo and takes the new caption."""
+    with database().read() as tx:
+        person, school, category = _my_photo_category(tx, principal, category_id)
+        existing = tx.one("photos.entry_for_person", (person["id"], category_id))
+    if not category["accepting"]:
+        raise _photo_error(f"“{category['name']}” is not taking photos right now.")
+    if person["status"] != "active":
+        raise _photo_error("Your registration is cancelled, so you cannot enter.")
+    caption = photos.check_caption(payload)
+
+    upload = _decode_upload(payload, "photo")
+    uploaded: list[str] = []
+    if upload is None:
+        if existing is None:
+            raise _photo_error("Choose the photo to upload.")
+        files = {k: existing[k] for k in ("drive_file_id", "drive_thumb_id",
+                                          "original_name", "mime_type", "size_bytes")}
+        folders = None
+    else:
+        name, data = upload
+        extension, mime, data = photos.check_photo(name, data)
+        thumbnail = None
+        if payload.get("thumbnail"):
+            try:
+                thumbnail = base64.b64decode(str(payload["thumbnail"]), validate=True)
+            except (binascii.Error, ValueError):
+                raise _photo_error("That photo did not arrive intact. Try again.") from None
+            thumbnail = photos.check_thumbnail(thumbnail)
+
+        folders = _photo_folders(category)
+        store = drive.client()
+        file_name = photos.drive_name(person, school, extension)
+        files = {"drive_file_id": store.upload(folders[0], file_name, mime, data),
+                 "drive_thumb_id": None, "original_name": name[:200],
+                 "mime_type": mime, "size_bytes": len(data)}
+        uploaded.append(files["drive_file_id"])
+        if thumbnail:
+            try:
+                files["drive_thumb_id"] = store.upload(
+                    folders[1], photos.drive_name(person, school, "jpg", thumbnail=True),
+                    "image/jpeg", thumbnail)
+                uploaded.append(files["drive_thumb_id"])
+            except drive.DriveUnavailable:
+                pass    # the chair's page falls back to the photo itself
+
+    now = clock.now_iso()
+    replaced: list[str] = []
+    try:
+        with database().tx(request_id=request_id(request)) as tx:
+            # Read again inside the write: the chair may have closed or deleted
+            # the category while the photo was on its way to Drive.
+            category = _photo_category(tx, category_id)
+            if not category["accepting"]:
+                raise _photo_error(f"“{category['name']}” stopped taking photos "
+                                   "while yours was uploading.")
+            if folders and not category["drive_folder_id"]:
+                tx.run("photos.category_set_folders", (*folders, category_id))
+            current = tx.one("photos.entry_for_person", (person["id"], category_id))
+            columns = (caption, files["drive_file_id"], files["drive_thumb_id"],
+                       files["original_name"], files["mime_type"], files["size_bytes"])
+            if current is None:
+                entry_id = tx.insert("photos.entry_create", (
+                    category_id, person["id"], school["id"], *columns, now, now))
+                action, verb = "photo.submit", "submitted"
+            else:
+                entry_id = current["id"]
+                tx.run("photos.entry_replace", (*columns, now, entry_id))
+                replaced = [f for f in (current["drive_file_id"], current["drive_thumb_id"])
+                            if f and f not in (files["drive_file_id"], files["drive_thumb_id"])]
+                action, verb = "photo.replace", "replaced"
+            tx.audit(action,
+                     f"{principal.display_name} {verb} "
+                     + ("their" if person["id"] == principal.person_id
+                        else f"{person['first_name']} {person['last_name']}'s")
+                     + f" photo for {category['name']}.",
+                     actor_person_id=principal.person_id,
+                     impersonator_person_id=principal.impersonator_person_id,
+                     school_id=school["id"], entity_type="photo_entry",
+                     entity_id=entry_id,
+                     changed_fields=["caption"] + (["photo"] if uploaded else []))
+            row = tx.one("photos.entry_get", (entry_id,))
+    except Exception as error:
+        for file_id in uploaded:
+            _trash_quietly(file_id)
+        if "unique" in str(error).lower():
+            raise _photo_error("That photo was just submitted from somewhere "
+                               "else. Reload the page to see it.") from None
+        raise
+    for file_id in replaced:
+        _trash_quietly(file_id)
+    return {"ok": True, "entry": _own_photo_view(row)}
+
+
+@app.delete("/me/photos/{category_id}")
+def withdraw_my_photo(category_id: int, request: Request,
+                      principal: auth.Principal = guard("me.photos.withdraw",
+                                                        "delegate", school_rule="self",
+                                                        writes=True)):
+    """Allowed whether or not the category is still taking photos: it is the
+    delegate's photo, and taking it back is always theirs to do."""
+    with database().tx(request_id=request_id(request)) as tx:
+        person, school, category = _my_photo_category(tx, principal, category_id)
+        existing = tx.one("photos.entry_for_person", (person["id"], category_id))
+        if existing is None:
+            raise _photo_error("There is no photo to withdraw.")
+        tx.run("photos.entry_delete", (existing["id"],))
+        tx.audit("photo.withdraw",
+                 f"{principal.display_name} withdrew "
+                 + ("their" if person["id"] == principal.person_id
+                    else f"{person['first_name']} {person['last_name']}'s")
+                 + f" photo for {category['name']}.",
+                 actor_person_id=principal.person_id,
+                 impersonator_person_id=principal.impersonator_person_id,
+                 school_id=school["id"], entity_type="photo_entry",
+                 entity_id=existing["id"])
+    _trash_quietly(existing["drive_file_id"])
+    _trash_quietly(existing["drive_thumb_id"])
+    return {"ok": True}
+
+
+@app.get("/me/photos/{category_id}/file")
+def my_photo_file(category_id: int, size: str = Query(default="full"),
+                  principal: auth.Principal = guard("me.photos.file", "delegate",
+                                                    school_rule="self")):
+    with database().read() as tx:
+        person, _, _ = _my_photo_category(tx, principal, category_id)
+        row = tx.one("photos.entry_for_person", (person["id"], category_id))
+    if row is None:
+        raise auth.ForbiddenError("there is no photo")
+    return _photo_file_response(row, size)
+
+
+# -- the Activities chair ------------------------------------------------------
+
+@app.get("/admin/photos")
+def photo_overview(principal: auth.Principal = guard("admin.photos", "activities",
+                                                     school_rule="any")):
+    """Every category and every photo in it, with the delegate and chapter."""
+    with database().read() as tx:
+        categories, entries = [], []
+        for category in tx.all("photos.categories"):
+            rows = tx.all("photos.entries_for_category", (category["id"],))
+            categories.append({**_category_view(category), "photos": len(rows)})
+            for r in rows:
+                entries.append({
+                    "id": r["id"], "category_id": r["category_id"],
+                    "category": category["name"], "caption": r["caption"],
+                    "original_name": r["original_name"],
+                    "size_bytes": r["size_bytes"], "has_thumb": bool(r["drive_thumb_id"]),
+                    "submitted_at": r["submitted_at"], "updated_at": r["updated_at"],
+                    "person_id": r["person_id"], "first_name": r["first_name"],
+                    "last_name": r["last_name"], "school_seq": r["school_seq"],
+                    "person_status": r["person_status"], "approval": r["approval"],
+                    "school_id": r["school_id"], "school_name": r["school_name"],
+                    "school_number": r["school_number"],
+                })
+    return {"categories": categories, "entries": entries,
+            "max_name": photos.MAX_NAME, "max_description": photos.MAX_DESCRIPTION}
+
+
+def _save_category(tx, fields: dict, category_id=None) -> int:
+    now = clock.now_iso()
+    columns = (fields["name"], fields["description"], fields["accepting"],
+               fields["sort_order"])
+    try:
+        if category_id is None:
+            category_id = tx.insert("photos.category_create", (*columns, now, now))
+        else:
+            tx.run("photos.category_update", (*columns, now, category_id))
+    except Exception as error:
+        if "unique" in str(error).lower():
+            raise _photo_error(
+                f"There is already a category called “{fields['name']}”.") from None
+        raise
+    return category_id
+
+
+@app.post("/admin/photos/categories")
+def create_photo_category(request: Request, payload: dict = Body(...),
+                          principal: auth.Principal = guard(
+                              "admin.photos.categories.create", "activities",
+                              school_rule="any", writes=True)):
+    fields = photos.check_category(payload)
+    with database().tx(request_id=request_id(request)) as tx:
+        if "sort_order" not in payload:
+            # New categories go at the end.
+            fields["sort_order"] = 10 + max(
+                (r["sort_order"] for r in tx.all("photos.categories")), default=0)
+        category_id = _save_category(tx, fields)
+        tx.audit("photo_category.create",
+                 f"{principal.display_name} added the photo category {fields['name']}.",
+                 actor_person_id=principal.person_id,
+                 impersonator_person_id=principal.impersonator_person_id,
+                 entity_type="photo_category", entity_id=category_id)
+        row = tx.one("photos.category_get", (category_id,))
+    return {"ok": True, "category": {**_category_view(row), "photos": 0}}
+
+
+@app.patch("/admin/photos/categories/{category_id}")
+def update_photo_category(category_id: int, request: Request, payload: dict = Body(...),
+                          principal: auth.Principal = guard(
+                              "admin.photos.categories.update", "activities",
+                              school_rule="any", writes=True)):
+    """Rename, reword, reorder, or open and close a category. Photos already
+    in it stay where they are."""
+    with database().tx(request_id=request_id(request)) as tx:
+        current = _photo_category(tx, category_id)
+        fields = photos.check_category(payload, current)
+        changed = [k for k in fields if fields[k] != current[k]]
+        if changed:
+            _save_category(tx, fields, category_id)
+            if changed == ["accepting"]:
+                summary = (f"{principal.display_name} "
+                           + ("opened" if fields["accepting"] else "closed")
+                           + f" the photo category {fields['name']}.")
+            else:
+                summary = (f"{principal.display_name} changed the photo category "
+                           f"{fields['name']}.")
+            tx.audit("photo_category.update", summary,
+                     actor_person_id=principal.person_id,
+                     impersonator_person_id=principal.impersonator_person_id,
+                     entity_type="photo_category", entity_id=category_id,
+                     changed_fields=changed)
+        row = tx.one("photos.category_get", (category_id,))
+    return {"ok": True, "category": _category_view(row)}
+
+
+@app.delete("/admin/photos/categories/{category_id}")
+def delete_photo_category(category_id: int, request: Request,
+                          principal: auth.Principal = guard(
+                              "admin.photos.categories.delete", "activities",
+                              school_rule="any", writes=True)):
+    """The category and every photo in it. The files go to Drive's trash,
+    where they can be recovered for thirty days."""
+    with database().tx(request_id=request_id(request)) as tx:
+        category = _photo_category(tx, category_id)
+        rows = tx.all("photos.entries_for_category", (category_id,))
+        tx.run("photos.entries_delete_for_category", (category_id,))
+        tx.run("photos.category_delete", (category_id,))
+        tx.audit("photo_category.delete",
+                 f"{principal.display_name} deleted the photo category "
+                 f"{category['name']}"
+                 + (f" and the {len(rows)} photo{'' if len(rows) == 1 else 's'} in it."
+                    if rows else "."),
+                 actor_person_id=principal.person_id,
+                 impersonator_person_id=principal.impersonator_person_id,
+                 entity_type="photo_category", entity_id=category_id)
+    for r in rows:
+        _trash_quietly(r["drive_file_id"])
+        _trash_quietly(r["drive_thumb_id"])
+    return {"ok": True, "removed": len(rows)}
+
+
+@app.get("/admin/photos/entries/{entry_id}/file")
+def photo_entry_file(entry_id: int, size: str = Query(default="full"),
+                     principal: auth.Principal = guard("admin.photos.file",
+                                                       "activities", school_rule="any")):
+    with database().read() as tx:
+        row = tx.one("photos.entry_get", (entry_id,))
+    if row is None:
+        raise auth.ForbiddenError("no such photo")
+    return _photo_file_response(row, size)
+
+
+@app.delete("/admin/photos/entries/{entry_id}")
+def remove_photo_entry(entry_id: int, request: Request,
+                       principal: auth.Principal = guard("admin.photos.entries.delete",
+                                                         "activities", school_rule="any",
+                                                         writes=True)):
+    """Take down one photo: one that breaks the rules, or one a delegate or
+    their sponsor has asked to be removed."""
+    with database().tx(request_id=request_id(request)) as tx:
+        row = tx.one("photos.entry_get", (entry_id,))
+        if row is None:
+            raise _photo_error("That photo has already been removed.")
+        category = _photo_category(tx, row["category_id"])
+        tx.run("photos.entry_delete", (entry_id,))
+        tx.audit("photo.remove",
+                 f"{principal.display_name} removed a photo from {category['name']}.",
+                 actor_person_id=principal.person_id,
+                 impersonator_person_id=principal.impersonator_person_id,
+                 school_id=row["school_id"], entity_type="photo_entry",
+                 entity_id=entry_id)
+    _trash_quietly(row["drive_file_id"])
+    _trash_quietly(row["drive_thumb_id"])
+    return {"ok": True}
+
+
+# ===========================================================================
+# The activities potluck
+# ===========================================================================
+#
+# The Activities chair posts activities that need helpers. Attendees pick the
+# ones they would help run, ON THEIR OWN SHEET (see forms.py: the sheets carry
+# a `potluck` list), so there is no endpoint to pick one. What lives here:
+#
+#   /sponsor/people/{id}/potluck/{activity}/approve|decline
+#   /sponsor/potluck/approve-all     a sponsor deciding a delegate's picks. The
+#                                    waiting ones also come with the roster.
+#   /admin/potluck[...]              the Activities chair: the activities, and
+#                                    who is helping with each (approved only).
+#
+# An adult's pick is approved at once; a delegate's waits for their sponsor.
+# An activity with a time is written onto the master schedule in the same
+# transaction (potluck.sync_schedule).
+
+def _potluck_error(message: str) -> catalog.ValidationError:
+    return catalog.ValidationError([message])
+
+
+def _potluck_activity(tx, activity_id: int) -> dict:
+    row = tx.one("potluck.activity_get", (activity_id,))
+    if row is None:
+        raise _potluck_error("There is no such activity. It may have just been "
+                             "deleted; reload the page.")
+    return dict(row)
+
+
+def _potluck_delegate(tx, principal: auth.Principal, person_id: int) -> dict:
+    person = _person_of(tx, principal, person_id)
+    if person["person_type"] != "delegate":
+        raise auth.ForbiddenError("only a delegate's picks wait for a sponsor")
+    return person
+
+
+@app.post("/sponsor/people/{person_id}/potluck/{activity_id}/approve")
+def approve_potluck(person_id: int, activity_id: int, request: Request,
+                    principal: auth.Principal = guard("sponsor.potluck.approve",
+                                                      "sponsor", "registration",
+                                                      writes=True)):
+    """Say yes to a delegate helping with an activity."""
+    with database().tx(request_id=request_id(request)) as tx:
+        person = _potluck_delegate(tx, principal, person_id)
+        potluck.decide(tx, principal, person, activity_id, approve=True,
+                       now=clock.now_iso())
+    return {"ok": True}
+
+
+@app.post("/sponsor/people/{person_id}/potluck/{activity_id}/decline")
+def decline_potluck(person_id: int, activity_id: int, request: Request,
+                    principal: auth.Principal = guard("sponsor.potluck.decline",
+                                                      "sponsor", "registration",
+                                                      writes=True)):
+    """Say no. The delegate sees it on their sheet and may pick again."""
+    with database().tx(request_id=request_id(request)) as tx:
+        person = _potluck_delegate(tx, principal, person_id)
+        potluck.decide(tx, principal, person, activity_id, approve=False,
+                       now=clock.now_iso())
+    return {"ok": True}
+
+
+@app.post("/sponsor/potluck/approve-all")
+def approve_all_potluck(request: Request, payload: dict = Body(default={}),
+                        principal: auth.Principal = guard(
+                            "sponsor.potluck.approve_all", "sponsor",
+                            "registration", writes=True)):
+    """Approve every pick the chapter is waiting on, in one transaction."""
+    with database().tx(request_id=request_id(request)) as tx:
+        school = _school_of(tx, principal, payload.get("school_id"))
+        now = clock.now_iso()
+        waiting = [dict(r) for r in tx.all("potluck.requests_for_school",
+                                           (school["id"],))]
+        for r in waiting:
+            person = dict(tx.one("people.get", (r["person_id"],)))
+            potluck.decide(tx, principal, person, r["activity_id"],
+                           approve=True, now=now)
+    return {"ok": True, "approved": len(waiting)}
+
+
+def _potluck_request_view(r) -> dict:
+    return {"person_id": r["person_id"], "activity_id": r["activity_id"],
+            "first_name": r["first_name"], "last_name": r["last_name"],
+            "grade": r["grade"], "school_seq": r["school_seq"],
+            "activity_name": r["activity_name"], "location": r["location"],
+            **schedule.when(r["starts_at"], r["ends_at"]),
+            "requested_at": r["requested_at"]}
+
+
+# -- the Activities chair --------------------------------------------------------
+
+@app.get("/admin/potluck")
+def potluck_overview(principal: auth.Principal = guard("admin.potluck", "activities",
+                                                       school_rule="any")):
+    """Every activity, with its approved helpers by name and chapter and a count
+    of picks still waiting on a sponsor. Nothing else about anyone."""
+    with database().read() as tx:
+        activities = []
+        for row in tx.all("potluck.activities"):
+            helpers = [{"person_id": r["person_id"],
+                        "name": f"{r['first_name']} {r['last_name']}".strip(),
+                        "adult": r["person_type"] == "adult",
+                        "school_id": r["school_id"], "school_name": r["school_name"]}
+                       for r in tx.all("potluck.volunteers_for_activity", (row["id"],))]
+            activities.append({
+                **potluck.view(row), "sort_order": row["sort_order"],
+                "approved": row["approved"],
+                "waiting": row["taken"] - row["approved"],
+                "volunteers": helpers})
+    return {"activities": activities, "max_name": potluck.MAX_NAME,
+            "max_description": potluck.MAX_DESCRIPTION,
+            "max_location": potluck.MAX_LOCATION,
+            "max_capacity": potluck.MAX_CAPACITY}
+
+
+def _potluck_view_of(tx, activity_id: int) -> dict:
+    row = next(r for r in tx.all("potluck.activities") if r["id"] == activity_id)
+    return {**potluck.view(row), "sort_order": row["sort_order"],
+            "approved": row["approved"], "waiting": row["taken"] - row["approved"]}
+
+
+def _save_potluck_activity(tx, fields: dict, activity_id=None) -> int:
+    now = clock.now_iso()
+    columns = (fields["name"], fields["description"], fields["location"],
+               fields["starts_at"], fields["ends_at"], fields["capacity"],
+               fields["open"], fields["sort_order"])
+    try:
+        if activity_id is None:
+            activity_id = tx.insert("potluck.activity_create", (*columns, now, now))
+        else:
+            tx.run("potluck.activity_update", (*columns, now, activity_id))
+    except Exception as error:
+        if "unique" in str(error).lower():
+            raise _potluck_error(
+                f"There is already an activity called “{fields['name']}”.") from None
+        raise
+    potluck.sync_schedule(tx, activity_id, now)
+    return activity_id
+
+
+@app.post("/admin/potluck")
+def create_potluck_activity(request: Request, payload: dict = Body(...),
+                            principal: auth.Principal = guard(
+                                "admin.potluck.create", "activities",
+                                school_rule="any", writes=True)):
+    fields = potluck.check_activity(payload)
+    with database().tx(request_id=request_id(request)) as tx:
+        if "sort_order" not in payload:
+            fields["sort_order"] = 10 + max(
+                (r["sort_order"] for r in tx.all("potluck.activities")), default=0)
+        activity_id = _save_potluck_activity(tx, fields)
+        tx.audit("potluck.create",
+                 f"{principal.display_name} added the potluck activity {fields['name']}.",
+                 entity_type="potluck_activity", entity_id=activity_id,
+                 **_actor(principal))
+        view = _potluck_view_of(tx, activity_id)
+    return {"ok": True, "activity": {**view, "volunteers": []}}
+
+
+@app.patch("/admin/potluck/{activity_id}")
+def update_potluck_activity(activity_id: int, request: Request,
+                            payload: dict = Body(...),
+                            principal: auth.Principal = guard(
+                                "admin.potluck.update", "activities",
+                                school_rule="any", writes=True)):
+    """Rename, reword, move, resize, or open and close an activity. Picks
+    already made stay."""
+    with database().tx(request_id=request_id(request)) as tx:
+        current = _potluck_activity(tx, activity_id)
+        fields = potluck.check_activity(payload, current)
+        changed = [k for k in fields if fields[k] != current[k]]
+        if changed:
+            _save_potluck_activity(tx, fields, activity_id)
+            tx.audit("potluck.update_activity",
+                     f"{principal.display_name} changed the potluck activity "
+                     f"{fields['name']}.",
+                     entity_type="potluck_activity", entity_id=activity_id,
+                     changed_fields=changed, **_actor(principal))
+        view = _potluck_view_of(tx, activity_id)
+    return {"ok": True, "activity": view}
+
+
+@app.delete("/admin/potluck/{activity_id}")
+def delete_potluck_activity(activity_id: int, request: Request,
+                            principal: auth.Principal = guard(
+                                "admin.potluck.delete", "activities",
+                                school_rule="any", writes=True)):
+    """Remove an activity, every pick for it, and its row on the schedule."""
+    with database().tx(request_id=request_id(request)) as tx:
+        current = _potluck_activity(tx, activity_id)
+        tx.run("schedule.delete_for_potluck", (activity_id,))
+        tx.run("potluck.signups_delete_for_activity", (activity_id,))
+        tx.run("potluck.activity_delete", (activity_id,))
+        tx.audit("potluck.delete",
+                 f"{principal.display_name} removed the potluck activity "
+                 f"{current['name']}.",
+                 entity_type="potluck_activity", entity_id=activity_id,
+                 **_actor(principal))
+    return {"ok": True}
+
+
+# ===========================================================================
+# Site pages -- long text written in Google Docs
+# ===========================================================================
+#
+#   /public/pages             the published pages and where their HTML is.
+#                             Read by the site build. No credential.
+#   /admin/pages              the list, adding, editing and removing a page.
+#   /admin/pages/{id}/convert re-read one Doc into Drive (one page per request).
+#   /admin/pages/rebuild      ask GitHub to rebuild the site.
+#
+# The registration and academics chairs (and the admin, who holds every scope)
+# keep these: registration owns the instructions, academics the academic
+# resources. Anyone, signed in or not, may READ the pages (they are static
+# files). See lib/pages.py for the whole flow.
+
+PAGES_SCOPES = ("registration", "academics")
+
+
+def _pages_error(message: str) -> catalog.ValidationError:
+    return catalog.ValidationError([message])
+
+
+def _site_page(tx, page_id: int) -> dict:
+    row = tx.one("pages.get", (page_id,))
+    if row is None:
+        raise _pages_error("There is no such page. It may have just been "
+                           "removed; reload the screen.")
+    return dict(row)
+
+
+def _page_list(tx) -> list[dict]:
+    return [pages.view(r) for r in tx.all("pages.all")]
+
+
+@app.get("/public/pages")
+def public_pages():
+    """Every page that has been converted at least once, with the address of its
+    HTML in Drive. Titles and public links only: nothing here is private, which
+    is why it needs no credential. The site build is its only caller."""
+    with database().read() as tx:
+        rows = tx.all("pages.published")
+    return JSONResponse({"pages": [pages.public_view(r) for r in rows]},
+                        headers={"Cache-Control": "public, max-age=10"})
+
+
+@app.get("/admin/pages")
+def admin_pages(principal: auth.Principal = guard("admin.pages", *PAGES_SCOPES,
+                                                  school_rule="any")):
+    with database().read() as tx:
+        listing = _page_list(tx)
+    return {"pages": listing, "actions_url": pages.actions_url(),
+            "max_title": pages.MAX_TITLE, "max_name": pages.MAX_NAME}
+
+
+def _save_page(tx, fields: dict, page_id=None) -> int:
+    now = clock.now_iso()
+    columns = (fields["slug"], fields["title"], fields["nav_label"],
+               fields["show_in_nav"], fields["sort_order"],
+               fields["doc_url"], fields["doc_id"])
+    try:
+        if page_id is None:
+            page_id = tx.insert("pages.create", (*columns, now, now))
+        else:
+            tx.run("pages.update", (*columns, now, page_id))
+    except Exception as error:
+        if "unique" in str(error).lower():
+            raise _pages_error(
+                f"There is already a page at /p/{fields['slug']}.html. "
+                "Choose a different address.") from None
+        raise
+    return page_id
+
+
+@app.post("/admin/pages")
+def create_site_page(request: Request, payload: dict = Body(...),
+                     principal: auth.Principal = guard(
+                         "admin.pages.create", *PAGES_SCOPES,
+                         school_rule="any", writes=True)):
+    fields = pages.check_page(payload)
+    with database().tx(request_id=request_id(request)) as tx:
+        if "sort_order" not in payload:
+            fields["sort_order"] = 10 + max(
+                (r["sort_order"] for r in tx.all("pages.all")), default=0)
+        page_id = _save_page(tx, fields)
+        tx.audit("site_page.create",
+                 f"{principal.display_name} added the page {fields['title']} "
+                 f"(/p/{fields['slug']}.html).",
+                 entity_type="site_page", entity_id=page_id, **_actor(principal))
+        row = tx.one("pages.get", (page_id,))
+    return {"ok": True, "page": pages.view(row)}
+
+
+@app.patch("/admin/pages/{page_id}")
+def update_site_page(page_id: int, request: Request, payload: dict = Body(...),
+                     principal: auth.Principal = guard(
+                         "admin.pages.update", *PAGES_SCOPES,
+                         school_rule="any", writes=True)):
+    """Retitle, move, show or hide a page, or point it at a different Doc.
+    Pointing it at a different Doc forgets the converted copy, so the old text
+    cannot be published under the new Doc's name."""
+    with database().tx(request_id=request_id(request)) as tx:
+        current = _site_page(tx, page_id)
+        fields = pages.check_page(payload, current)
+        changed = [k for k in fields if fields[k] != current[k]]
+        if changed:
+            _save_page(tx, fields, page_id)
+            if "doc_id" in changed:
+                tx.run("pages.reset_conversion", (page_id,))
+            tx.audit("site_page.update",
+                     f"{principal.display_name} changed the page {fields['title']}.",
+                     entity_type="site_page", entity_id=page_id,
+                     changed_fields=changed, **_actor(principal))
+        row = tx.one("pages.get", (page_id,))
+    return {"ok": True, "page": pages.view(row)}
+
+
+@app.delete("/admin/pages/{page_id}")
+def delete_site_page(page_id: int, request: Request,
+                     principal: auth.Principal = guard(
+                         "admin.pages.delete", *PAGES_SCOPES,
+                         school_rule="any", writes=True)):
+    """Takes the page off the list. It leaves the live site at the next
+    rebuild. The Google Doc itself is never touched; the converted copy goes to
+    Drive's trash."""
+    with database().tx(request_id=request_id(request)) as tx:
+        page = _site_page(tx, page_id)
+        tx.run("pages.delete", (page_id,))
+        tx.audit("site_page.delete",
+                 f"{principal.display_name} removed the page {page['title']}.",
+                 entity_type="site_page", entity_id=page_id, **_actor(principal))
+    _trash_quietly(page["html_file_id"])
+    return {"ok": True}
+
+
+@app.post("/admin/pages/{page_id}/convert")
+def convert_site_page(page_id: int, request: Request,
+                      principal: auth.Principal = guard(
+                          "admin.pages.convert", *PAGES_SCOPES,
+                          school_rule="any", writes=True)):
+    """Read one Doc again and rewrite its Drive copy.
+
+    ONE PAGE PER REQUEST. A Doc with pictures can take half a minute and the web
+    function is allowed 60 seconds, so the screen walks the list itself and
+    shows each row's result as it arrives. A Doc that cannot be converted keeps
+    its previous copy and records why; that is a normal answer, not an error.
+    """
+    with database().read() as tx:
+        page = _site_page(tx, page_id)
+        configured = settings.get(tx, "drive.contests_root")
+    try:
+        store = drive.client("Page publishing")
+        folder = pages.folder_for_pages(store, configured)
+        result = pages.convert_one(page, folder)
+    except drive.DriveUnavailable as error:
+        result = {"ok": False, "file_id": "", "url": "", "error": str(error)}
+
+    with database().tx(request_id=request_id(request)) as tx:
+        if tx.one("pages.get", (page_id,)) is None:
+            raise _pages_error("That page was removed while it was being converted.")
+        if result["ok"]:
+            tx.run("pages.synced", (result["file_id"], result["url"],
+                                    clock.now_iso(), page_id))
+        else:
+            tx.run("pages.sync_failed", (result["error"][:500], page_id))
+        tx.audit("site_page.convert",
+                 f"{principal.display_name} re-read the Google Doc for the page "
+                 f"{page['title']}"
+                 + ("." if result["ok"] else f", which failed: {result['error'][:200]}"),
+                 entity_type="site_page", entity_id=page_id, **_actor(principal))
+        row = tx.one("pages.get", (page_id,))
+    return {"ok": result["ok"], "error": result["error"], "page": pages.view(row)}
+
+
+@app.post("/admin/pages/rebuild")
+def rebuild_site_pages(request: Request,
+                       principal: auth.Principal = guard(
+                           "admin.pages.rebuild", *PAGES_SCOPES,
+                           school_rule="any", writes=True)):
+    """Ask GitHub to rebuild the site from what is in Drive now.
+
+    Also needed with no pages converted at all: a retitled, hidden or removed
+    page only reaches the site through a rebuild. Not being able to start one
+    (no token, GitHub refusing) is reported in the answer, not as an error,
+    because the conversions before it succeeded.
+    """
+    rebuild = {"ok": True, "url": "", "error": ""}
+    try:
+        rebuild["url"] = pages.request_rebuild()
+    except pages.RebuildUnavailable as error:
+        rebuild.update(ok=False, error=str(error), url=pages.actions_url())
+    with database().tx(request_id=request_id(request)) as tx:
+        tx.audit("site_page.publish",
+                 f"{principal.display_name} "
+                 + ("published" if rebuild["ok"] else "tried to publish")
+                 + " the site pages.", **_actor(principal))
+    return {"ok": True, "rebuild": rebuild}
+
+
+# ===========================================================================
+# The convention schedule, and Olympika
+# ===========================================================================
+#
+# THE MASTER SCHEDULE is read by everybody and kept by the Logistics chair:
+#
+#   /public/schedule          every published entry. No credential.
+#   /admin/schedule           the Logistics chair's list, drafts included, and
+#                             adding, editing and deleting entries. `logistics`.
+#
+# OLYMPIKA is the athletics program, in two halves:
+#
+#   /me/olympika              a delegate's view: every event, their own entry
+#                             in each, and where and when they play.
+#   /admin/athletics          the Athletics Director: events, every sign-up,
+#                             heats, brackets and results. `athletics`.
+#
+# WHAT THE DIRECTOR SCHEDULES REACHES THE MASTER SCHEDULE in the same
+# transaction (olympika.sync_schedule), so the two cannot disagree. Those
+# entries are the Director's: the Logistics chair sees them and cannot change
+# them (see `_manual_item`).
+
+def _olympika_error(message: str) -> catalog.ValidationError:
+    return catalog.ValidationError([message])
+
+
+def _actor(principal: auth.Principal) -> dict:
+    return {"actor_person_id": principal.person_id,
+            "impersonator_person_id": principal.impersonator_person_id}
+
+
+@app.get("/public/schedule")
+def public_schedule():
+    """Every published entry in time order, and the convention's clock.
+
+    One indexed range read of a couple of hundred rows at the very most, and
+    cached for 20 seconds: a delegate checking whether their heat has moved
+    should not wait long, and a hall of them refreshing should not matter.
+    """
+    with database().read() as tx:
+        rows = tx.all("schedule.published")
+    today, now = clock.local_now_parts()
+    return JSONResponse(
+        {"items": [schedule.view(r) for r in rows],
+         "now": {"date": today, "time": now}},
+        headers={"Cache-Control": "public, max-age=20"})
+
+
+# -- The Logistics chair ----------------------------------------------------
+
+def _schedule_item(tx, item_id: int) -> dict:
+    row = tx.one("schedule.get", (item_id,))
+    if row is None:
+        raise _olympika_error("There is no such schedule entry. It may have "
+                              "just been deleted; reload the page.")
+    return dict(row)
+
+
+def _manual_item(tx, item_id: int) -> dict:
+    row = _schedule_item(tx, item_id)
+    if row["source"] == "potluck":
+        raise _olympika_error(
+            "That entry is an activity from the activities potluck. The "
+            "Activities chair changes it on the Potluck page and it follows "
+            "here.")
+    if row["source"] != "manual":
+        raise _olympika_error(
+            "That entry is kept up to date from the Athletics Director's "
+            "heats and brackets. Change it on the Athletics page and it "
+            "follows here.")
+    return row
+
+
+@app.get("/admin/schedule")
+def admin_schedule(principal: auth.Principal = guard("admin.schedule", "logistics",
+                                                     school_rule="any")):
+    with database().read() as tx:
+        rows = tx.all("schedule.all")
+    today, now = clock.local_now_parts()
+    return {"items": [schedule.view(r, admin=True) for r in rows],
+            "now": {"date": today, "time": now},
+            "max_title": schedule.MAX_TITLE,
+            "max_description": schedule.MAX_DESCRIPTION,
+            "max_location": schedule.MAX_LOCATION}
+
+
+@app.post("/admin/schedule")
+def create_schedule_item(request: Request, payload: dict = Body(...),
+                         principal: auth.Principal = guard(
+                             "admin.schedule.create", "logistics",
+                             school_rule="any", writes=True)):
+    fields = schedule.check_item(payload)
+    now = clock.now_iso()
+    with database().tx(request_id=request_id(request)) as tx:
+        item_id = tx.insert("schedule.create", (
+            fields["title"], fields["description"], fields["location"],
+            fields["starts_at"], fields["ends_at"], fields["published"], now, now))
+        tx.audit("schedule.create",
+                 f"{principal.display_name} added “{fields['title']}” to the schedule.",
+                 entity_type="schedule_item", entity_id=item_id, **_actor(principal))
+        row = tx.one("schedule.get", (item_id,))
+    return {"ok": True, "item": schedule.view(row, admin=True)}
+
+
+@app.patch("/admin/schedule/{item_id}")
+def update_schedule_item(item_id: int, request: Request, payload: dict = Body(...),
+                         principal: auth.Principal = guard(
+                             "admin.schedule.update", "logistics",
+                             school_rule="any", writes=True)):
+    with database().tx(request_id=request_id(request)) as tx:
+        current = _manual_item(tx, item_id)
+        fields = schedule.check_item(payload, current)
+        changed = [k for k in fields if fields[k] != current[k]]
+        if changed:
+            tx.run("schedule.update", (
+                fields["title"], fields["description"], fields["location"],
+                fields["starts_at"], fields["ends_at"], fields["published"],
+                clock.now_iso(), item_id))
+            tx.audit("schedule.update",
+                     f"{principal.display_name} changed “{fields['title']}” on the schedule.",
+                     entity_type="schedule_item", entity_id=item_id,
+                     changed_fields=changed, **_actor(principal))
+        row = tx.one("schedule.get", (item_id,))
+    return {"ok": True, "item": schedule.view(row, admin=True)}
+
+
+@app.delete("/admin/schedule/{item_id}")
+def delete_schedule_item(item_id: int, request: Request,
+                         principal: auth.Principal = guard(
+                             "admin.schedule.delete", "logistics",
+                             school_rule="any", writes=True)):
+    with database().tx(request_id=request_id(request)) as tx:
+        current = _manual_item(tx, item_id)
+        tx.run("schedule.delete", (item_id,))
+        tx.audit("schedule.delete",
+                 f"{principal.display_name} removed “{current['title']}” from the schedule.",
+                 entity_type="schedule_item", entity_id=item_id, **_actor(principal))
+    return {"ok": True}
+
+
+# -- Olympika: shared pieces ------------------------------------------------
+
+def _olympika_event(tx, event_id: int) -> dict:
+    row = tx.one("olympika.event_get", (event_id,))
+    if row is None:
+        raise _olympika_error("There is no such event. It may have just been "
+                              "deleted; reload the page.")
+    return dict(row)
+
+
+def _event_view(row) -> dict:
+    return {"id": row["id"], "name": row["name"],
+            "description": row["description"], "kind": row["kind"],
+            "location": row["location"], "signup_open": bool(row["signup_open"]),
+            "max_per_school": row["max_per_school"],
+            "sort_order": row["sort_order"]}
+
+
+def _heat_view(row, entrants: int | None = None) -> dict:
+    view = {"id": row["id"], "number": row["number"], "label": row["label"],
+            **schedule.when(row["starts_at"], row["ends_at"])}
+    if entrants is not None:
+        view["entrants"] = entrants
+    return view
+
+
+def _match_view(row, rounds: int) -> dict:
+    return {"id": row["id"], "round": row["round"], "slot": row["slot"],
+            "round_name": olympika.round_name(row["round"], rounds),
+            "bye": olympika.is_bye(row),
+            "team_a_id": row["team_a_id"], "team_a_name": row["team_a_name"],
+            "team_b_id": row["team_b_id"], "team_b_name": row["team_b_name"],
+            "winner_id": row["winner_id"],
+            "score_a": row["score_a"], "score_b": row["score_b"],
+            "field": row["field"],
+            **schedule.when(row["starts_at"], row["ends_at"])}
+
+
+def _save_event(tx, fields: dict, event_id=None) -> int:
+    now = clock.now_iso()
+    columns = (fields["name"], fields["description"], fields["kind"],
+               fields["location"], fields["signup_open"],
+               fields["max_per_school"], fields["sort_order"])
+    try:
+        if event_id is None:
+            event_id = tx.insert("olympika.event_create", (*columns, now, now))
+        else:
+            tx.run("olympika.event_update", (*columns, now, event_id))
+    except Exception as error:
+        if "unique" in str(error).lower():
+            raise _olympika_error(
+                f"There is already an event called “{fields['name']}”.") from None
+        raise
+    return event_id
+
+
+def _entry_count(tx, event: dict) -> int:
+    if event["kind"] == "team":
+        return tx.value("olympika.team_count_for_event", (event["id"],), default=0)
+    return tx.value("olympika.signup_count_for_event", (event["id"],), default=0)
+
+
+# -- A delegate's Olympika ---------------------------------------------------
+
+def _can_enter_olympika(person: dict) -> str | None:
+    """Why this person cannot enter, or None when they can."""
+    if person["person_type"] != "delegate":
+        return "Olympika is entered by delegates."
+    if person["status"] != "active":
+        return "Your registration is cancelled, so you cannot enter."
+    if person["approval"] != "approved":
+        return ("Your sponsor has to approve you before you can enter. Ask "
+                "them to check the roster.")
+    return None
+
+
+def _my_team_games(tx, event: dict, team_id: int) -> list[dict]:
+    matches = tx.all("olympika.matches_for_event", (event["id"],))
+    rounds = max((m["round"] for m in matches), default=0)
+    games = []
+    for m in matches:
+        if team_id not in (m["team_a_id"], m["team_b_id"]) or olympika.is_bye(m):
+            continue
+        mine_is_a = m["team_a_id"] == team_id
+        opponent = m["team_b_name"] if mine_is_a else m["team_a_name"]
+        games.append({
+            "round_name": olympika.round_name(m["round"], rounds),
+            "opponent": opponent, "field": m["field"],
+            "result": (None if m["winner_id"] is None
+                       else "won" if m["winner_id"] == team_id else "lost"),
+            "score_for": m["score_a"] if mine_is_a else m["score_b"],
+            "score_against": m["score_b"] if mine_is_a else m["score_a"],
+            **schedule.when(m["starts_at"], m["ends_at"])})
+    return games
+
+
+@app.get("/me/olympika")
+def my_olympika(principal: auth.Principal = guard("me.olympika", "delegate",
+                                                  school_rule="self")):
+    with database().read() as tx:
+        person = _self(tx, principal)
+        signups = {r["event_id"]: r
+                   for r in tx.all("olympika.signups_for_person", (person["id"],))}
+        teams = {r["event_id"]: r
+                 for r in tx.all("olympika.teams_for_captain", (person["id"],))}
+        listed = []
+        for row in tx.all("olympika.events"):
+            view = _event_view(row)
+            view["entry"] = None
+            if row["kind"] == "individual":
+                view["heats"] = [_heat_view(h) for h in tx.all("olympika.heats", (row["id"],))
+                                 if h["starts_at"]]
+                mine = signups.get(row["id"])
+                if mine:
+                    view["entry"] = {
+                        "heat_number": mine["heat_number"],
+                        "heat_label": mine["heat_label"], "lane": mine["lane"],
+                        **(schedule.when(mine["heat_starts_at"], mine["heat_ends_at"])
+                           if mine["heat_id"] else {})}
+            else:
+                mine = teams.get(row["id"])
+                if mine:
+                    view["entry"] = {"team": mine["name"], "seed": mine["seed"],
+                                     "games": _my_team_games(tx, dict(row), mine["id"])}
+            listed.append(view)
+    reason = _can_enter_olympika(person)
+    return {"can_enter": reason is None, "reason": reason,
+            "max_team_name": olympika.MAX_TEAM_NAME, "events": listed}
+
+
+@app.post("/me/olympika/{event_id}")
+def enter_olympika(event_id: int, request: Request, payload: dict = Body(default={}),
+                   principal: auth.Principal = guard("me.olympika.enter", "delegate",
+                                                     school_rule="self", writes=True)):
+    """Sign up for an individual event, or sign up a team for a team event:
+    `{team_name}` (optional). One delegate signs up per team."""
+    name = olympika.check_team_name(payload.get("team_name"))
+    now = clock.now_iso()
+    with database().tx(request_id=request_id(request)) as tx:
+        person = _self(tx, principal)
+        reason = _can_enter_olympika(person)
+        if reason:
+            raise _olympika_error(reason)
+        event = _olympika_event(tx, event_id)
+        if not event["signup_open"]:
+            raise _olympika_error(f"Sign-up for {event['name']} is not open right now.")
+        limit = event["max_per_school"]
+
+        if event["kind"] == "individual":
+            if tx.one("olympika.signup_for_person", (event_id, person["id"])):
+                raise _olympika_error(f"You are already signed up for {event['name']}.")
+            if limit and tx.value("olympika.signup_count_for_school",
+                                  (event_id, person["school_id"]), default=0) >= limit:
+                raise _olympika_error(
+                    f"Your chapter already has {limit} entered in {event['name']}, "
+                    "which is the most it can.")
+            tx.insert("olympika.signup_create",
+                      (event_id, person["id"], person["school_id"], now))
+            action, summary = "olympika.signup", (
+                f"{principal.display_name} signed up for {event['name']}.")
+        else:
+            if tx.one("olympika.team_for_captain", (event_id, person["id"])):
+                raise _olympika_error(
+                    f"You have already signed up a team for {event['name']}.")
+            if tx.value("olympika.match_count_for_event", (event_id,), default=0):
+                raise _olympika_error(
+                    f"The {event['name']} bracket has already been drawn. Ask the "
+                    "Athletics Director to add your team.")
+            if limit and tx.value("olympika.team_count_for_school",
+                                  (event_id, person["school_id"]), default=0) >= limit:
+                raise _olympika_error(
+                    f"Your chapter already has {limit} team{'' if limit == 1 else 's'} in "
+                    f"{event['name']}, which is the most it can.")
+            if name is None:
+                name = olympika.default_team_name(person["school_name"], [
+                    r["name"] for r in tx.all("olympika.team_names_for_school",
+                                              (event_id, person["school_id"]))])
+            try:
+                tx.insert("olympika.team_create", (
+                    event_id, person["school_id"], person["id"], name, now, now))
+            except Exception as error:
+                if "unique" in str(error).lower():
+                    raise _olympika_error(
+                        f"There is already a team called “{name}” in {event['name']}. "
+                        "Pick another name.") from None
+                raise
+            action, summary = "olympika.team_signup", (
+                f"{principal.display_name} signed up a team for {event['name']}.")
+        tx.audit(action, summary, school_id=person["school_id"],
+                 entity_type="olympika_event", entity_id=event_id, **_actor(principal))
+    return {"ok": True}
+
+
+@app.patch("/me/olympika/{event_id}")
+def rename_my_team(event_id: int, request: Request, payload: dict = Body(...),
+                   principal: auth.Principal = guard("me.olympika.rename", "delegate",
+                                                     school_rule="self", writes=True)):
+    name = olympika.check_team_name(payload.get("team_name"))
+    if name is None:
+        raise _olympika_error("Give the team a name.")
+    with database().tx(request_id=request_id(request)) as tx:
+        person = _self(tx, principal)
+        event = _olympika_event(tx, event_id)
+        team = tx.one("olympika.team_for_captain", (event_id, person["id"]))
+        if event["kind"] != "team" or team is None:
+            raise _olympika_error("You have not signed up a team for that event.")
+        try:
+            tx.run("olympika.team_rename", (name, clock.now_iso(), team["id"]))
+        except Exception as error:
+            if "unique" in str(error).lower():
+                raise _olympika_error(
+                    f"There is already a team called “{name}” in {event['name']}.") from None
+            raise
+        tx.audit("olympika.team_rename",
+                 f"{principal.display_name} renamed their {event['name']} team.",
+                 school_id=person["school_id"], entity_type="olympika_team",
+                 entity_id=team["id"], **_actor(principal))
+        olympika.sync_schedule(tx, event_id, clock.now_iso())
+    return {"ok": True}
+
+
+@app.delete("/me/olympika/{event_id}")
+def withdraw_from_olympika(event_id: int, request: Request,
+                           principal: auth.Principal = guard(
+                               "me.olympika.withdraw", "delegate",
+                               school_rule="self", writes=True)):
+    """Take yourself, or your team, out of an event. Allowed after sign-up
+    closes, but not for a team once the bracket is drawn -- the Athletics
+    Director has to take it out of the bracket."""
+    with database().tx(request_id=request_id(request)) as tx:
+        person = _self(tx, principal)
+        event = _olympika_event(tx, event_id)
+        if event["kind"] == "individual":
+            signup = tx.one("olympika.signup_for_person", (event_id, person["id"]))
+            if signup is None:
+                raise _olympika_error(f"You are not signed up for {event['name']}.")
+            tx.run("olympika.signup_delete", (signup["id"],))
+            action, summary = "olympika.withdraw", (
+                f"{principal.display_name} withdrew from {event['name']}.")
+        else:
+            team = tx.one("olympika.team_for_captain", (event_id, person["id"]))
+            if team is None:
+                raise _olympika_error(f"You have no team in {event['name']}.")
+            if tx.value("olympika.match_count_for_event", (event_id,), default=0):
+                raise _olympika_error(
+                    f"The {event['name']} bracket has already been drawn, so a team "
+                    "cannot leave it by itself. Tell the Athletics Director.")
+            tx.run("olympika.team_delete", (team["id"],))
+            action, summary = "olympika.team_withdraw", (
+                f"{principal.display_name} withdrew their {event['name']} team.")
+        tx.audit(action, summary, school_id=person["school_id"],
+                 entity_type="olympika_event", entity_id=event_id, **_actor(principal))
+    return {"ok": True}
+
+
+# -- The Athletics Director --------------------------------------------------
+
+@app.get("/admin/athletics")
+def athletics_events(principal: auth.Principal = guard("admin.athletics", "athletics",
+                                                       school_rule="any")):
+    """Every event with how many have entered and what has been set up."""
+    with database().read() as tx:
+        events = []
+        for row in tx.all("olympika.events"):
+            view = _event_view(row)
+            heats = tx.all("olympika.heats", (row["id"],))
+            view.update({
+                "entries": _entry_count(tx, row),
+                "heats": len(heats),
+                "heats_timed": sum(1 for h in heats if h["starts_at"]),
+                "bracket": bool(tx.value("olympika.match_count_for_event",
+                                         (row["id"],), default=0)),
+            })
+            events.append(view)
+    return {"events": events, **_olympika_limits()}
+
+
+def _olympika_limits() -> dict:
+    return {"max_name": olympika.MAX_NAME, "max_description": olympika.MAX_DESCRIPTION,
+            "max_location": olympika.MAX_LOCATION, "max_label": olympika.MAX_LABEL,
+            "max_heats": olympika.MAX_HEATS, "max_team_name": olympika.MAX_TEAM_NAME}
+
+
+def _athletics_detail(tx, event: dict) -> dict:
+    heats = [dict(h) for h in tx.all("olympika.heats", (event["id"],))]
+    body = {"event": _event_view(event), "heats": [], "signups": [], "teams": [],
+            "matches": [], "rounds": 0, **_olympika_limits()}
+    if event["kind"] == "individual":
+        signups = [dict(r) for r in tx.all("olympika.signups_for_event", (event["id"],))]
+        tally: dict[int, int] = {}
+        for s in signups:
+            if s["heat_id"]:
+                tally[s["heat_id"]] = tally.get(s["heat_id"], 0) + 1
+        body["heats"] = [_heat_view(h, tally.get(h["id"], 0)) for h in heats]
+        body["signups"] = [{
+            "id": s["id"], "person_id": s["person_id"], "first_name": s["first_name"],
+            "last_name": s["last_name"], "school_seq": s["school_seq"],
+            "grade": s["grade"], "latin_level": s["latin_level"],
+            "school_id": s["school_id"], "school_name": s["school_name"],
+            "school_number": s["school_number"], "heat_id": s["heat_id"],
+            "heat_number": s["heat_number"], "lane": s["lane"],
+            "signed_up_at": s["signed_up_at"]} for s in signups]
+    else:
+        matches = tx.all("olympika.matches_for_event", (event["id"],))
+        rounds = max((m["round"] for m in matches), default=0)
+        body["rounds"] = rounds
+        body["matches"] = [_match_view(m, rounds) for m in matches]
+        body["teams"] = [{
+            "id": t["id"], "name": t["name"], "seed": t["seed"],
+            "school_id": t["school_id"], "school_name": t["school_name"],
+            "school_number": t["school_number"],
+            "captain_id": t["captain_person_id"],
+            "first_name": t["first_name"], "last_name": t["last_name"],
+            "school_seq": t["school_seq"], "grade": t["grade"],
+            "latin_level": t["latin_level"],
+            "created_at": t["created_at"]}
+            for t in tx.all("olympika.teams_for_event", (event["id"],))]
+    return body
+
+
+@app.get("/admin/athletics/events/{event_id}")
+def athletics_event(event_id: int,
+                    principal: auth.Principal = guard("admin.athletics.event",
+                                                      "athletics", school_rule="any")):
+    with database().read() as tx:
+        return _athletics_detail(tx, _olympika_event(tx, event_id))
+
+
+@app.post("/admin/athletics/events")
+def create_olympika_event(request: Request, payload: dict = Body(...),
+                          principal: auth.Principal = guard(
+                              "admin.athletics.events.create", "athletics",
+                              school_rule="any", writes=True)):
+    fields = olympika.check_event(payload)
+    with database().tx(request_id=request_id(request)) as tx:
+        if "sort_order" not in payload:
+            fields["sort_order"] = 10 + max(
+                (r["sort_order"] for r in tx.all("olympika.events")), default=0)
+        event_id = _save_event(tx, fields)
+        tx.audit("olympika_event.create",
+                 f"{principal.display_name} added the Olympika event {fields['name']}.",
+                 entity_type="olympika_event", entity_id=event_id, **_actor(principal))
+        row = tx.one("olympika.event_get", (event_id,))
+    return {"ok": True, "event": _event_view(row)}
+
+
+@app.patch("/admin/athletics/events/{event_id}")
+def update_olympika_event(event_id: int, request: Request, payload: dict = Body(...),
+                          principal: auth.Principal = guard(
+                              "admin.athletics.events.update", "athletics",
+                              school_rule="any", writes=True)):
+    """Rename, reword, move, reorder, or open and close sign-up."""
+    with database().tx(request_id=request_id(request)) as tx:
+        current = _olympika_event(tx, event_id)
+        fields = olympika.check_event(payload, current)
+        if fields["kind"] != current["kind"] and _entry_count(tx, current):
+            raise _olympika_error(
+                "People have already entered this event, so it cannot change "
+                "between individual and team. Add a new event instead.")
+        changed = [k for k in fields if fields[k] != current[k]]
+        if changed:
+            _save_event(tx, fields, event_id)
+            if changed == ["signup_open"]:
+                summary = (f"{principal.display_name} "
+                           + ("opened" if fields["signup_open"] else "closed")
+                           + f" sign-up for {fields['name']}.")
+            else:
+                summary = (f"{principal.display_name} changed the Olympika event "
+                           f"{fields['name']}.")
+            tx.audit("olympika_event.update", summary, entity_type="olympika_event",
+                     entity_id=event_id, changed_fields=changed, **_actor(principal))
+            # Its name and place are on the master schedule.
+            if {"name", "location"} & set(changed):
+                olympika.sync_schedule(tx, event_id, clock.now_iso())
+        row = tx.one("olympika.event_get", (event_id,))
+    return {"ok": True, "event": _event_view(row)}
+
+
+@app.delete("/admin/athletics/events/{event_id}")
+def delete_olympika_event(event_id: int, request: Request,
+                          principal: auth.Principal = guard(
+                              "admin.athletics.events.delete", "athletics",
+                              school_rule="any", writes=True)):
+    """The event, its sign-ups, heats and bracket, and its master-schedule
+    entries."""
+    with database().tx(request_id=request_id(request)) as tx:
+        event = _olympika_event(tx, event_id)
+        entries = _entry_count(tx, event)
+        olympika.delete_event(tx, event_id)
+        tx.audit("olympika_event.delete",
+                 f"{principal.display_name} deleted the Olympika event {event['name']}"
+                 + (f" and the {entries} "
+                    f"{'team' if event['kind'] == 'team' else 'sign-up'}"
+                    f"{'' if entries == 1 else 's'} in it." if entries else "."),
+                 entity_type="olympika_event", entity_id=event_id, **_actor(principal))
+    return {"ok": True, "removed": entries}
+
+
+def _individual_event(tx, event_id: int) -> dict:
+    event = _olympika_event(tx, event_id)
+    if event["kind"] != "individual":
+        raise _olympika_error(f"{event['name']} is a team event. It has a bracket, "
+                              "not heats.")
+    return event
+
+
+def _team_event(tx, event_id: int) -> dict:
+    event = _olympika_event(tx, event_id)
+    if event["kind"] != "team":
+        raise _olympika_error(f"{event['name']} is run in heats. It has no bracket.")
+    return event
+
+
+@app.put("/admin/athletics/events/{event_id}/heats")
+def set_olympika_heats(event_id: int, request: Request, payload: dict = Body(...),
+                       principal: auth.Principal = guard(
+                           "admin.athletics.heats", "athletics",
+                           school_rule="any", writes=True)):
+    """`{count}` heats, and optionally `{date, start, minutes_between,
+    minutes_long}` to time them all: the first at `start`, the rest
+    `minutes_between` apart. Without a start, existing times are kept."""
+    try:
+        count = int(payload.get("count"))
+        if not 0 <= count <= olympika.MAX_HEATS:
+            raise ValueError
+    except (TypeError, ValueError):
+        raise _olympika_error(
+            f"Say how many heats there are, from 0 to {olympika.MAX_HEATS}.") from None
+    plan = olympika.check_heat_plan(payload)
+    now = clock.now_iso()
+    with database().tx(request_id=request_id(request)) as tx:
+        event = _individual_event(tx, event_id)
+        olympika.set_heat_count(tx, event, count, plan, now)
+        olympika.sync_schedule(tx, event_id, now)
+        tx.audit("olympika_heat.set",
+                 f"{principal.display_name} set {event['name']} to "
+                 f"{count} heat{'' if count == 1 else 's'}"
+                 + (" and timed them." if plan else "."),
+                 entity_type="olympika_event", entity_id=event_id, **_actor(principal))
+        return _athletics_detail(tx, event)
+
+
+@app.patch("/admin/athletics/heats/{heat_id}")
+def update_olympika_heat(heat_id: int, request: Request, payload: dict = Body(...),
+                         principal: auth.Principal = guard(
+                             "admin.athletics.heats.update", "athletics",
+                             school_rule="any", writes=True)):
+    """Rename a heat or change when it runs. Empty `date` and `start` takes
+    it off the schedule."""
+    now = clock.now_iso()
+    with database().tx(request_id=request_id(request)) as tx:
+        heat = tx.one("olympika.heat_get", (heat_id,))
+        if heat is None:
+            raise _olympika_error("There is no such heat. Reload the page.")
+        event = _olympika_event(tx, heat["event_id"])
+        label = (olympika.check_heat_label(payload["label"]) if "label" in payload
+                 else heat["label"])
+        starts_at, ends_at = schedule.parse_span(payload, dict(heat), require_start=False)
+        tx.run("olympika.heat_update", (label, starts_at, ends_at, now, heat_id))
+        olympika.sync_schedule(tx, event["id"], now)
+        tx.audit("olympika_heat.update",
+                 f"{principal.display_name} changed heat {heat['number']} of "
+                 f"{event['name']}.",
+                 entity_type="olympika_heat", entity_id=heat_id,
+                 changed_fields=[k for k in ("label", "date", "start", "end") if k in payload],
+                 **_actor(principal))
+        return _athletics_detail(tx, event)
+
+
+@app.post("/admin/athletics/events/{event_id}/assign")
+def assign_olympika_heats(event_id: int, request: Request,
+                          principal: auth.Principal = guard(
+                              "admin.athletics.assign", "athletics",
+                              school_rule="any", writes=True)):
+    """Deal every entrant into the heats: sizes within one of each other, a
+    chapter's entrants spread across heats, lanes shuffled. Replaces any
+    earlier assignment, including moves made by hand."""
+    now = clock.now_iso()
+    with database().tx(request_id=request_id(request)) as tx:
+        event = _individual_event(tx, event_id)
+        result = olympika.assign_heats(tx, event, random.Random(), now)
+        tx.audit("olympika_heat.assign",
+                 f"{principal.display_name} assigned {result['entrants']} "
+                 f"{'entrant' if result['entrants'] == 1 else 'entrants'} to "
+                 f"{result['heats']} heat{'' if result['heats'] == 1 else 's'} of "
+                 f"{event['name']}.",
+                 entity_type="olympika_event", entity_id=event_id, **_actor(principal))
+        return _athletics_detail(tx, event)
+
+
+@app.patch("/admin/athletics/signups/{signup_id}")
+def move_olympika_signup(signup_id: int, request: Request, payload: dict = Body(...),
+                         principal: auth.Principal = guard(
+                             "admin.athletics.signups.update", "athletics",
+                             school_rule="any", writes=True)):
+    """Put one entrant in a different heat (or none, with `heat_id` null),
+    optionally with a lane."""
+    with database().tx(request_id=request_id(request)) as tx:
+        signup = tx.one("olympika.signup_get", (signup_id,))
+        if signup is None:
+            raise _olympika_error("That sign-up is gone. Reload the page.")
+        event = _olympika_event(tx, signup["event_id"])
+        heat_id = payload.get("heat_id", signup["heat_id"]) or None
+        if heat_id is not None:
+            heat = tx.one("olympika.heat_get", (heat_id,))
+            if heat is None or heat["event_id"] != event["id"]:
+                raise _olympika_error("That heat belongs to a different event.")
+        lane = payload.get("lane", signup["lane"] if heat_id == signup["heat_id"] else None)
+        if lane in ("", None) or heat_id is None:
+            lane = None
+        else:
+            try:
+                lane = int(lane)
+                if not 1 <= lane <= 200:
+                    raise ValueError
+            except (TypeError, ValueError):
+                raise _olympika_error("The lane must be a whole number.") from None
+        tx.run("olympika.signup_set_heat", (heat_id, lane, signup_id))
+        tx.audit("olympika_signup.move",
+                 f"{principal.display_name} moved an entrant in {event['name']}.",
+                 school_id=signup["school_id"], entity_type="olympika_signup",
+                 entity_id=signup_id, **_actor(principal))
+        return _athletics_detail(tx, event)
+
+
+@app.delete("/admin/athletics/signups/{signup_id}")
+def remove_olympika_signup(signup_id: int, request: Request,
+                           principal: auth.Principal = guard(
+                               "admin.athletics.signups.delete", "athletics",
+                               school_rule="any", writes=True)):
+    with database().tx(request_id=request_id(request)) as tx:
+        signup = tx.one("olympika.signup_get", (signup_id,))
+        if signup is None:
+            raise _olympika_error("That sign-up is already gone.")
+        event = _olympika_event(tx, signup["event_id"])
+        tx.run("olympika.signup_delete", (signup_id,))
+        tx.audit("olympika_signup.remove",
+                 f"{principal.display_name} removed an entrant from {event['name']}.",
+                 school_id=signup["school_id"], entity_type="olympika_signup",
+                 entity_id=signup_id, **_actor(principal))
+        return _athletics_detail(tx, event)
+
+
+@app.post("/admin/athletics/events/{event_id}/bracket")
+def form_olympika_bracket(event_id: int, request: Request,
+                          payload: dict = Body(default={}),
+                          principal: auth.Principal = guard(
+                              "admin.athletics.bracket", "athletics",
+                              school_rule="any", writes=True)):
+    """Draw a single-elimination bracket of the event's teams, replacing any
+    earlier one -- and its results. With `{date, start, minutes, fields}` the
+    games are timed too: `minutes` each, as many at once as there are
+    `fields` (a comma-separated list of names)."""
+    plan = olympika.check_game_plan(payload)
+    now = clock.now_iso()
+    with database().tx(request_id=request_id(request)) as tx:
+        event = _team_event(tx, event_id)
+        result = olympika.form_bracket(tx, event, random.Random(), plan, now)
+        olympika.sync_schedule(tx, event_id, now)
+        tx.audit("olympika_bracket.form",
+                 f"{principal.display_name} drew the {event['name']} bracket: "
+                 f"{result['teams']} teams, {result['games']} games.",
+                 entity_type="olympika_event", entity_id=event_id, **_actor(principal))
+        return _athletics_detail(tx, event)
+
+
+@app.post("/admin/athletics/events/{event_id}/bracket/times")
+def time_olympika_bracket(event_id: int, request: Request, payload: dict = Body(...),
+                          principal: auth.Principal = guard(
+                              "admin.athletics.bracket.times", "athletics",
+                              school_rule="any", writes=True)):
+    """Re-time the games of the bracket as drawn, without redrawing it."""
+    plan = olympika.check_game_plan(payload)
+    if plan is None:
+        raise _olympika_error("Give the date and the time the first game starts.")
+    now = clock.now_iso()
+    with database().tx(request_id=request_id(request)) as tx:
+        event = _team_event(tx, event_id)
+        games = [dict(m) for m in tx.all("olympika.matches_for_event", (event_id,))]
+        if not games:
+            raise _olympika_error("Draw the bracket first.")
+        timed = olympika.apply_times(tx, games, plan, now)
+        olympika.sync_schedule(tx, event_id, now)
+        tx.audit("olympika_bracket.time",
+                 f"{principal.display_name} timed {timed} {event['name']} games.",
+                 entity_type="olympika_event", entity_id=event_id, **_actor(principal))
+        return _athletics_detail(tx, event)
+
+
+@app.delete("/admin/athletics/events/{event_id}/bracket")
+def clear_olympika_bracket(event_id: int, request: Request,
+                           principal: auth.Principal = guard(
+                               "admin.athletics.bracket.delete", "athletics",
+                               school_rule="any", writes=True)):
+    now = clock.now_iso()
+    with database().tx(request_id=request_id(request)) as tx:
+        event = _team_event(tx, event_id)
+        olympika.reset_bracket(tx, event_id, now)
+        olympika.sync_schedule(tx, event_id, now)
+        tx.audit("olympika_bracket.clear",
+                 f"{principal.display_name} cleared the {event['name']} bracket.",
+                 entity_type="olympika_event", entity_id=event_id, **_actor(principal))
+        return _athletics_detail(tx, event)
+
+
+@app.patch("/admin/athletics/matches/{match_id}")
+def update_olympika_match(match_id: int, request: Request, payload: dict = Body(...),
+                          principal: auth.Principal = guard(
+                              "admin.athletics.matches.update", "athletics",
+                              school_rule="any", writes=True)):
+    """Record a result (`winner_id`, `score_a`, `score_b`) and/or change when
+    and where the game is played (`date`, `start`, `end`, `field`)."""
+    now = clock.now_iso()
+    with database().tx(request_id=request_id(request)) as tx:
+        match = tx.one("olympika.match_get", (match_id,))
+        if match is None:
+            raise _olympika_error("That game is gone. Reload the page.")
+        event = _olympika_event(tx, match["event_id"])
+        match = dict(match)
+        changed = []
+
+        if {"winner_id", "score_a", "score_b"} & set(payload):
+            winner = payload.get("winner_id", match["winner_id"]) or None
+            olympika.record_result(
+                tx, match, winner,
+                payload.get("score_a", match["score_a"]),
+                payload.get("score_b", match["score_b"]), now)
+            match = dict(tx.one("olympika.match_get", (match_id,)))
+            changed.append("result")
+
+        if {"date", "start", "end", "end_date", "field"} & set(payload):
+            if olympika.is_bye(match):
+                raise _olympika_error("That team has a bye. There is no game to time.")
+            starts_at, ends_at = schedule.parse_span(payload, match, require_start=False)
+            field = (" ".join(str(payload["field"] or "").split())
+                     if "field" in payload else match["field"]) or None
+            if field and len(field) > olympika.MAX_LOCATION:
+                raise _olympika_error("Keep the field's name shorter.")
+            tx.run("olympika.match_update", (
+                match["team_a_id"], match["team_b_id"], match["winner_id"],
+                match["score_a"], match["score_b"], starts_at, ends_at, field,
+                now, match_id))
+            olympika.sync_schedule(tx, event["id"], now)
+            changed.append("time")
+
+        tx.audit("olympika_match.update",
+                 f"{principal.display_name} updated a {event['name']} game.",
+                 entity_type="olympika_match", entity_id=match_id,
+                 changed_fields=changed or None, **_actor(principal))
+        return _athletics_detail(tx, event)
+
+
+@app.patch("/admin/athletics/teams/{team_id}")
+def rename_olympika_team(team_id: int, request: Request, payload: dict = Body(...),
+                         principal: auth.Principal = guard(
+                             "admin.athletics.teams.update", "athletics",
+                             school_rule="any", writes=True)):
+    name = olympika.check_team_name(payload.get("name"))
+    if name is None:
+        raise _olympika_error("Give the team a name.")
+    now = clock.now_iso()
+    with database().tx(request_id=request_id(request)) as tx:
+        team = tx.one("olympika.team_get", (team_id,))
+        if team is None:
+            raise _olympika_error("That team is gone. Reload the page.")
+        event = _olympika_event(tx, team["event_id"])
+        try:
+            tx.run("olympika.team_rename", (name, now, team_id))
+        except Exception as error:
+            if "unique" in str(error).lower():
+                raise _olympika_error(
+                    f"There is already a team called “{name}” in {event['name']}.") from None
+            raise
+        tx.audit("olympika_team.rename",
+                 f"{principal.display_name} renamed a team in {event['name']}.",
+                 school_id=team["school_id"], entity_type="olympika_team",
+                 entity_id=team_id, **_actor(principal))
+        return _athletics_detail(tx, event)
+
+
+@app.delete("/admin/athletics/teams/{team_id}")
+def remove_olympika_team(team_id: int, request: Request,
+                         principal: auth.Principal = guard(
+                             "admin.athletics.teams.delete", "athletics",
+                             school_rule="any", writes=True)):
+    with database().tx(request_id=request_id(request)) as tx:
+        team = tx.one("olympika.team_get", (team_id,))
+        if team is None:
+            raise _olympika_error("That team is already gone.")
+        event = _olympika_event(tx, team["event_id"])
+        if tx.value("olympika.match_count_for_event", (event["id"],), default=0):
+            raise _olympika_error(
+                "The bracket has been drawn. Clear the bracket first, remove "
+                "the team, then draw it again.")
+        tx.run("olympika.team_delete", (team_id,))
+        tx.audit("olympika_team.remove",
+                 f"{principal.display_name} removed a team from {event['name']}.",
+                 school_id=team["school_id"], entity_type="olympika_team",
+                 entity_id=team_id, **_actor(principal))
+        return _athletics_detail(tx, event)
+
+
+# ===========================================================================
 # Admin
 # ===========================================================================
 
@@ -1009,13 +3482,17 @@ def create_school(request: Request, payload: dict = Body(...),
             payload.get("discount_reason"),
             payload.get("notes"), now, now))
         tx.run("schools.stats_init", (school_id, now))
+        # EVERY NEW CHAPTER STARTS WITH A JOIN CODE, open, so the chair can put
+        # it in the welcome email the moment the chapter exists.
+        join_code = joining.ensure_code(tx, {"id": school_id, "join_code": None})
         tx.audit("school.create",
                  f"{principal.display_name} added {name} to the convention.",
                  actor_person_id=principal.person_id,
                  impersonator_person_id=principal.impersonator_person_id,
                  school_id=school_id, entity_type="school", entity_id=school_id)
         stats.recompute(tx, school_id, settings=settings.fee_settings(tx))
-    return {"id": school_id, "name": name, "level": level}
+    return {"id": school_id, "name": name, "level": level,
+            "join_code": join_code, "join_open": True}
 
 
 @app.patch("/admin/schools/{school_id}")
@@ -1079,6 +3556,7 @@ def create_sponsor(school_id: int, request: Request, payload: dict = Body(...),
         # a millisecond later, which worked and was one wasted write plus one
         # dead code per sponsor created.
         code = created["code"]
+        join_code = joining.ensure_code(tx, school)
         name = f"{created['first_name']} {created['last_name']}".strip()
         tx.audit("person.create",
                  f"{principal.display_name} created a sponsor account for {name} "
@@ -1088,8 +3566,11 @@ def create_sponsor(school_id: int, request: Request, payload: dict = Body(...),
                  school_id=school_id, entity_type="person", entity_id=created["id"])
         stats.recompute(tx, school_id, settings=settings.fee_settings(tx))
     return {**created, "code": code,
+            "join_code": join_code,
+            "join_open": bool(school.get("join_open")),
             "note": "This is the only time this code is shown. Send it to the "
-                    "sponsor from the official CAJCL account."}
+                    "sponsor from the official CAJCL account, together with "
+                    "the chapter's join code."}
 
 
 @app.get("/admin/schools/{school_id}/sponsors")
@@ -1233,6 +3714,9 @@ def chair_dashboard(principal: auth.Principal = guard("admin.registration",
             "delegates": sum(r["delegates_active"] or 0 for r in rows),
             "adults": sum(r["adults_active"] or 0 for r in rows),
             "delegates_complete": sum(r["delegates_complete"] or 0 for r in rows),
+            # Joined with a chapter code, not yet approved. Beside the figures
+            # above, never inside them.
+            "delegates_pending": sum(r["delegates_pending"] or 0 for r in rows),
             "outstanding_cents": outstanding,
             "collected_cents": sum(r["amount_paid_cents"] or 0 for r in rows),
         },
@@ -1451,6 +3935,7 @@ def registration_overview(principal: auth.Principal = guard("admin.overview",
     totals = {
         "chapters": 0, "chapters_started": 0, "chapters_paid": 0,
         "delegates": 0, "delegates_ms": 0, "delegates_hs": 0,
+        "delegates_pending": 0,
         "adults": 0, "sponsors": 0, "chaperones": 0,
         "other_adults": 0, "complete": 0, "people": 0,
         "meal_regular": 0, "meal_vegetarian": 0, "meal_gluten_free": 0,
@@ -1483,6 +3968,8 @@ def registration_overview(principal: auth.Principal = guard("admin.overview",
         # problem that cannot be solved.
         if is_chapter and (row["billing_exempt"] or row["balance_cents"] <= 0):
             totals["chapters_paid"] += 1
+
+        totals["delegates_pending"] += row["delegates_pending"] or 0
 
         for key in ("delegates_active", "adults_active", "adults_sponsors",
                     "adults_chaperones", "other_adults", "complete", "people",
@@ -2052,8 +4539,7 @@ def create_role(request: Request, payload: dict = Body(...),
     key = (payload.get("key") or "").strip().lower().replace(" ", "_")
     name = (payload.get("name") or "").strip()
     scopes = payload.get("scopes") or []
-    valid = {"*", "registration", "academics", "awards", "sponsor", "delegate", "chapter"}
-    if not key or not name or not scopes or not set(scopes) <= valid:
+    if not key or not name or not scopes or not set(scopes) <= auth.ALL_SCOPES:
         raise catalog.ValidationError(
             ["Give the role a key, a name, and at least one valid scope."])
 
@@ -2514,6 +5000,20 @@ def packet(school_id: int | None = Query(default=None),
             tx, school, only_person=person_id, only_people=chosen))
 
 
+@app.get("/sponsor/join-sheet", response_class=HTMLResponse)
+def join_sheet(school_id: int | None = Query(default=None),
+               principal: auth.Principal = guard("sponsor.join_sheet", "sponsor",
+                                                 "registration")):
+    """The one-page handout carrying the chapter's join code, to print in bulk.
+
+    The same on every copy and personal to nobody, so unlike the access sheets
+    it needs no codes passed in and is a plain GET.
+    """
+    with database().read() as tx:
+        school = _school_of(tx, principal, school_id)
+        return HTMLResponse(printing.render_join_sheet(tx, school))
+
+
 @app.get("/admin/academics/item/{item_id}/sheet", response_class=HTMLResponse)
 def academics_sheet(item_id: int,
                     principal: auth.Principal = guard("admin.academics.sheet",
@@ -2542,3 +5042,81 @@ def health():
     """Cheap liveness check. Touches no table."""
     return {"ok": True, "service": "cajcl-2027",
             "env": os.environ.get("CAJCL_ENV", "development")}
+
+
+# ===========================================================================
+# Certamen Arena -- Turso DB Proxy
+# ===========================================================================
+
+@app.get("/certamen/ping")
+def certamen_ping():
+    from backend.lib import certamen_db
+    return certamen_db.ping()
+
+
+@app.get("/certamen/questions")
+def certamen_questions(
+    category: str = Query(default="all"),
+    difficulty: str = Query(default="all"),
+    level: str = Query(default="all"),
+    limit: int = Query(default=50),
+    random: bool = Query(default=True),
+    exclude: str = Query(default=""),
+):
+    from backend.lib import certamen_db
+    diff = level if level != "all" else difficulty
+    exclude_ids = [i.strip() for i in exclude.split(",") if i.strip()] if exclude else []
+    questions = certamen_db.get_questions(
+        category=category,
+        difficulty=diff,
+        limit=limit,
+        random_order=random,
+        exclude_ids=exclude_ids,
+    )
+    return {"questions": questions}
+
+
+@app.get("/certamen/leaderboard")
+def certamen_leaderboard(
+    category: str = Query(default="all"),
+    level: str = Query(default="all"),
+    limit: int = Query(default=100),
+):
+    from backend.lib import certamen_db
+    entries = certamen_db.get_leaderboard(
+        category=category,
+        level=level,
+        limit=limit,
+    )
+    return {"leaderboard": entries}
+
+
+@app.post("/certamen/sync-user")
+def certamen_sync_user(payload: dict = Body(...)):
+    from backend.lib import certamen_db
+    user_data = payload.get("user") or payload
+    return certamen_db.sync_user(user_data)
+
+
+@app.post("/certamen/log-attempt")
+def certamen_log_attempt(payload: dict = Body(...)):
+    from backend.lib import certamen_db
+    attempt_data = payload.get("attempt") or payload
+    return certamen_db.log_attempt(attempt_data)
+
+
+@app.post("/certamen/login")
+def certamen_login(payload: dict = Body(...)):
+    from backend.lib import certamen_db
+    username = payload.get("username", "")
+    pin = payload.get("pin", "")
+    user = certamen_db.login_user(username, pin)
+    return {"user": user}
+
+
+@app.post("/certamen/questions/batch")
+def certamen_questions_batch(payload: dict = Body(...)):
+    from backend.lib import certamen_db
+    questions = payload.get("questions", [])
+    replace = bool(payload.get("replace", False))
+    return certamen_db.import_questions(questions, replace=replace)

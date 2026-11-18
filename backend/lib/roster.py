@@ -25,7 +25,7 @@ import hmac
 import json
 import secrets
 
-from . import auth, clock, settings, stats
+from . import auth, clock, drive, olympika, potluck, settings, stats
 from .db import Tx
 from .names import parse_roster
 
@@ -354,6 +354,11 @@ def cancel(tx: Tx, school: dict, actor: auth.Principal, person: dict) -> str:
     Decided here, from the payment record, rather than asked of the sponsor --
     a sponsor should not have to know the billing policy to remove a student.
     """
+    if person.get("approval") == "pending":
+        raise RosterError(
+            "That student is still waiting for approval. Approve them to add "
+            "them to the roster, or deny them to remove them.")
+
     paid = tx.value("stats.paid_for_school", (school["id"],), default=0) or 0
     status = "cancelled_paid" if paid > 0 else "cancelled"
 
@@ -385,6 +390,8 @@ def restore(tx: Tx, school: dict, actor: auth.Principal, person: dict) -> None:
     that were killed when they were cancelled. If they still have their printed
     sheet the code on it works, because the code itself was never changed.
     """
+    if person.get("first_name") == "REDACTED":
+        raise RosterError("A redacted attendee cannot be restored.")
     tx.run("people.restore", (clock.now_iso(), person["id"]))
     name = f"{person['first_name']} {person['last_name']}".strip()
     tx.audit(
@@ -398,6 +405,51 @@ def restore(tx: Tx, school: dict, actor: auth.Principal, person: dict) -> None:
     stats.recompute(tx, school["id"], settings=settings.fee_settings(tx))
 
 
+def approve(tx: Tx, school: dict, actor: auth.Principal, person: dict) -> None:
+    """A sponsor accepting a student who joined with the chapter's join code.
+
+    From this moment they are an ordinary registered delegate: billed, counted
+    on the public figure, fed. Nothing else about them changes, which is the
+    point -- they have been filling in their forms all along.
+    """
+    if person.get("approval") != "pending":
+        raise RosterError("That student is not waiting for approval.")
+    tx.run("people.set_approval", ("approved", clock.now_iso(), person["id"]))
+    name = f"{person['first_name']} {person['last_name']}".strip()
+    tx.audit(
+        "person.approve",
+        f"{actor.display_name} approved {name} at {school['name']}.",
+        actor_person_id=actor.person_id,
+        impersonator_person_id=actor.impersonator_person_id,
+        school_id=school["id"], entity_type="person", entity_id=person["id"],
+        changed_fields=["approval"],
+    )
+    stats.recompute(tx, school["id"], settings=settings.fee_settings(tx))
+
+
+def deny(tx: Tx, school: dict, actor: auth.Principal, person: dict) -> None:
+    """A sponsor turning a student down. ALL of their data is removed.
+
+    That is the existing redaction, not a new mechanism: every personal field,
+    their sessions, their code, their form answers and contest entries, and
+    their name in the audit log. What remains is an anonymous row, because the
+    audit log and other tables point at `people(id)` and the printed person
+    number must never be handed to somebody else.
+    """
+    if person.get("approval") != "pending":
+        raise RosterError("That student is not waiting for approval.")
+    redact(tx, school, actor, person)         # marks them 'denied'
+    tx.audit(
+        "person.deny",
+        f"{actor.display_name} denied attendee #{person['id']} at "
+        f"{school['name']}. Their details were removed.",
+        actor_person_id=actor.person_id,
+        impersonator_person_id=actor.impersonator_person_id,
+        school_id=school["id"], entity_type="person", entity_id=person["id"],
+        changed_fields=["approval"],
+    )
+
+
 def regenerate_code(tx: Tx, school: dict, actor: auth.Principal, person: dict) -> str:
     """Issue a new code and kill everything derived from the old one.
 
@@ -405,13 +457,15 @@ def regenerate_code(tx: Tx, school: dict, actor: auth.Principal, person: dict) -
     single-attendee reprint: without it the sponsor is holding a packet page
     whose QR no longer works, with no obvious way to produce a new one.
     """
+    if person.get("first_name") == "REDACTED":
+        raise RosterError("A redacted attendee cannot have their login token reissued.")
     new_code = auth.issue_code(tx, person["id"], person["code_prefix"])
     tx.run("auth.session_revoke_all_for_person", (clock.now_iso(), person["id"]))
 
     name = f"{person['first_name']} {person['last_name']}".strip()
     tx.audit(
         "person.code_regenerate",
-        f"{actor.display_name} issued a new access code for {name}. "
+        f"{actor.display_name} issued a new login token for {name}. "
         f"The previous code and every device signed in with it stopped working.",
         actor_person_id=actor.person_id,
         impersonator_person_id=actor.impersonator_person_id,
@@ -450,3 +504,155 @@ def mark_paper_form(tx: Tx, school: dict, actor: auth.Principal, person: dict,
         changed_fields=[form_type],
     )
     stats.recompute(tx, school["id"], settings=settings.fee_settings(tx))
+
+
+def redact(tx: Tx, school: dict, actor: auth.Principal, person: dict) -> None:
+    """Permanently redact a person's details everywhere in the system.
+
+    Fulfills PRIVACY.md (§2.4, §8 item 5):
+    - Retains database integrity (row in people is not deleted).
+    - Sets all personal detail fields to 'REDACTED' (or NULL where appropriate).
+    - Invalidates credentials (code HMAC randomized, sessions revoked).
+    - Clears roles and sponsor grants.
+    - Unranks and redacts contest entries, quietly trashing associated Drive files.
+    - Deletes photo contest entries, quietly trashing the photos and thumbnails.
+    - Deletes Olympika sign-ups, and teams the person captained.
+    - Deletes their activities-potluck picks.
+    - Redacts historical audit log sentences mentioning the person by name.
+    - Redacts occurrences in original roster imports.
+    - Records an audited 'person.redact' action with no personal details.
+    - Recomputes school stats.
+    """
+    person_id = int(person["id"])
+    now = clock.now_iso()
+
+    # A student who never got past "pending" was never billable, so redacting
+    # them must not leave a `cancelled_paid` row the invoice would still count.
+    # Redacting one IS denying them, whoever pressed the button.
+    pending = person.get("approval") == "pending"
+    if pending:
+        status = "cancelled"
+        tx.run("people.set_approval", ("denied", now, person_id))
+    elif person.get("status") == "active":
+        paid = tx.value("stats.paid_for_school", (school["id"],), default=0) or 0
+        status = "cancelled_paid" if paid > 0 else "cancelled"
+    else:
+        status = person.get("status", "cancelled")
+
+    cancelled_at = person.get("cancelled_at") or now
+    code_hmac = f"redacted-{person_id}-{secrets.token_hex(16)}"
+
+    # 1. Overwrite people row
+    if person.get("person_type") == "delegate":
+        tx.run("people.redact_delegate", (code_hmac, status, cancelled_at, now, person_id))
+    else:
+        tx.run("people.redact_adult", (code_hmac, status, cancelled_at, now, person_id))
+
+    # 2. Revoke sessions, roles, and grants
+    tx.run("auth.session_revoke_all_for_person", (now, person_id))
+    tx.run("people.revoke_all_roles", (person_id,))
+    tx.run("grants.delete_all_for_person", (person_id,))
+
+    # 3. Contest entries: unrank ballots, trash files, and redact entry fields
+    contest_entries = tx.all("contests.entries_for_person", (person_id,))
+    for entry in contest_entries:
+        tx.run("contests.ballots_reopen_for_entry", (now, entry["id"]))
+        tx.run("contests.ballot_places_delete_for_entry", (entry["id"],))
+        file_id = entry.get("drive_file_id")
+        if file_id:
+            try:
+                drive.client().trash(file_id)
+            except Exception:
+                pass
+    if contest_entries:
+        tx.run("contests.redact_for_person", (now, person_id))
+
+    # 3b. Photo contest entries: a photo may show their face, and its name in
+    # Drive is theirs. Both files are trashed and the rows deleted outright.
+    photo_entries = tx.all("photos.entries_for_person", (person_id,))
+    for entry in photo_entries:
+        for file_id in (entry.get("drive_file_id"), entry.get("drive_thumb_id")):
+            if file_id:
+                try:
+                    drive.client().trash(file_id)
+                except Exception:
+                    pass
+    if photo_entries:
+        tx.run("photos.entries_delete_for_person", (person_id,))
+
+    # 3c. Olympika: their sign-ups, and any team they were the one delegate
+    # signing up. A captain's name is the team's only link to a person.
+    olympika.forget_person(tx, person_id, now)
+
+    # 3d. Activities potluck: their offers to help.
+    potluck.forget_person(tx, person_id)
+
+    # 4. Roster imports: scrub raw text if imported from a paste
+    import_id = person.get("roster_import_id")
+    if import_id:
+        import_row = tx.one("roster.import_get", (import_id,))
+        if import_row and import_row.get("raw_text"):
+            raw_text = import_row["raw_text"]
+            for token in [person.get("raw_name_input"), f"{person.get('first_name', '')} {person.get('last_name', '')}".strip()]:
+                if token and token in raw_text:
+                    raw_text = raw_text.replace(token, "REDACTED")
+            tx.run("roster.import_update_raw_text", (raw_text, import_id))
+
+    # 5. Audit log: replace candidate names in historical summaries
+    first_name = (person.get("first_name") or "").strip()
+    last_name = (person.get("last_name") or "").strip()
+    full_name = f"{first_name} {last_name}".strip()
+
+    names_to_scrub = []
+    if full_name and full_name != "REDACTED":
+        names_to_scrub.append(full_name)
+    if person.get("middle_name"):
+        mid = f"{first_name} {person['middle_name']} {last_name}".strip()
+        if mid and mid not in names_to_scrub:
+            names_to_scrub.append(mid)
+    if person.get("raw_name_input"):
+        raw_in = person["raw_name_input"].strip()
+        if raw_in and raw_in != "REDACTED" and raw_in not in names_to_scrub:
+            names_to_scrub.append(raw_in)
+    rev_name = f"{last_name}, {first_name}".strip()
+    if rev_name and rev_name != "," and rev_name not in names_to_scrub:
+        names_to_scrub.append(rev_name)
+
+    candidate_rows = {}
+    for r in tx.all("audit.by_entity_person", (person_id,)):
+        candidate_rows[r["id"]] = r["summary"]
+    for r in tx.all("audit.by_actor_person", (person_id,)):
+        candidate_rows[r["id"]] = r["summary"]
+    if full_name and full_name != "REDACTED":
+        for r in tx.all("audit.by_school_mentioning_name", (school["id"], f"%{full_name}%")):
+            candidate_rows[r["id"]] = r["summary"]
+
+    for row_id, summary in candidate_rows.items():
+        new_summary = summary
+        for name in names_to_scrub:
+            if name in new_summary:
+                new_summary = new_summary.replace(name, "REDACTED")
+        if first_name and first_name != "REDACTED" and last_name and last_name != "REDACTED":
+            if f"{first_name} {last_name}" in new_summary:
+                new_summary = new_summary.replace(f"{first_name} {last_name}", "REDACTED")
+        while "REDACTED REDACTED" in new_summary:
+            new_summary = new_summary.replace("REDACTED REDACTED", "REDACTED")
+
+        if new_summary != summary and "REDACTED" in new_summary:
+            tx.run("audit.redact_summary", (new_summary, row_id))
+
+    # 6. Audit this operation (without the person's name)
+    tx.audit(
+        "person.redact",
+        f"{actor.display_name} redacted attendee #{person_id} at {school['name']}.",
+        actor_person_id=actor.person_id,
+        impersonator_person_id=actor.impersonator_person_id,
+        school_id=school["id"],
+        entity_type="person",
+        entity_id=person_id,
+        changed_fields=["first_name", "last_name", "status"],
+    )
+
+    # 7. Recompute school stats
+    stats.recompute(tx, school["id"], settings=settings.fee_settings(tx))
+

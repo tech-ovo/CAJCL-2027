@@ -50,6 +50,13 @@ SMALL_TABLES = {
     "announcements": 50,
     "roster_imports": 200,      # one row per committed import
     "schema_migrations": 50,
+    "contests": 10,             # six pre-convention contests
+    "contest_ballots": 200,     # judges x divisions x Publicity categories
+    "photo_categories": 20,     # a handful of photo contest categories a year
+    "olympika_events": 20,      # a dozen events a year
+    "potluck_activities": 40,   # a dozen or two activities that need helpers
+    "site_pages": 40,           # a dozen long text pages written in Google Docs
+    "schedule_items": 250,      # by hand, plus a row per heat and bracket round
 }
 
 # Tables that WILL exceed 200 rows and must always be reached by an index.
@@ -59,7 +66,12 @@ BIG_TABLES = {
     "people", "sessions", "login_attempts", "audit_log", "form_submissions",
     "paper_forms", "activity_selections", "activity_selection_options",
     "adult_role_selections", "chapter_entries", "payments", "person_roles",
-    "contest_submissions", "scores",
+    "contest_entries", "contest_ballot_places", "scores",
+    "photo_entries",            # up to one per delegate per photo category
+    "potluck_signups",          # up to a few per attendee
+    "olympika_heats",           # a dozen events x up to forty heats
+    "olympika_signups",         # up to a few per delegate
+    "olympika_teams", "olympika_matches",
 }
 
 # Queries allowed to scan a large table, each with the reason. Keep this list

@@ -170,6 +170,16 @@ def test_system_roles_and_their_scopes(db):
         "sponsor": {"sponsor", "chapter"},
         "delegate": {"delegate"},
         "chapter_leader": {"chapter"},
+        # Reads anonymous contest entries and writes its own scores. Nothing
+        # administrative: see auth.JUDGING_SCOPES.
+        "contest_judge": {"judge"},
+        # Runs the photo contest. Narrow in the same way: see
+        # auth.ACTIVITY_SCOPES.
+        "activities_chair": {"activities"},
+        # Olympika, and the master schedule. Narrow in the same way: see
+        # auth.CONVENTION_SCOPES.
+        "athletics_director": {"athletics"},
+        "logistics_chair": {"logistics"},
     }
 
 

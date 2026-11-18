@@ -18,7 +18,9 @@ SCOPES REACH A PERSON ONLY THROUGH ROLES
     Four scopes are ADMINISTRATIVE and global: `registration`, `academics`,
     `awards`, and `*` which subsumes everything. Three are IDENTITY scopes
     carried by ordinary accounts and ALWAYS school-limited: `sponsor`,
-    `delegate`, and `chapter`.
+    `delegate`, and `chapter`. Four more are global but NARROW, and open no
+    roster: `judge` (contest judging), `activities` (the photo contest),
+    `athletics` (Olympika) and `logistics` (the master schedule).
 """
 
 from __future__ import annotations
@@ -41,6 +43,20 @@ CODE_LIMIT, CODE_WINDOW_MINUTES = 5, 60
 
 ADMIN_SCOPES = frozenset({"*", "registration", "academics", "awards"})
 IDENTITY_SCOPES = frozenset({"sponsor", "delegate", "chapter"})
+# Global, but narrow: a contest judge reads anonymous entries and writes their
+# own scores, and that is all. NOT an administrative scope -- `require_school`
+# must never treat a judge as able to reach any chapter.
+JUDGING_SCOPES = frozenset({"judge"})
+# The same kind of narrow global scope: the Activities chair sees every photo
+# contest entry with its name and chapter, and runs the categories. Nothing
+# else -- `require_school` must never treat it as reaching a roster.
+ACTIVITY_SCOPES = frozenset({"activities"})
+# And two more of the same kind. The Athletics Director sees the name and
+# chapter of everyone entered in Olympika, and the Logistics chair keeps the
+# master schedule, which names nobody. Neither reaches a roster.
+CONVENTION_SCOPES = frozenset({"athletics", "logistics"})
+ALL_SCOPES = (ADMIN_SCOPES | IDENTITY_SCOPES | JUDGING_SCOPES | ACTIVITY_SCOPES
+              | CONVENTION_SCOPES)
 
 
 class AuthError(Exception):
@@ -75,7 +91,7 @@ def _pepper() -> bytes:
     if not raw:
         if os.environ.get("CAJCL_ENV") == "production":
             raise RuntimeError(
-                "CODE_PEPPER is not set. Every access code in the database was "
+                "CODE_PEPPER is not set. Every login token in the database was "
                 "hashed with it; without it nobody can log in. See docs/RUNBOOK.md."
             )
         raw = "development-pepper-not-for-production"
@@ -88,7 +104,7 @@ def hash_ip(ip: str | None) -> str:
     PEPPERED, NOT PLAIN. An unpeppered SHA-256 of an IP address is barely a
     hash at all: IPv4 is 2^32 addresses, so anybody holding the database can
     recover every one of them by hashing the whole space, which is minutes of
-    ordinary hardware. That is the same argument the access codes are peppered
+    ordinary hardware. That is the same argument the login tokens are peppered
     for, and it applies here with far more force -- a code has 44.6 bits of
     entropy and an IP has 32 at the very most.
 
@@ -180,6 +196,11 @@ class Principal:
             "last_name": self.last_name,
             "person_type": self.person_type,
             "school_seq": self.school_seq,
+            # 'approved' for nearly everybody. 'pending' is a student who
+            # joined with the chapter's join code and has not been approved
+            # yet: they may do everything a delegate does, and the site says
+            # their registration is preliminary.
+            "approval": self.row.get("approval") or "approved",
             "school": {
                 "id": self.school_id,
                 "name": self.school_name,
@@ -285,6 +306,23 @@ def _check_rate_limits(tx: Tx, attempted_hmac: str, ip_hash: str) -> None:
 # Redeeming a code
 # ---------------------------------------------------------------------------
 
+def start_session(tx: Tx, person_id: int, *, ip_hash: str | None,
+                  user_agent: str | None) -> tuple[str, int]:
+    """Open a session for a person. Returns (raw_token, session_id).
+
+    Shared by signing in with a code and by joining a chapter with its join
+    code, which signs the new student in on the spot. The raw token is returned
+    once; only its hash is stored.
+    """
+    token = secrets.token_urlsafe(32)
+    session_id = tx.insert("auth.session_create", (
+        person_id, hash_token(token), None, 0,
+        clock.now_iso(), clock.now_iso(), clock.plus_days(SESSION_DAYS),
+        (user_agent or "")[:200], ip_hash,
+    ))
+    return token, session_id
+
+
 def redeem(
     db,
     raw_code: str,
@@ -344,13 +382,9 @@ def redeem(
     if person["school_status"] == "withdrawn":
         fail("That chapter is no longer registered. Ask your sponsor.")
 
-    token = secrets.token_urlsafe(32)
     with db.tx() as tx:
-        session_id = tx.insert("auth.session_create", (
-            person["id"], hash_token(token), None, 0,
-            clock.now_iso(), clock.now_iso(), clock.plus_days(SESSION_DAYS),
-            (user_agent or "")[:200], ip_hash,
-        ))
+        token, session_id = start_session(tx, person["id"], ip_hash=ip_hash,
+                                          user_agent=user_agent)
         tx.run("auth.attempt_record",
                (attempted, person["code_prefix"], ip_hash, 1, clock.now_iso()))
 
@@ -482,6 +516,7 @@ def authenticate(tx: Tx, token: str | None, *, touch: bool = True) -> Principal:
             "school_seq": session["school_seq"],
             "billing_exempt": session["billing_exempt"],
             "forms_unlocked": session["forms_unlocked"],
+            "approval": session["approval"],
             "latin_level": session["latin_level"],
             "grade": session["grade"],
             "latin_knowledge": session["latin_knowledge"],

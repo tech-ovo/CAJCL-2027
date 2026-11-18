@@ -43,7 +43,7 @@ def build_html(db, document: str, school_id: int,
                codes: dict[int, str] | None = None) -> str:
     """The same HTML the browser print view is served.
 
-    `codes` maps person id to the plaintext access code, and is passed in by
+    `codes` maps person id to the plaintext login token, and is passed in by
     whoever just minted them. WITHOUT IT EVERY SHEET PRINTS BLOCKS, because the
     stored code is an HMAC and cannot be read back -- which is correct, and was
     silently making this whole path produce packets nobody could sign in with.
