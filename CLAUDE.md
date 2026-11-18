@@ -9,6 +9,9 @@ rules), then `docs/design.md` for the visual rules.
   is the design system (`.masthead`, `.nav`, `.btn`, `.field`, `.table`,
   `.tabula`, `.stats`, `.dialog`, `.empty`, `.waking`, …). Light/dark via
   `data-theme` on `<html>` + `localStorage["theme"]`.
+- `frontend/landing/` — temporary static landing page (`index.html` and `img/`).
+  `.github/workflows/deploy.yml` publishes `frontend/landing/` instead of
+  `frontend/public/` whenever `frontend/.showlanding` exists.
 - `backend/` — FastAPI (`api.py`), Modal wrapper (`app.py`), SQL in `queries/`.
   `app.py` attaches two Modal secrets: `cajcl-2027` (database, pepper, …) and
   `apps-script` (only `APPS_SCRIPT_URL`/`APPS_SCRIPT_KEY`); a missing one fails
