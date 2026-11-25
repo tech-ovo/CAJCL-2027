@@ -8,11 +8,12 @@
 
 ## 1. Executive Summary & Security Principles
 
-The CAJCL convention platform security model is built on four core architectural principles:
+The CAJCL convention platform security model is built on five core architectural principles:
 1. **Zero Cleartext Credentials:** The system stores zero plaintext passwords, login tokens, or session tokens.
-2. **Strict Data Minimization:** High-risk elements (student emails, home addresses, dates of birth, payment cards, medical files) are never ingested into the digital database.
-3. **Role-Based Isolation (RBAC):** Every API endpoint enforces declarative permission scopes and strict institutional tenancy boundaries.
-4. **Automated Continuous Assurance:** Automated test suites validate that every API route enforces authentication and tenancy isolation before code merges.
+2. **Strict Data Minimization & Paper-Only Health Forms:** High-risk elements (student emails, home addresses, dates of birth, payment cards, medical files) are never ingested into the digital database. Signed waivers and medical forms remain strictly on paper (mailed with the check; no Google Drive scanning).
+3. **Role-Based Isolation (RBAC):** Every API endpoint enforces declarative permission scopes and strict institutional tenancy boundaries. Convention hosts see everything; sponsors see only their own chapter; logged-in students see only themselves; the public sees only schedule/map/aggregate counts (never student names or public awards lists).
+4. **Private Codebase & Vetted Vendors:** Per CAJCL leadership guidelines, all website source code (especially back-end server code) must remain in a private repository, and all services with access to student PII must be vetted not to sell data or advertise to students.
+5. **Automated Continuous Assurance:** Automated test suites validate that every API route enforces authentication and tenancy isolation before code merges.
 
 ---
 
@@ -44,7 +45,9 @@ graph TD
 
 | **Join-Code Failures (per IP)** | 30 incorrect join codes per 15 minutes | Source IP refused further join attempts. | Walking the 8-character join-code space. Counted apart from sign-in failures (stored with a leading `j`), so a classroom typing one printed code cannot lock anyone out of signing in. |
 
-*Join codes:* a chapter's 8-character join code (about 39 bits) is stored as plaintext, is printed on every handout, and is *not* a bearer credential: it can only create a **pending** delegate in that chapter, a sponsor can close or replace it at any moment, and a chapter accepts at most 150 pending students.
+*Join codes:* a chapter's 8-character join code (about 39 bits) is stored as plaintext, is distributed **only after** a student's parent-signed waiver and medical form are turned in, and is *not* a bearer credential: it can only create a **pending** account in that chapter, a sponsor can close or replace it at any moment, and a chapter accepts at most 150 pending students. Once a student sets their name, grade, and Latin level, only the sponsor can change those details.
+
+*Sponsor One-Time Codes (2FA):* Per the 2027 Convention Book, chapter sponsors receive a one-time verification code each time they sign in alongside their `SPO-` login token.
 
 *Cryptographic Feasibility:* At the enforced rate limit of 960 attempts/day per IP, exhaustive search of 44.6 bits requires over 70 million years of continuous computation.
 
@@ -116,7 +119,8 @@ person_roles  ──>  roles  ──>  role_scopes  ──>  [Route Guard Evalua
 
 ### Open Security Roadmap Items
 1. **Session Longevity Reduction:** Current sessions persist for 180 days. A planned reduction to 72 hours for administrative accounts is scheduled alongside two-factor deployment.
-2. **Two-Factor Authentication (2FA) for Administrative Roles:** Integration of email-based one-time passcodes (OTP) for all accounts possessing `admin`, `registration`, `academics`, or `awards` scopes prior to public sponsor distribution.
+2. **Two-Factor Authentication (2FA) Implementation:** Implement email-based one-time passcodes (OTP) for every sponsor sign-in (as promised in the 2027 Convention Book) and administrative roles (`admin`, `registration`, `academics`, `awards`) prior to December 1, 2026 launch.
+3. **Private Repository Enforcement:** Ensure the GitHub repository housing backend server code is private, not publicly accessible, per CAJCL leadership guidelines.
 
 ---
 

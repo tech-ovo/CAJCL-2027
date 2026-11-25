@@ -66,17 +66,20 @@ Every attendee is provisioned a permanent 13-character identifier (`PPP-XXXXX-XX
 
 ---
 
-## 4a. Student Self-Registration by Join Code (preferred)
+## 4a. Attendee Self-Registration by Join Code (preferred)
 
-A sponsor rarely knows which students are coming until paper packets are in hand. Instead of pasting a roster first, the sponsor prints a one-page **join sheet** (join code, QR, instructions) for as many students as they expect, with the paper forms behind it.
+Per the 2027 CAJCL Convention Book, sponsors first distribute and collect signed paper **Medical Forms** (all attendees) and **CAJCL Waivers** (students only, including parental consent for online data use). **Only after a student's waiver and medical form have been submitted** does the sponsor distribute the chapter's **Join Code sheet** (which the Convention Book also specifies for adults: SCL, Sponsors, and Chaperones).
 
 ```text
-Student: #/join (code + name + grade + Latin level) ──> account + login token (shown once) ──> signed in, PENDING
+Parent/Guardian: Signs paper CAJCL Waiver & Medical Form ──> Returned to Sponsor
+Attendee: #/join (code + name + grade + Latin level) ──> account + login token (shown once) ──> signed in, PENDING
 Sponsor: roster ▸ "Waiting for approval" ──> Approve (counts everywhere)  |  Deny (all data removed)
 ```
 
-- **The join code is not a secret like a login token.** It is stored as-is so the sponsor can read it at any time. It can only create a *pending delegate in that one chapter*. Sponsors can **close/reopen** joining (code kept) or **replace** the code (old one dies instantly; students who already joined are untouched). A chapter holds at most 150 pending students.
-- **Login tokens are unchanged.** The student receives an ordinary `DEL-` login token, hashed like any other and used to sign in. The difference is only how they get it.
+- **Consent-gated distribution:** Because we may not collect student data without parental consent, sponsors must only give Join Codes to students whose signed waiver and medical form are already in hand. Students without parental consent cannot attend.
+- **Locked identity fields:** Once a student sets their name, grade, and Latin level, **only the sponsor can change those details**. Sponsors can also edit all student-entered data, remove students, reset their join code, and enable/disable joining.
+- **The join code is not a secret like a login token.** It is stored as-is so the sponsor can read it at any time. Currently the backend creates a *pending delegate in that one chapter* (adult self-joining via join code is specified in the Convention Book and tracked as a follow-up item in `docs/QUESTIONS.md`). Sponsors can **close/reopen** joining (code kept) or **replace** the code (old one dies instantly; attendees who already joined are untouched). A chapter holds at most 150 pending students.
+- **Login tokens are unchanged.** The student receives an ordinary `DEL-` login token, hashed like any other and used to sign in. Sponsors authenticate with their `SPO-` login token plus a one-time verification code on every sign-in.
 - **Pending is not blocked.** A pending student fills in their activity sheet at once. Their registration is marked **preliminary**: it is excluded from the invoice, the public delegate count, meal totals, completion figures, academics entry counts and the packet. It *is* visible to chairs (roster, Chapters and Overview show a separate preliminary count).
 - **Approval** moves the student into every figure. **Denial** runs the existing redaction: every personal field, sessions, code, form answers, contest entries and audit-log mentions are removed, leaving an anonymous `denied` row (the audit log and person numbers point at `people.id`).
 - **Duplicates** (same first and last name, approved or pending, in the chapter) are refused with directions to ask the sponsor for a new code.
@@ -100,20 +103,18 @@ Input Stream (Spreadsheet / Text) ──> Linear Parser Heuristic ──> Intera
 
 ---
 
-## 6. Physical Credential Packets & Form Separation
+## 6. Physical Paperwork & Form Separation
 
 ```mermaid
 graph TD
-    Sponsor[Chapter Sponsor] -->|Generates & Prints| Packet[Physical Credential Packet]
-    Packet --> Sheet[Individual Attendee Sheet with QR]
-    Packet --> PaperForms[Paper Waiver & Medical Forms]
-    Sheet -->|Student Takes Home| ParentSign[Parent/Guardian Signs Paperwork]
-    ParentSign -->|Returned to Sponsor| ScanUpload[Sponsor Scans to Private Drive Folder]
-    ScanUpload -.->|Link Verified by| Pres[Convention Presidents Only]
+    Sponsor[Chapter Sponsor] -->|Distributes First| PaperForms[Paper Waiver & Medical Forms]
+    PaperForms -->|Student Takes Home| ParentSign[Parent/Guardian Signs Paperwork]
+    ParentSign -->|Returned to Sponsor| JoinSheet[Sponsor Issues Join Code Sheet]
+    ParentSign -->|Mailed with Check by Feb 13| HostSchool[University High School c/o Mark Michalak]
 ```
 
-- **Physical Paperwork Isolation:** Signed liability waivers and medical forms reside strictly on paper and within a private Google Drive folder accessible solely by Convention Presidents. **Zero medical data enters the application database.**
-- **Portal Attestation:** Chapter sponsors verify receipt of physical documents via digital checkboxes on their dashboard, satisfying compliance gating without exposing health records.
+- **Physical Paperwork Isolation (Paper Only — No Google Drive Scans):** Signed liability waivers (students) and medical forms (students, sponsors, and chaperones) reside **strictly on paper**, mailed in the same package as the chapter's registration check by **February 13, 2027** (or mailed/brought to check-in for substitutions made through **February 26, 2027**). Unlike prior years, sponsors are **not** asked to scan or upload waivers/medical forms to Google Drive. **Zero medical data enters the application database.**
+- **Portal Attestation:** Chapter sponsors ensure the mailed physical documents match the website registration and verify receipt via digital checkboxes on their dashboard, satisfying compliance gating without exposing health records.
 
 ---
 
@@ -122,8 +123,8 @@ graph TD
 ### Student Activity Sheet (Delegates)
 - **Academic Testing:** Selection of 1 to 3 competitive exams (hard validation limit). Exam availability dynamically filters based on enrolled Latin level (e.g., Grammar 1 restricted to MS-1/2 and HS-1).
 - **Creative & Graphic Arts:** Registration across 14 artistic divisions (Drawing, Painting, Mosaic, etc.).
-- **Athletics (*Olympika*):** Individual event entry (Track, Swimming, Chess) and team competitions (Kickball, Ultimate Frisbee) are entered at convention from `#/olympika` (see §9, item 6). A sponsor's pre-convention team count (`#/teams`) remains planning input only; it does not create teams or brackets.
-- **Campus Games (*Ludi*):** Open Certamen, Trivia, and non-academic competitions.
+- **Athletics (*Olympika*):** Individual events (Chess, Track and Field) and team competitions (Basketball, Volleyball, Dodgeball, Ultimate Frisbee — per the 2027 Convention Book) are entered from `#/olympika` (see §9, item 6). A sponsor's pre-convention team count (`#/teams`) remains planning input only; it does not create teams or brackets.
+- **Campus Games (*Ludi*):** Open Certamen, Pandora's Breakout Box, That's Entertainment Auditions, Percy Jackson Blooket, Scavenger Hunt (Ōvō Vēnātiō), and other non-academic competitions.
 
 ### Adult Registration Sheet (Chaperones & Sponsors)
 - Ingests adult contact details (Email, Mobile Phone).
@@ -139,11 +140,13 @@ The platform calculates chapter fees dynamically:
 $$\text{Total Invoice} = (\$140 \times \text{Delegates}) + \max(0, \$75 \times (\text{Adults} - \lceil\text{Delegates} / 10\rceil)) - \text{Discount}$$
 
 ### Ledger Governance Rules
-1. **Complimentary Chaperone Ratios:** 1 complimentary chaperone per 10 registered delegates (e.g., 1–10 delegates = 1 free adult; 11–20 delegates = 2 free adults).
-2. **Immutable Transactions:** Payments are strictly append-only. Corrections are processed via signed negative entries (`-$X.XX`).
-3. **No-Refund State Handling:**
+1. **Complimentary Chaperone Ratios:** 1 complimentary adult per 10 registered students (e.g., 1–10 delegates = 1 free adult; 11–20 delegates = 2 free adults). SCL attendees are complimentary (non-billed).
+2. **New School Discount:** New schools may contact the Convention sponsors or presidents to receive **75% off** registration fees (applied as an approved chapter discount).
+3. **Immutable Transactions & Check Notifications:** Payments are strictly append-only. Corrections are processed via signed negative entries (`-$X.XX`). Per the Convention Book, sponsors are notified via email and on the website when their check arrives.
+4. **No-Refund Policy & Substitutions:**
    - Pre-Payment Cancellation $\rightarrow$ Record marked `cancelled`; fee dropped from invoice.
    - Post-Payment Cancellation $\rightarrow$ Record marked `cancelled_paid`; fee retained on invoice to ensure ledger reconciles with bank receipts.
+   - **Substitutions** are permitted before **February 26, 2027** (updated physical forms may be mailed or brought to Friday check-in).
 
 ---
 

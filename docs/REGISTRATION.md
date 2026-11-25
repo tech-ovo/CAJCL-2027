@@ -19,10 +19,11 @@ Every attendee is provisioned a unique 13-character identifier formatted as `PPP
 - **`XXXXX-XXXXX`:** Nine Crockford Base32 characters plus a checksum symbol. Ambiguous characters (`I`, `L`, `O`, `Z`) are excluded.
 
 ### Access Protocols
-1. **Desktop/Direct Entry:** Attendees input their code at [state.uhsjcl.org](https://state.uhsjcl.org).
-2. **Mobile / QR Scanning:** Attendee sheets feature a QR code that encodes the credential in the URL fragment (`#DEL-...`), ensuring credentials bypass intermediate web server logs.
-3. **Session Persistence:** Authenticated sessions persist via client-side storage tokens for up to 180 days.
-4. **Credential Reissuance:** Raw codes are never stored in plaintext (stored exclusively as `HMAC-SHA256`). Lost codes cannot be recovered; they must be reissued, immediately invalidating former active sessions.
+1. **Desktop/Direct Entry:** Attendees input their login token at [state.uhsjcl.org](https://state.uhsjcl.org).
+2. **Sponsor Two-Factor Authentication (One-Time Code):** To secure student data, chapter sponsors receive a one-time verification code each time they sign in alongside their `SPO-XXXXX-XXXXX` login token.
+3. **Mobile / QR Scanning:** Attendee sheets feature a QR code that encodes the credential in the URL fragment (`#DEL-...`), ensuring credentials bypass intermediate web server logs.
+4. **Session Persistence:** Authenticated sessions persist via client-side storage tokens (see `docs/SECURITY.md` for session lifespans).
+5. **Credential Reissuance:** Raw codes are never stored in plaintext (stored exclusively as `HMAC-SHA256`). Lost codes cannot be recovered; they must be reissued, immediately invalidating former active sessions.
 
 ---
 
@@ -61,60 +62,70 @@ Navigate to **Chapters → Add a chapter**:
 
 ## 4. Sponsor Onboarding Communication Template
 
-Transmit this standard communication upon chapter provisioning:
+Transmit this standard communication upon chapter provisioning (registration opens **December 1, 2026**):
 
 ```text
 Subject: Registration Open: 72nd CAJCL State Convention (March 12–13, 2027)
 
 salvē [Sponsor Name],
 
-Registration is officially open for the 72nd California Junior Classical League State Convention, held March 12–13, 2027, hosted jointly by University High School and Woodbridge High School.
+Registration is officially open for the 72nd California Junior Classical League State Convention, held March 12–13, 2027 at University High School (4771 Campus Drive, Irvine, CA 92612), hosted jointly by University High School and Woodbridge High School.
 
 Access the digital registration platform at: https://state.uhsjcl.org
 Your Chapter Login Token: [SPO-XXXXX-XXXXX]
 Your Chapter Join Code:   [XXXX-XXXX]
 
+(Note: Please do not share public links to the convention website on social media; distribute only to registered attendees and families.)
+
 ======================================================================
 OPERATIONAL WORKFLOW
 ======================================================================
-1. Access the Portal: Sign in using your unique sponsor login token above.
-2. Print the Join Sheet: On your Roster page choose "Print the join sheet" and print one copy for every student you expect, with the paper waiver and medical forms behind it. Students go to the site, choose "Join your chapter", and type the join code (or scan the QR) with their name, grade and Latin level. They receive their own login token and can fill in their forms immediately.
-3. Approve Students: Joined students appear under "Waiting for approval" on your Roster. Approve each one (or all at once); until you do, their registration is preliminary and is not on your invoice. Deny anyone who should not be there: all of their data is removed.
-4. Prefer to type a list? You can still paste your roster (names only) into the Roster Import tool and hand out individual access sheets; those students are approved automatically.
-5. Digital Activity Sheets: Attendees sign in individually to submit their test and workshop preferences.
-You can close joining, or replace the join code, at any time from your Roster page.
+1. Access the Portal: Sign in using your sponsor login token above. To secure student data, you will receive a one-time code each time you sign in.
+2. Distribute & Collect Paper Forms FIRST: Print and distribute the Medical Form (for all attendees: students, sponsors, and chaperones) and the CAJCL Waiver (students only). Because we may not collect student data without parental consent, ONLY distribute your chapter Join Code sheet to students AFTER their signed waiver and medical form have been submitted to you.
+3. Invite Attendees via Join Code: Once a student's waiver and medical form are turned in, give them the chapter Join Code sheet (also used for adults: SCL, Sponsors, Chaperones) so they can complete their Activity Sheet on the website. Once a student sets their name, grade, and Latin level, only you (the sponsor) can change those details.
+4. Monitor & Approve Registration: Review and edit all data students enter on the website. Approve joined students on your Roster; you can also remove students, reset your join code, and enable/disable joining at any time.
+5. Chapter Details & Leaders: Input chapter details (e.g., event potluck sign-ups, meals requested), complete your own Adult Activity Sheet, and optionally assign chapter leaders (e.g., to manage chapter contests or team registration).
+6. Generate Invoice & Mail Package: Generate your invoice from the website and mail ONE CHECK together with all physical signed waivers and medical forms by February 13, 2027.
 
 ======================================================================
 FINANCIAL SCHEDULE
 ======================================================================
-- Delegate Registration Fee: $140.00 per student
-- Adult Chaperones: One complimentary chaperone per 10 registered delegates
-- Additional Chaperones: $75.00 per adult
-- SCL Attendees: Complimentary (non-billed)
+- Delegate Registration Fee: $140.00 per student (includes Friday dinner & Saturday breakfast, lunch, and dinner; only the snack bar requires money)
+- Adult Chaperones: One complimentary adult per 10 registered students
+- Additional Adults: $75.00 per adult (except SCL, who are complimentary)
+- New Schools: Contact the Convention sponsors or presidents to receive 75% off!
+- Refunds: Refunds will not be made. Substitutions may be made before February 26, 2027.
 
-Invoices update dynamically as your roster evolves. Remit checks payable to:
-  University High School JCL c/o Mark Michalak
-  4771 Campus Dr, Irvine, CA 92612
+Invoices update dynamically as your roster evolves. Send ONE CHECK by February 13, 2027 to:
+  University High School c/o Mark Michalak
+  4771 Campus Drive, Irvine, CA 92612
   Memo: [Chapter Name] Registration
+
+You will be notified via email and on the website when your check arrives.
 
 ======================================================================
 CRITICAL DEADLINES
 ======================================================================
-- Registration & Activity Sheets Lock: February 13, 2027 at 11:59 PM PST
-- Postmark Deadline for Fees & Physical Paperwork: February 13, 2027
-- Convention Dates: March 12–13, 2027
+- Convention Registration Opens: December 1, 2026
+- CARCER Registration Due (CAJCL Online Database): February 7, 2027
+- Convention Registration & Activity Sheets Lock / Check & Forms Postmark: February 13, 2027
+- CARCER (Menlo School N / Woodbridge HS S): February 21, 2027 (10:00 AM – 1:00 PM)
+- Last Day for Substitutions: February 26, 2027
+- Pre-Convention Contests, Scrapbook Pictures & Publicity Portfolio Due (Website): March 6, 2027
+- State Convention: March 12–13, 2027 (University High School, Irvine)
+- Digital Scrapbook Due (Website): March 13, 2027 at 10:00 AM
 
 ======================================================================
-MANDATORY PHYSICAL DOCUMENTATION
+MANDATORY PHYSICAL DOCUMENTATION (PAPER ONLY — NO GOOGLE DRIVE SCANS)
 ======================================================================
 The following hard-copy documents require physical ink signatures:
-1. Student Waiver & Permission Form (Parent/Guardian signature required)
-2. Student Medical Form (Parent/Guardian signature required)
-3. Adult Medical Form (All attending adults)
+1. CAJCL Student Waiver & Permission Form (students only; parent/guardian signature required, including consent for online data use)
+2. Medical Form (all attending convention: students, sponsors, and chaperones)
 
-Sponsors must collect, scan into their chapter's assigned Google Drive folder, and mail physical originals alongside registration checks.
+Mail ALL physical medical forms and waivers in the same package as your registration check by February 13, 2027. Unlike prior years, we are NOT asking sponsors to scan documents or upload them to Google Drive. Sponsors must ensure that the mailed documents match the website registration. If substitutions are made after February 13 (through February 26), sponsors may either mail the updated forms to the same address or bring them during Friday check-in.
 
-Support Contact: state@uhsjcl.org
+Registration Questions: state@uhsjcl.org
+Convention Presidents / Feedback: conventionpresident@cajcl.org
 ```
 
 ---
@@ -141,15 +152,18 @@ The platform maintains an immutable audit ledger for all accounting actions.
 
 ### Invoicing Principles
 - **Dynamic Calculation:** Account balances recalculate instantaneously on roster mutations. Never rely on static printouts.
-- **Strict No-Refund Policy:** 
+- **Strict No-Refund Policy & Substitutions:** 
   - If a delegate is cancelled **prior to payment entry**, their fee is dropped from the invoice.
   - If a delegate is cancelled **after payment entry**, their record converts to `cancelled_paid`. They are excluded from food counts, but retain their billable charge so accounting balances remain settled.
+  - **Substitutions** may be made before **February 26, 2027**. Updated paper waivers/medical forms for substituted attendees may be mailed to University High School c/o Mark Michalak or brought to Friday check-in.
+  - **New School Discount:** New schools may contact the Convention sponsors or presidents to receive **75% off** registration fees (logged as an approved chapter discount).
 
 ### Processing Payments
 1. Navigate to **Chapters** and locate the target school row.
 2. Select **Payment**.
 3. Record the transaction amount (in integer cents), check/reference number, and remittance notes.
-4. **Correcting Discrepancies:** Payment records are append-only and cannot be updated or deleted. To adjust an erroneous entry (e.g., entered $1,400 instead of $140), submit an offsetting negative entry (e.g., `-$1,260`) with explanatory audit remarks.
+4. **Confirm Receipt to Sponsor:** Per the Convention Book, sponsors are notified via email and on the website when their check arrives.
+5. **Correcting Discrepancies:** Payment records are append-only and cannot be updated or deleted. To adjust an erroneous entry (e.g., entered $1,400 instead of $140), submit an offsetting negative entry (e.g., `-$1,260`) with explanatory audit remarks.
 
 ---
 
@@ -205,6 +219,8 @@ On Friday, March 12, 2027, the check-in desk executes chapter arrivals via **Che
 ## 10. Governance & Security Guardrails
 
 To protect minor privacy and institutional compliance:
+- **Parental Consent Required Before Collection:** Students without a parent-signed CAJCL Waiver (which includes consent for online use of attendee data) cannot attend and must not be given a chapter Join Code.
 - **No Direct Student Emails:** The system explicitly forbids collecting delegate email addresses. All communications route through sponsors.
-- **Physical Document Segregation:** Medical data and liability waivers reside exclusively on paper and in a restricted-access Google Drive folder. No health records are ingested into the web database.
-- **Role Isolation:** Registration chairs hold operational privileges within their functional scope. System-wide configuration mutations (modifying convention pricing, global deadlines, or viewing raw audit trails) require Convention President authorization.
+- **Physical Document Segregation (Paper Only):** Medical forms and signed liability waivers reside **exclusively on paper**, mailed with the chapter's registration check (or brought at check-in for substitutions). Sponsors are **not** asked to scan or upload them to Google Drive, and no health records are ingested into the web database.
+- **Role Isolation & Private Code:** Convention hosts can see everything; sponsors can only see their own students; logged-in students can only see themselves; the public sees only schedule/map/aggregate counts. Public links must not be shared widely on social media. All website code (especially back-end server code) must remain private.
+- **Reliable Backup:** All critical registration data and schedules must be backed up/synced to a reliable secondary store (e.g., restricted Google Sheet) in case of a tool outage.

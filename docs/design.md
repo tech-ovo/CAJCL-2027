@@ -42,7 +42,7 @@ Every core entity across the platform (attendee, chapter, contest submission) is
 The convention theme represents substantive content rather than decoration, occupying a single dedicated masthead placement:
 
 > *aequam mementō rēbus in arduīs servāre mentem*  
-> **Remember to keep an even mind in adversity**  
+> **Remember to keep a calm and steady mind in hard times.**  
 > Horace, *Odes* II.3.1–2  
 
 - **Latin Verse:** Set in Literata italic display weight.

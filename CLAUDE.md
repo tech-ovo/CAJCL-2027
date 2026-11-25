@@ -40,9 +40,14 @@ rules), then `docs/design.md` for the visual rules.
   in `login_attempts` with a leading `j`, so sign-in limits don't see them).
   Pasting a roster still works and yields approved people. Printed prose is the
   `join_instructions` document. CI `migrate-from-scratch` asserts 184 approved
-  attendees (`public_stats_cache`) and 3 pending delegates seeded at Uni. Open
-  question (PRIVACY.md §12): under-13 self-entry before the parent waiver is
-  signed.
+  attendees (`public_stats_cache`) and 3 pending delegates seeded at Uni. Per the
+  **2027 CAJCL Convention Book** and CAJCL leadership's decision, the prior ID-only
+  proposal is superseded: parental consent for online attendee data use is added
+  to the physical CAJCL Waiver, and sponsors distribute Join Codes ONLY after a
+  student's signed waiver and medical form are turned in (no scanning/uploading
+  waivers or medical forms to Google Drive). Open product/policy ambiguities
+  between the Convention Book, Mr. Muth's email, and current code are tracked in
+  `docs/QUESTIONS.md`.
 - Terminology: a **join code** is the chapter's `XXXX-XXXX`; a **login token**
   is a person's own sign-in `ABC-XXXXX-XXXXX` (previously "access code" in the
   UI, docs and printed sheets; code identifiers, the `access_code` field names
@@ -205,29 +210,31 @@ rules), then `docs/design.md` for the visual rules.
   never return usernames; placeholder chapters (`PLACEHOLDER_CHAPTERS`: guest
   "Roma Antiqua Academy", "Independent") are left out. Chapter is free text,
   required in the profile dialog.
-- Privacy and compliance: `docs/PRIVACY.md` (data-flow architecture, safeguards,
-  inventory, written retention policy, incident response, family notice,
-  school authorization form, COPPA/FERPA/SOPIPA/AB 1584/Cal. Civ. Code
-  mapping, open decisions). Diagram source `docs/privacy/data-flow.dot`;
-  re-render `.svg` and `.pdf` with `dot` after editing (one Letter page).
+- Privacy and compliance: `docs/PRIVACY.md`, `docs/PRIVACY_POLICY.md`,
+  `docs/COMPLIANCE.md`, and `docs/TERMS_OF_SERVICE.md` (updated Nov 2026 to
+  match the 2027 CAJCL Convention Book and CAJCL leadership's guidelines:
+  parental-consent-gated single-system model with full attendee names, paper-only
+  waivers/medical forms mailed with the check and NOT scanned to Drive, sponsor
+  one-time codes on sign-in, private code repository, reliable Google Sheet
+  backup, Modal & Turso vetted, deletion April 12, 2027 keeping only person
+  number + chapter + grade + level + placements). Diagram source
+  `docs/privacy/data-flow.dot` (re-rendered `.svg`/`.pdf`).
   A change to what is collected, who sees it, where it goes, or how long it
-  is kept must update `PRIVACY.md`. Decided facts: CAJCL (501(c)(3)) is the operator; deletion 12 Apr 2027,
-  keeping only person number + chapter + grade + level + placements;
-  Drive/Apps Script on a personal Gmail until the `cajcl.org` Workspace.
-- Sponsor privacy/security briefing (Oct 2026): an agenda, demo script and Q&A
-  live in a Claude Doc (not in the repo), built from `PRIVACY.md`/`SECURITY.md`.
-  The privacy notice is a public page, `#/privacy` (`js/pages/privacy.js`; the
-  plain-language version of PRIVACY §9, change both together), linked from the
-  footer (`index.html` AND the `footer` string in `scripts/build_snapshot.py`, as
-  `/#/privacy` so static `p/*.html` pages work) and from `#/join`. PRIVACY §7 is
-  now the written security program; §6/§11 say the purge script
-  (`scripts/purge_convention_data.py`) is NOT built yet, and vendor agreements
-  are unconfirmed (§12). The page must not name Turso (`test_frontend` forbids it).
-- `docs/` rewritten to professional PM specifications: `DEPLOY.md` (deployment runbook),
-  `PRIVACY.md` (regulatory & privacy spec), `REGISTRATION.md` (chair SOP), `RISKS.md` (risk register),
-  `RUNBOOK.md` (incident & ops runbook), `SECURITY.md` (threat model & security spec),
-  `TODO.md` (product roadmap & tracker), `design.md` (design system standard), `schema.md` (DDL & API spec),
-  `stack.md` (architecture blueprint), `structure.md` (PRD & functional spec), `PAGES.md` (Google Docs text pages guide).
+  is kept must update `PRIVACY.md`. Note: `frontend/public/js/pages/privacy.js`
+  still needs updating once Mr. Muth's official CAJCL Privacy Policy is finalized
+  (see `docs/QUESTIONS.md`).
+- `docs/` specifications: `DEPLOY.md` (deployment runbook),
+  `PRIVACY.md` (regulatory & privacy spec), `PRIVACY_POLICY.md` (platform
+  privacy policy draft), `COMPLIANCE.md` (regulatory narrative),
+  `TERMS_OF_SERVICE.md` (terms of service), `REGISTRATION.md` (chair SOP),
+  `RISKS.md` (risk register), `RUNBOOK.md` (incident & ops runbook),
+  `SECURITY.md` (threat model & security spec), `TODO.md` (product roadmap &
+  tracker), `QUESTIONS.md` (open questions for collaborators from the 2027
+  Convention Book & CAJCL leadership guidelines), `design.md` (design system
+  standard), `schema.md` (DDL & API spec), `stack.md` (architecture blueprint),
+  `structure.md` (PRD & functional spec), `PAGES.md` (Google Docs text pages
+  guide). Working notes, Q&A, and the active working tracker live in
+  `docs/carl/` (`notes.md`, `questions.md`, `todo.md`).
 - `apps-script/`, `scripts/`, `docs/`. `scripts/seed.py` seeds demo data (`--reset` to wipe/re-migrate); seeds entries for Slogans & Publicity and a submitted ballot by Rosalind Achebe for English slogans (`contest_ballots`). Bulk question import: `python scripts/import_certamen_questions.py --file <path.json|path.csv>`.
 
 ## Checks

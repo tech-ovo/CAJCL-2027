@@ -1,27 +1,26 @@
 # Terms of Service — 72nd Annual CAJCL State Convention Platform
 
 **Effective Date:** December 1, 2026  
-**Last Updated:** October 22, 2026  
+**Last Updated:** November 24, 2026  
 **Platform:** `https://state.uhsjcl.org`  
 **Operator:** California Junior Classical League ("CAJCL"), a California 501(c)(3) Non-Profit Public Benefit Corporation  
 **Host Campuses:** University High School & Woodbridge High School (Irvine Unified School District), Irvine, California  
 
-> **IMPORTANT LEGAL NOTICE:** PLEASE READ THESE TERMS OF SERVICE CAREFULLY. BY ACCESSING OR USING THE PLATFORM AT `HTTPS://STATE.UHSJCL.ORG`, ENTERING A LOGIN TOKEN, SUBMITTING ROSTER OR EVENT DATA, OR PARTICIPATING IN THE 72ND ANNUAL CAJCL STATE CONVENTION, YOU (AND, IF YOU ARE A MINOR, YOUR PARENT OR LEGAL GUARDIAN AND AUTHORIZING SCHOOL CHAPTER SPONSOR) AGREE TO BE BOUND BY THESE TERMS OF SERVICE, INCLUDING THE **MANDATORY FINANCIAL AND NO-REFUND RULES (SECTION 7)**, THE **LIMITATION OF LIABILITY AND RELEASE OF CLAIMS COVERING CAJCL AND THE HOST CAMPUSES (SECTION 10)**, AND THE **BINDING ARBITRATION AND CLASS-ACTION WAIVER PROVISIONS (SECTION 13)**.
+> **IMPORTANT LEGAL NOTICE:** PLEASE READ THESE TERMS OF SERVICE CAREFULLY. BY ACCESSING OR USING THE PLATFORM AT `HTTPS://STATE.UHSJCL.ORG`, ENTERING A JOIN CODE OR LOGIN TOKEN, SUBMITTING ROSTER OR EVENT DATA, OR PARTICIPATING IN THE 72ND ANNUAL CAJCL STATE CONVENTION, YOU (AND, IF YOU ARE A MINOR, YOUR PARENT OR LEGAL GUARDIAN AND AUTHORIZING SCHOOL CHAPTER SPONSOR) AGREE TO BE BOUND BY THESE TERMS OF SERVICE, INCLUDING THE **MANDATORY FINANCIAL AND NO-REFUND RULES (SECTION 7)**, THE **LIMITATION OF LIABILITY AND RELEASE OF CLAIMS COVERING CAJCL AND THE HOST CAMPUSES (SECTION 10)**, AND THE **BINDING ARBITRATION AND CLASS-ACTION WAIVER PROVISIONS (SECTION 13)**.
 
 ---
 
 ## 1. Contracting Parties, Scope, and Protected Entities
 
 ### 1.1 Agreement to Terms
-These Terms of Service ("**Terms**") constitute a legally binding contract between you—whether acting as an adult Chapter Sponsor, adult chaperone or volunteer, convention officer, contest judge, parent or legal guardian, or student delegate (acting with the authorization and ratification of your parent/legal guardian and school Chapter Sponsor)—and the **California Junior Classical League** ("**CAJCL**," "**we**," "**us**," or "**our**"), a California 501(c)(3) tax-exempt non-profit public benefit corporation. These Terms govern your access to and use of the digital platform at `https://state.uhsjcl.org` (the "**Platform**") and all digital registration, contest, scheduling, and invoicing workflows for the 72nd Annual CAJCL State Convention held on March 12–13, 2027 (the "**Convention**").
+These Terms of Service ("**Terms**") constitute a legally binding contract between you—whether acting as an adult Chapter Sponsor, adult chaperone or volunteer, SCL member, convention officer, contest judge, parent or legal guardian, or student delegate (acting with the authorization and ratification of your parent/legal guardian and school Chapter Sponsor)—and the **California Junior Classical League** ("**CAJCL**," "**we**," "**us**," or "**our**"), a California 501(c)(3) tax-exempt non-profit public benefit corporation. These Terms govern your access to and use of the digital platform at `https://state.uhsjcl.org` (the "**Platform**") and all digital registration, contest, scheduling, and invoicing workflows for the 72nd Annual CAJCL State Convention held on March 12–13, 2027, at University High School in Irvine, California (co-hosted by University High School and Woodbridge High School) (the "**Convention**").
 
 ### 1.2 Incorporated Policies and Physical Agreements
 These Terms incorporate by reference:
-1. Our [**Privacy Policy**](PRIVACY_POLICY.md), which details our ID-Only Student Model, data security safeguards, rolling 10-day backup deletion, and mandatory April 12, 2027 data purge; and
-2. The mandatory physical, ink-signed Convention registration forms required of all attendees prior to on-site check-in:
-   - The **2027 CAJCL Student Waiver and Permission Form**;
-   - The **2027 CAJCL Student Medical Form**; and
-   - The **2027 CAJCL Adult Medical Form**.
+1. Our [**Privacy Policy**](PRIVACY_POLICY.md) (and the official CAJCL Privacy Policy linked in Convention registration materials), detailing our parental-consent-gated data practices, security safeguards, reliable backup policy, and mandatory April 12, 2027 data purge; and
+2. The mandatory physical, ink-signed Convention registration forms required of all attendees:
+   - The **2027 CAJCL Student Waiver and Permission Form** (students only, including parental consent for online data use); and
+   - The **2027 Medical Form** (all attending convention: students, sponsors, and chaperones).
 
 In the event of any conflict between these Terms and an executed physical waiver or medical form regarding on-site physical liability or emergency medical treatment, the provisions providing the broadest legal protection to the **Protected Parties** (defined below) shall govern.
 
@@ -29,53 +28,60 @@ In the event of any conflict between these Terms and an executed physical waiver
 Throughout these Terms, the "**Protected Parties**" (each an intended third-party beneficiary of these Terms with the independent right to enforce Sections 8 through 13 pursuant to California Civil Code § 1559) mean and include collectively:
 1. **California Junior Classical League ("CAJCL")**, the **National Junior Classical League ("NJCL")**, and the **California Senior Classical League ("SCL")**;
 2. The host campuses and educational agencies: **University High School**, **Woodbridge High School**, the **Irvine Unified School District ("IUSD")**, and the **IUSD Board of Education**; and
-3. All current, former, and future officers, directors, trustees, Convention Presidents, Host School Sponsors and Convention Advisors (including Mark Michalak), Technology Commissioners, Registration/Academics/Activities/Athletics/Logistics/Awards Chairs, faculty Chapter Sponsors, teachers, school administrators, contest judges, adult chaperones, volunteers, employees, agents, successors, and assigns of the entities listed in (1) and (2).
+3. All current, former, and future officers, directors, trustees, Convention Presidents (Chenyue Zhou & Sriya Kushwaha), Host School Sponsors and Convention Advisors (Mark Michalak & John Conant), Technology Chairs, Registration/Academics/Activities/Athletics/Logistics/Awards Chairs, faculty Chapter Sponsors, teachers, school administrators, contest judges, adult chaperones, volunteers, employees, agents, successors, and assigns of the entities listed in (1) and (2).
 
 ---
 
-## 2. Eligibility, Sponsor Authority, Adult Age & 2FA Requirements, and Mandatory Parental Consent for Minors
+## 2. Eligibility, Sponsor Authority, Two-Factor Authentication, and Mandatory Parental Consent for Minors
 
-### 2.1 Chapter Sponsor and Adult Chaperone Authority, Age Requirement (18+), and Two-Factor Authentication
-By signing in with a Sponsor Login Token (`SPO-XXXXX-XXXXX`) or Adult Chaperone/Volunteer Login Token (`VOL-XXXXX-XXXXX`), provisioning delegate slots, entering activity sheets, or distributing Delegate Login Tokens (`DEL-XXXXX-XXXXX`) on the Platform:
-1. **Adult Age Requirement (18+) & Mandatory 2FA:** Every Chapter Sponsor, adult chaperone, adult volunteer, and adult advisor represents and warrants that they are an adult **at least eighteen (18) years of age** and agrees to authenticate into the Platform using both their assigned Login Token and mandatory email-based two-factor authentication (**2FA**) one-time passcodes;
-2. **Institutional Authority:** Each **Chapter Sponsor** represents and warrants that they are a faculty member, employee, or officially designated representative of their participating middle school or high school chapter ("**Participating School**") and have obtained all required internal approvals from their Participating School and/or Local Educational Agency ("**LEA**") to register their chapter delegation for the Convention and to commit their chapter to the financial obligations set forth in Section 7; and
-3. **Private School-Held Re-Identification Spreadsheet:** Each Chapter Sponsor covenants that they will maintain the `Assigned Delegate ID ↔ Student Legal Name` correlation key on a separate, private Google Spreadsheet (and physical paper waivers) **never shared with CAJCL, convention organizers, or the Platform** in accordance with FERPA (34 C.F.R. § 99.31(b)(1)), and will not distribute a Delegate Login Token (`DEL-XXXXX-XXXXX`) to any student or finalize any student delegate for Convention attendance without first collecting and verifying the student's parent/guardian ink-signed **2027 CAJCL Student Waiver and Permission Form** and **2027 Student Medical Form**.
+### 2.1 Chapter Sponsor and Adult Chaperone Authority
+By signing in with a Sponsor Login Token (`SPO-XXXXX-XXXXX`) or Adult Chaperone/Volunteer Login Token (`VOL-XXXXX-XXXXX`), distributing chapter Join Codes, or managing attendee records on the Platform:
+1. **Sponsor One-Time Code (2FA):** Chapter Sponsors agree to authenticate into the Platform using both their assigned `SPO-` Login Token and the one-time verification code sent on each sign-in;
+2. **Institutional Authority:** Each **Chapter Sponsor** represents and warrants that they are a faculty member, employee, or officially designated representative of a registered CAJCL/NJCL member chapter ("**Participating School**") and have obtained all required internal approvals to register their chapter delegation and commit their chapter to the financial obligations set forth in Section 7; and
+3. **Consent-Gated Join Code Distribution & Paperwork Verification:** Each Chapter Sponsor covenants that they will **not** distribute the chapter's Join Code sheet to any student without first collecting the student's parent/guardian ink-signed **2027 CAJCL Student Waiver and Permission Form** and **2027 Medical Form**, and will ensure that all physical documents mailed to University High School match the chapter's website registration.
 
 ### 2.2 Minor Delegates and Mandatory Parent/Guardian Ratification
-Student delegates (enrolled in Grades 6–12) are minors under California law. Because the Platform does not use chapter join codes, a student delegate may access the Platform and use a Delegate Login Token (`DEL-XXXXX-XXXXX`) **only** after their parent or legal guardian has signed the physical waiver forms and authorized the student to enter their activity selections on the Platform, and with the permission of their Chapter Sponsor.
+Student delegates (enrolled in Grades 6–12) are minors under California law. A student delegate may access the Platform and join a chapter via a Join Code **only** after their parent or legal guardian has signed and submitted the physical **2027 CAJCL Student Waiver and Permission Form** (which includes parental consent for online use of attendee data) and **2027 Medical Form** to their Chapter Sponsor. Students without parental consent cannot attend the Convention.
 
-By executing the physical **2027 CAJCL Student Waiver and Permission Form** (on which the student's Assigned Delegate ID is recorded) or by permitting a minor child to access the Platform or attend the Convention, the student's **parent or legal guardian**:
+By executing the physical **2027 CAJCL Student Waiver and Permission Form** or by permitting a minor child to access the Platform or attend the Convention, the student's **parent or legal guardian**:
 1. Expressly consents to, ratifies, and agrees to be bound by these Terms and the [Privacy Policy](PRIVACY_POLICY.md) on their own behalf and on behalf of their minor child;
 2. Assumes full responsibility for the minor's compliance with these Terms, competition rules, and on-site behavioral standards; and
 3. Waives and agrees not to assert any right of minor contract disaffirmance under California Family Code § 6710 with respect to the releases, intellectual property licenses, arbitration provisions, and financial commitments contained herein.
 
 ### 2.3 Hard Condition Precedent to On-Site Convention Check-In
-Online submission of an activity sheet or provisioning of an Assigned Delegate ID on the Platform does **not** by itself entitle any student or adult to enter the host campuses on March 12–13, 2027. **No student delegate or adult registrant may complete check-in or participate on-site at University High School or Woodbridge High School unless their Chapter Sponsor has collected and delivered the original physical ink-signed Waiver and Medical Forms (and uploaded PDF scans to the designated restricted repository if requested).**
+Online submission of an activity sheet does **not** by itself entitle any student or adult to enter the host campus on March 12–13, 2027. **No student delegate or adult registrant may complete check-in or participate on-site unless their Chapter Sponsor has mailed the original physical ink-signed Waiver and Medical Forms with the chapter's registration check by February 13, 2027 (or mailed/brought updated physical forms to check-in for substitutions made through February 26, 2027).**
 
 ---
 
-## 3. Account Credentials, Adult Two-Factor Authentication, and ID-Only Compliance
+## 3. Account Credentials, Join Codes, and Registration Deadlines
 
-### 3.1 Login Tokens (`PPP-XXXXX-XXXXX`) and Adult 2FA
+### 3.1 Login Tokens (`PPP-XXXXX-XXXXX`) and Sponsor One-Time Codes
 1. **Single-Display Issuance:** Every registrant is issued a 13-character Login Token prefixed by role (`SPO-` for Chapter Sponsors, `VOL-` for Adult Chaperones/Volunteers, and `DEL-` for Student Delegates). Because the Platform stores only a salted cryptographic digest (`HMAC-SHA256`), plaintext Login Tokens are displayed **only once** at generation.
-2. **Mandatory Email 2FA for Adults (18+):** All adult accounts (`SPO-`, `VOL-`, and adult board roles) require email two-factor authentication (2FA) upon sign-in in addition to the Login Token. All adult account holders must be 18 years of age or older.
+2. **Sponsor One-Time Codes:** To secure student data, Chapter Sponsors receive a one-time code each time they sign in.
 3. **Confidentiality & Shared Terminals:** Your Login Token is personal to your individual registration or assigned role. You may not share, transfer, or publish your Login Token. If you access the Platform from a shared school computer, lab terminal, or Chromebook, you must click **Sign out** immediately upon finishing your session.
 4. **Lost Token Reissuance:** If a Login Token is lost or suspected of compromise, the registrant's Chapter Sponsor (or a Registration Chair) must issue a replacement code via the Platform, which atomically revokes the prior Login Token and terminates all active sessions derived from it.
 
-### 3.2 Sponsor-Managed Roster Provisioning and Soft Registration Deadline
-1. **No Chapter Join Codes:** To ensure that no student accesses the Platform before parental consent is established on the physical waiver forms, the Platform does not use chapter join codes. All delegate slots (`Assigned Delegate IDs`) are provisioned through the Chapter Sponsor.
-2. **Soft Deadline for Sponsor Edits (February 13, 2027):** While student self-edits lock on **February 13, 2027 at 11:59 PM PST** so testing and meal counts can be prepared, February 13 is a **soft deadline** for Chapter Sponsors: sponsors may continue to modify delegate records, swap attendees, and correct mistakes in the portal after February 13, 2027.
-3. **Redaction:** A Chapter Sponsor or Registration Chair may **Redact** or cancel any delegate record at any time (`roster.redact`), which permanently erases all data, selections, and uploads tied to that Assigned Delegate ID (and removes them from rolling Google Drive backups within 10 days).
+### 3.2 Chapter Join Codes, Locked Fields, and Deadlines
+1. **Consent-Gated Join Codes:** Sponsors receive a chapter-specific Join Code sheet for students and adults (SCL, Sponsors, Chaperones) to complete activity sheets on the Platform. Join Codes may only be distributed to students after their signed waiver and medical form have been submitted. Sponsors may reset their join code or enable/disable joining at any time.
+2. **Sponsor Control Over Identity Fields:** Once a student sets their **name, grade, and Latin level**, **only the Chapter Sponsor can change those details**. Sponsors can observe and edit all student-entered data and remove students at any time.
+3. **Key Deadlines:**
+   - **December 1, 2026:** Convention Registration opens.
+   - **February 7, 2027:** CARCER Registration due on CAJCL's online database (`n344.fmphost.com/fmi/webd#CAJCL-Database`).
+   - **February 13, 2027:** Convention registration and activity sheets lock; registration check and all physical waivers and medical forms must be mailed.
+   - **February 26, 2027:** Last day for attendee substitutions (updated paper forms may be mailed or brought to Friday check-in).
+   - **March 6, 2027:** Pre-Convention Contests, Scrapbook Pictures, and Publicity Portfolio due on the Platform.
+   - **March 13, 2027 at 10:00 AM:** Digital Scrapbook due on the Platform.
+4. **Redaction:** A Chapter Sponsor or Registration Chair may deny or redact any delegate record at any time (`roster.redact`), permanently erasing all personal fields, selections, and uploads tied to that record (and removing them from rolling backups within 10 days).
 
-### 3.3 Mandatory Adherence to the ID-Only Student Model
-To preserve the Platform's zero-student-PII database architecture, users are **strictly prohibited** from typing student legal names, email addresses, telephone numbers, home addresses, or medical information into any free-text field on the Platform—including Photo Contest captions (`#/photos`), pre-convention contest filenames or document headers (`#/contests`), or administrative notes. CAJCL reserves the right to immediately sanitize, rename, or delete any entry that violates this rule.
+### 3.3 Prohibition on Prohibited Data & Public Sharing
+Users must not enter student email addresses, student phone numbers, home addresses, dates of birth, or medical information into any field on the Platform. Public links to the Platform should be distributed only via physical QR codes or emails to registered attendees, not posted widely on social media.
 
 ---
 
 ## 4. Acceptable Use Policy and Platform Security
 
 You agree not to, and not to assist or permit any person to:
-1. Attempt to guess, enumerate, or brute-force Login Tokens or two-factor authentication passcodes, or circumvent the Platform's per-token and per-IP rate limits;
+1. Attempt to guess, enumerate, or brute-force Login Tokens, Join Codes, or one-time verification passcodes, or circumvent the Platform's rate limits;
 2. Access or attempt to access another chapter's roster, invoices, contest submissions, or administrative endpoints outside your granted permission scope;
 3. Upload any file containing malware, executable scripts, corrupted payloads, or content exceeding the Platform's size limits (1 MB for standard API payloads; 20 MB for contest uploads);
 4. Use automated scrapers, bots, spiders, or load-testing tools against `state.uhsjcl.org` or its serverless backend endpoints, or intentionally exhaust database read quotas;
@@ -87,9 +93,9 @@ You agree not to, and not to assist or permit any person to:
 ## 5. Academic Competitions, Double-Blind Contests, and Finality of Judging
 
 ### 5.1 Pre-Convention Contests and Double-Blind Integrity (`#/contests`)
-1. **Originality Warranty:** By uploading a pre-convention contest entry (e.g., essay, poetry, digital art, slogan, or publicity entry), the submitting delegate warrants that the work is their own original creation prepared in compliance with the official CAJCL Convention rules for their division and Latin level.
-2. **Anonymity Requirement:** Because Contest Judges evaluate entries on a strictly double-blind basis (`Entry N`), delegates must not include their name, school chapter name, or identifying marks inside the uploaded file body or artwork. Entries containing identifying marks may be disqualified at the discretion of the Academics Chair.
-3. **Deadline Enforcement:** Pre-convention contest submissions and student self-edits to digital activity sheets lock at the published deadline (**February 13, 2027 at 11:59 PM Pacific Standard Time**, or such specific contest deadline configured on the Platform), though Chapter Sponsors may continue to correct delegate roster mistakes after February 13.
+1. **Originality Warranty:** By uploading a pre-convention contest entry (Digital Art/Poster, Latin Slogan, English Slogan, Modern Myth, Original Poetry, Scrapbook Pictures, Digital Scrapbook, or Publicity Portfolio), the submitting delegate or chapter warrants that the work is an original creation prepared in compliance with the CAJCL White Book.
+2. **Anonymity Requirement:** Because Contest Judges evaluate individual entries on a strictly double-blind basis (`Entry N`), delegates must not include their name, school chapter name, or identifying marks inside the uploaded file body or artwork. Entries containing identifying marks may be disqualified at the discretion of the Academics Chair.
+3. **Deadline Enforcement:** Pre-convention individual contests, Scrapbook Pictures, and Publicity Portfolio lock on **March 6, 2027**; Digital Scrapbook locks on **March 13, 2027 at 10:00 AM** (Pacific Time).
 
 ### 5.2 Non-Justiciability and Finality of Competition Decisions
 All academic exams, pre-convention creative contests, Olympika athletic races and team brackets, Ludi games, Photo Contest selections, and chapter sweepstakes tabulations are educational competitions administered by volunteer educators, students, and judges. **All decisions of Contest Judges, the Academics Chair, the Athletics Director, the Activities Chair, the Awards Chair, and the Convention Presidents regarding eligibility, heat/lane assignments, bracket draws, scoring, tie-breakers, disqualifications, and award placements are final, binding, and non-appealable, and shall not give rise to any legal or equitable claim, cause of action, or monetary damages in any court or arbitration.**
@@ -107,11 +113,11 @@ The Platform's software architecture, source code, database schema, custom desig
    - Store, re-encode, strip metadata from, and transmit the file to authorized Contest Judges, Activity Chairs, Chapter Sponsors, and Convention Presidents;
    - Project, display, or announce winning entries and slogans at the live 72nd Annual CAJCL State Convention General Assemblies and Awards Ceremony; and
    - Reproduce winning entries or slogans in official non-commercial CAJCL convention programs, recap newsletters, or instructional materials.
-3. **Automatic Termination on Purge Date:** All uploaded digital contest files and Photo Contest entries stored on the Platform's Google Drive infrastructure are permanently deleted on **April 12, 2027** (or immediately if withdrawn earlier by the delegate or redacted by the Chapter Sponsor, with rolling Drive database backups expiring within 10 days).
+3. **Automatic Termination on Purge Date:** All uploaded digital contest files and Photo Contest entries stored on the Platform's Google Drive infrastructure are permanently deleted on **April 12, 2027** (or immediately if withdrawn earlier by the delegate or redacted by the Chapter Sponsor).
 
 ### 6.3 Convention Scene Photography, Awards Ceremony Photos, and Photo Contest Rules (`#/photos`)
-1. **Permitted Convention Scene & Awards Photography:** Pursuant to California Civil Code § 3344(d) (exempting non-commercial educational, public affairs, and organizational proceedings) and the express media release executed by parents/guardians on the physical **2027 CAJCL Student Waiver and Permission Form**, convention scene photography, peer photography for the At-Convention Photo Contest, and official photography/videography of the General Assemblies, Olympika events, and Awards Ceremony are expressly permitted.
-2. **Upload Conditions & Takedown Authority:** Delegates uploading photographs to `#/photos` must ensure that all images are respectful and appropriate for a K–12 school environment. The Platform automatically strips all EXIF/GPS location and camera metadata upon upload and tags images solely by Chapter and Assigned Delegate ID. Any delegate may withdraw their uploaded photo at any time, and the Activities Chair or Convention Presidents may remove any photo immediately in their sole discretion. If any attendee or parent requests that a specific photograph depicting their likeness be removed from the Photo Contest, CAJCL will promptly take down and delete the image upon notice to the Activities Chair or `state@uhsjcl.org` (noting that if a photograph was already posted to an external social media account such as Instagram with prior media-release consent, deleting the Platform record does not automatically remove the Instagram post unless requested).
+1. **Permitted Convention Scene & Awards Photography:** Pursuant to California Civil Code § 3344(d) and the media release executed by parents/guardians on the physical **2027 CAJCL Student Waiver and Permission Form**, convention scene photography, peer photography for the At-Convention Photo Contest, and official photography/videography of the General Assemblies, Olympika events, and Awards Ceremony are expressly permitted.
+2. **Upload Conditions & Takedown Authority:** Delegates uploading photographs to `#/photos` must ensure that all images are respectful and appropriate for a K–12 school environment. The Platform automatically strips all EXIF/GPS location and camera metadata upon upload. Any delegate may withdraw their uploaded photo at any time, and the Activities Chair or Convention Presidents may remove any photo immediately in their sole discretion.
 
 ---
 
@@ -124,38 +130,38 @@ Chapter invoices are computed dynamically by the Platform according to the follo
 
 $$\text{Total Chapter Invoice} = (\$140.00 \times \text{Active Delegates}) + \max\!\left(\$0.00,\; \$75.00 \times \left(\text{Registered Adults} - \left\lceil \frac{\text{Active Delegates}}{10} \right\rceil\right)\right) - \text{Approved Chapter Discount}$$
 
-1. **Student Delegate Registration Fee:** **$140.00** per active registered student delegate.
-2. **Complimentary Adult Chaperone Ratio (1 per 10 Delegates):** Each chapter receives one (1) complimentary adult registration for every ten (10) active student delegates, rounded up ($\lceil \text{Active Delegates} / 10 \rceil$ — e.g., 1–10 active delegates = 1 complimentary adult; 11–20 active delegates = 2 complimentary adults).
-3. **Additional Adult Chaperone Fee:** **$75.00** per registered adult exceeding the chapter's complimentary allowance. **Important Ratio Notice:** Because the complimentary adult allowance is dynamically tied to the chapter's active delegate headcount, cancelling a delegate prior to payment (for example, reducing a roster from 11 delegates to 10 delegates) automatically reduces the chapter's complimentary adult allowance by one and adds a $75.00 adult fee to the chapter invoice if that adult remains registered.
-4. **Exemptions and Discounts:** California Senior Classical League (`SCL`) chapters are exempt from registration fees (`billing_exempt = 1`). Any chapter discount must be expressly authorized and recorded by a CAJCL Registration Chair; discounts may never reduce a chapter invoice below $0.00.
+1. **Student Delegate Registration Fee:** **$140.00** per active registered student delegate (includes Friday dinner and Saturday breakfast, lunch, and dinner; only the snack bar requires money).
+2. **Complimentary Adult Chaperone Ratio (1 per 10 Students):** Each chapter receives one (1) complimentary adult registration for every ten (10) active student delegates, rounded up ($\lceil \text{Active Delegates} / 10 \rceil$).
+3. **Additional Adult Fee:** **$75.00** per registered adult exceeding the chapter's complimentary allowance.
+4. **Exemptions and New School Discount:** California Senior Classical League (`SCL`) attendees are exempt from registration fees (`billing_exempt = 1`). **New schools** may contact the Convention sponsors or presidents to receive **75% off** registration fees (logged as an approved chapter discount; discounts never reduce an invoice below $0.00).
 
 ### 7.2 Payment Method, Deadlines, and Check Remittance
-1. **Check Payment Only:** The Platform accepts no online credit card, debit card, or electronic funds transfers. All chapter invoices must be paid by a single physical institutional (school/district) or chapter check made payable to:
-   > **University High School JCL c/o Mark Michalak**  
-   > **University High School**  
+1. **Single Check Payment Only:** The Platform accepts no online credit card, debit card, or electronic funds transfers. Sponsors generate an invoice from the Platform and send **ONE CHECK** together with all physical signed waivers and medical forms by **February 13, 2027** to:
+   > **University High School c/o Mark Michalak**  
    > **4771 Campus Drive, Irvine, CA 92612**  
    > **Memo:** `[Chapter Name] — 2027 CAJCL Registration`
-2. **Registration Soft Deadline & Postmark Deadline:** Student self-edits lock on **February 13, 2027 at 11:59 PM PST** (while Chapter Sponsors retain access to correct mistakes on their chapter's delegate records), and all registration checks and physical ink-signed Waiver and Medical Forms must be postmarked no later than **February 13, 2027**.
+2. **Check Arrival Notification:** Sponsors will be notified via email and on the Platform when their check arrives.
 
-### 7.3 Strict No-Refund Policy (`cancelled` vs. `cancelled_paid`)
+### 7.3 Strict No-Refund Policy & Substitutions
 Because CAJCL and the host chapters commit convention funds in advance for catering, facilities, security, custodial services, testing materials, and awards based on registered headcounts:
-1. **Pre-Payment Cancellations (`cancelled`):** If a Chapter Sponsor cancels a delegate or adult on the Platform *before* the chapter's payment is recorded and reconciled in the Platform ledger, the attendee's status changes to `cancelled` and their fee is removed from the chapter's invoice balance.
-2. **Post-Payment Cancellations (`cancelled_paid`) — Zero Refunds:** Once a chapter's payment has been received and recorded in the Platform's financial ledger, **ALL REGISTRATION FEES ARE FINAL, NON-REFUNDABLE, AND NON-TRANSFERABLE FOR ANY REASON WHATSOEVER** (including student illness, academic ineligibility, scheduling conflicts, disciplinary removal, or chapter withdrawal). If an attendee drops after payment is recorded, their status converts to `cancelled_paid` (removing them from meal and event headcounts while retaining their full billed fee on the chapter ledger so accounting balances remain settled). Similarly, if an entire chapter withdraws after payment reconciliation (`withdrawn`), no refund shall be issued.
+1. **Pre-Payment Cancellations (`cancelled`):** If a Chapter Sponsor cancels an attendee *before* payment is recorded in the ledger, their status changes to `cancelled` and their fee is removed from the chapter's invoice balance.
+2. **Post-Payment Cancellations (`cancelled_paid`) — Zero Refunds:** Once a chapter's payment has been received and recorded, **ALL REGISTRATION FEES ARE FINAL AND NON-REFUNDABLE FOR ANY REASON WHATSOEVER**. If an attendee drops after payment is recorded, their status converts to `cancelled_paid` (removing them from meal and event headcounts while retaining their billed fee on the ledger).
+3. **Substitutions (Before February 26, 2027):** Chapters may make attendee substitutions before **February 26, 2027**. Sponsors may either mail the substituted attendee's physical signed waiver and medical form to University High School c/o Mark Michalak or bring them during Friday check-in.
 
 ---
 
 ## 8. On-Site Conduct, Host Campus Rules, and Assumption of Risk
 
 ### 8.1 Compliance with Host Campus and School District Policies
-The 72nd Annual CAJCL State Convention is hosted on the public school campuses of **University High School** (4771 Campus Drive, Irvine, CA 92612) and **Woodbridge High School** within the **Irvine Unified School District ("IUSD")**. All attendees (delegates, sponsors, chaperones, visitors, and officers) must strictly obey:
+The 72nd Annual CAJCL State Convention is hosted at **University High School** (4771 Campus Drive, Irvine, CA 92612) within the **Irvine Unified School District ("IUSD")** (with CARCER South hosted at **Woodbridge High School**). All attendees must strictly obey:
 1. All IUSD, University High School, and Woodbridge High School campus policies, including absolute prohibitions on alcohol, tobacco, vaping products, cannabis, controlled substances, weapons, fireworks, vandalism, and unauthorized entry into restricted school buildings or classrooms;
-2. All CAJCL and NJCL Convention behavioral guidelines, curfews, badge-wearing mandates, and dress codes; and
-3. Mandatory adult supervision ratios requiring each Participating School to maintain at least one (1) adult chaperone (aged 18 or older) on campus for every ten (10) attending student delegates at all times.
+2. All CAJCL and NJCL Convention behavioral guidelines, curfews, name-tag mandates (students without name tags will not be admitted), no-bare-feet rule, and daily dress code (Friday Evening: Casual; Saturday Morning until lunch: Roman Dress except in sports; Saturday Afternoon and Evening: Chapter T-Shirt); and
+3. Mandatory adult supervision ratios requiring each Participating School to maintain at least one (1) adult chaperone on campus for every ten (10) attending student delegates at all times.
 
-Any attendee who violates campus rules or engages in unsafe or disruptive conduct may be immediately expelled from the Convention by the Convention Presidents, Host School Sponsor, or host campus administration, with their parent/guardian or Chapter Sponsor required to arrange immediate off-campus pickup at their own expense and with zero refund of registration fees.
+Any attendee who violates campus rules or engages in unsafe or disruptive conduct may be immediately expelled from the Convention by the Convention Presidents, Host School Sponsors, or host campus administration, with their parent/guardian or Chapter Sponsor required to arrange immediate off-campus pickup at their own expense and with zero refund of registration fees.
 
 ### 8.2 Express Assumption of Risk
-Participation in the Convention involves travel to and presence at large multi-school campus gatherings, consumption of catered meals, and voluntary participation in physical and athletic competitions—including **Olympika** (track and field races, swimming, Ultimate Frisbee, kickball, and other physical sports) and **Ludi** campus games. To the fullest extent permitted by law, you (and, for minor delegates, your parent/legal guardian) knowingly and voluntarily assume all risks, both known and unknown, of personal injury, illness, infectious disease exposure, or property loss or damage arising out of or related to attendance at the Convention or use of the host campus facilities at University High School and Woodbridge High School.
+Participation in the Convention involves travel to and presence at large multi-school campus gatherings, consumption of catered meals, and voluntary participation in physical and athletic competitions—including **Olympika** (track and field, chess, basketball, volleyball, dodgeball, Ultimate Frisbee) and **Ludi** campus games. To the fullest extent permitted by law, you (and, for minor delegates, your parent/legal guardian) knowingly and voluntarily assume all risks, both known and unknown, of personal injury, illness, infectious disease exposure, or property loss or damage arising out of or related to attendance at the Convention or use of the host campus facilities.
 
 ---
 
@@ -166,14 +172,14 @@ TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE PLATFORM (`HTTPS://STATE.
 CAJCL AND ALL OTHER **PROTECTED PARTIES** EXPRESSLY DISCLAIM ALL IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT (INCLUDING UNDER CALIFORNIA COMMERCIAL CODE § 2316), AS WELL AS ANY WARRANTY THAT:
 1. THE PLATFORM WILL OPERATE WITHOUT INTERRUPTION, COLD-START LATENCY, OR ERROR;
 2. ANY CONTEST UPLOAD, ACTIVITY SHEET SELECTION, OR HEAT/BRACKET ASSIGNMENT WILL BE FREE OF TRANSMISSION FAILURE OR SCHEDULING OVERLAP; OR
-3. THE PLATFORM OR ITS UPSTREAM CLOUD SUB-PROCESSORS (GITHUB, MODAL LABS, CLOUD DATABASE, OR GOOGLE DRIVE) WILL BE INVULNERABLE TO NETWORK OUTAGES OR THIRD-PARTY DISRUPTIONS.
+3. THE PLATFORM OR ITS UPSTREAM CLOUD SUB-PROCESSORS WILL BE INVULNERABLE TO NETWORK OUTAGES OR THIRD-PARTY DISRUPTIONS.
 
 ---
 
 ## 10. Limitation of Liability and Release of Claims (Covering CAJCL & Host Campuses)
 
 ### 10.1 Exclusion of Consequential and Indirect Damages
-TO THE MAXIMUM EXTENT PERMITTED BY CALIFORNIA LAW, IN NO EVENT SHALL CAJCL, **UNIVERSITY HIGH SCHOOL**, **WOODBRIDGE HIGH SCHOOL**, THE **IRVINE UNIFIED SCHOOL DISTRICT ("IUSD")**, NJCL, SCL, MARK MICHALAK, OR ANY OTHER **PROTECTED PARTY** BE LIABLE UNDER ANY THEORY OF CONTRACT, TORT (INCLUDING NEGLIGENCE), STRICT LIABILITY, STATUTE, OR EQUITY FOR ANY INDIRECT, INCIDENTAL, CONSEQUENTIAL, SPECIAL, EXEMPLARY, OR PUNITIVE DAMAGES—INCLUDING LOSS OF DATA, LOST COMPETITION OPPORTUNITY, DISQUALIFICATION, LOST AWARDS OR SCHOLARSHIP OPPORTUNITIES, TRAVEL OR LODGING EXPENSES, OR EMOTIONAL DISTRESS—ARISING OUT OF OR RELATING TO THESE TERMS, THE PLATFORM, OR THE CONVENTION, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+TO THE MAXIMUM EXTENT PERMITTED BY CALIFORNIA LAW, IN NO EVENT SHALL CAJCL, **UNIVERSITY HIGH SCHOOL**, **WOODBRIDGE HIGH SCHOOL**, THE **IRVINE UNIFIED SCHOOL DISTRICT ("IUSD")**, NJCL, SCL, MARK MICHALAK, JOHN CONANT, OR ANY OTHER **PROTECTED PARTY** BE LIABLE UNDER ANY THEORY OF CONTRACT, TORT (INCLUDING NEGLIGENCE), STRICT LIABILITY, STATUTE, OR EQUITY FOR ANY INDIRECT, INCIDENTAL, CONSEQUENTIAL, SPECIAL, EXEMPLARY, OR PUNITIVE DAMAGES—INCLUDING LOSS OF DATA, LOST COMPETITION OPPORTUNITY, DISQUALIFICATION, LOST AWARDS OR SCHOLARSHIP OPPORTUNITIES, TRAVEL OR LODGING EXPENSES, OR EMOTIONAL DISTRESS—ARISING OUT OF OR RELATING TO THESE TERMS, THE PLATFORM, OR THE CONVENTION, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
 
 ### 10.2 Cap on Aggregate Liability
 TO THE MAXIMUM EXTENT PERMITTED BY CALIFORNIA LAW, THE TOTAL CUMULATIVE LIABILITY OF CAJCL AND ALL **PROTECTED PARTIES** COLLECTIVELY FOR ALL CLAIMS ARISING OUT OF OR RELATING TO THESE TERMS, THE PLATFORM, OR THE 2027 CONVENTION SHALL NOT EXCEED THE GREATER OF:
@@ -194,15 +200,15 @@ You expressly waive all rights under **California Civil Code § 1542**, which pr
 
 To the fullest extent permitted by law, each adult user, parent or legal guardian, and Participating School (to the extent permitted by California law governing public educational agencies) agrees to defend, indemnify, and hold harmless CAJCL, **University High School**, **Woodbridge High School**, the **Irvine Unified School District ("IUSD")**, NJCL, SCL, and all other **Protected Parties** from and against any and all third-party claims, demands, liabilities, losses, damages, judgments, settlements, costs, and reasonable attorneys' fees arising out of or relating to:
 1. Your (or your minor child's or chapter delegation's) breach of these Terms or the [Privacy Policy](PRIVACY_POLICY.md);
-2. Any violation of the ID-Only Student Model (such as uploading unauthorized third-party PII or infringing content into the Platform);
+2. Any violation of Section 3.3 or Section 4 (such as uploading unauthorized third-party PII or infringing content into the Platform);
 3. Any property damage, vandalism, or personal injury caused by you, your minor child, or your chapter delegates on the campuses of University High School or Woodbridge High School; or
-4. Any misrepresentation by a Chapter Sponsor regarding parental authorization or receipt of signed physical Waiver and Medical Forms.
+4. Any misrepresentation by a Chapter Sponsor regarding parental consent or receipt of signed physical Waiver and Medical Forms prior to distributing a Join Code.
 
 ---
 
 ## 12. Copyright Infringement and Takedown Procedure (17 U.S.C. § 512(c))
 
-If you believe that any contest submission, photograph, or text published on the Platform infringes your copyright or unlawfully depicts your minor child without authorization, please send a written takedown notice containing the identification of the work or image, its location on the Platform (e.g., category and Assigned Delegate ID or Entry number), your contact information, and a good-faith statement of unauthorized use to our designated agent at the address in Section 15. CAJCL will promptly remove or disable access to the identified material.
+If you believe that any contest submission, photograph, or text published on the Platform infringes your copyright or unlawfully depicts your minor child without authorization, please send a written takedown notice containing the identification of the work or image, its location on the Platform, your contact information, and a good-faith statement of unauthorized use to our designated agent at the address in Section 15. CAJCL will promptly remove or disable access to the identified material.
 
 ---
 
@@ -233,7 +239,7 @@ For any Dispute not subject to arbitration (including small claims actions, prov
 2. **Modification of Terms:** CAJCL reserves the right to update these Terms prior to the Convention by posting the revised Terms and updating the "Last Updated" date above. Material modifications will be notified to registered Chapter Sponsors via email.
 3. **Severability:** If any provision of these Terms is held to be invalid, illegal, or unenforceable by an arbitrator or court of competent jurisdiction, that provision shall be modified to the minimum extent necessary to make it enforceable (or severed if modification is impossible), and the remaining provisions of these Terms shall remain in full force and effect.
 4. **No Waiver:** No failure or delay by CAJCL or any Protected Party in exercising any right, power, or remedy under these Terms shall operate as a waiver thereof.
-5. **Entire Agreement:** These Terms, together with the [Privacy Policy](PRIVACY_POLICY.md) and the physical ink-signed **2027 CAJCL Student/Adult Waiver and Medical Forms**, constitute the entire agreement between the parties regarding the use of the Platform and participation in the 72nd Annual CAJCL State Convention.
+5. **Entire Agreement:** These Terms, together with the [Privacy Policy](PRIVACY_POLICY.md) and the physical ink-signed **2027 CAJCL Student Waiver and Permission Form** and **2027 Medical Form**, constitute the entire agreement between the parties regarding the use of the Platform and participation in the 72nd Annual CAJCL State Convention.
 
 ---
 
@@ -244,7 +250,6 @@ All formal legal notices, Notices of Dispute, copyright/photo takedown requests,
 **Mark Michalak, Host School Sponsor & Convention Advisor**  
 California Junior Classical League (CAJCL) / University High School JCL  
 University High School  
-4771 Campus Drive  
-Irvine, CA 92612  
-**Email:** [state@uhsjcl.org](mailto:state@uhsjcl.org)  
-**Phone:** (949) 936-7661
+4771 Campus Drive, Irvine, CA 92612  
+**Email:** [MarkMichalak@iusd.org](mailto:MarkMichalak@iusd.org) / [state@uhsjcl.org](mailto:state@uhsjcl.org)  
+**Phone:** (714) 514-8815

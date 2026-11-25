@@ -168,7 +168,9 @@ Modal spins down inactive compute instances to conserve resources. During high-p
 
 ## 8. Backup, Export & Disaster Recovery SOP
 
-### Data Export Procedures
+### Data Export & Reliable Secondary Backup Procedures
+Per CAJCL leadership guidelines, the most important operational information (all registration data and the convention schedule) must be backed up/synced to a reliable secondary store (e.g., a restricted Google Sheet accessible only to convention hosts) in case of a tool outage. Rolling backups expire in 10 days and all PII backups are purged on **April 12, 2027**.
+
 From **Settings → Operations → Export** or via CLI:
 ```bash
 python backend/workers/export.py --db cajcl.db --out ./exports

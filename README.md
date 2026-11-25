@@ -92,10 +92,12 @@ mutated and did not audit refuses to commit.
 there must never be one — every authorization test checks that path and only
 that path.
 
-**5. No real student data, ever.**
-The repository is public and the demo is projected in a room. Every name in the
-seed is invented. Delegates have no email addresses and the database refuses to
-store one. Medical forms and waivers never touch this system.
+**5. No real student data in the repo, and keep the repo private.**
+Per CAJCL leadership guidelines, all website code (especially back-end server
+code) must remain in a private repository, not open to the public. Every name
+in the seed is invented. Delegates have no email addresses and the database
+refuses to store one. Medical forms and waivers stay on paper and never touch
+this system.
 
 ---
 

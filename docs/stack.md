@@ -99,14 +99,15 @@ Exceeding Turso read limits yields an unrecoverable `BLOCKED` status. To guarant
 Google Apps Script acts as an isolated puppet for convention Google Drive interactions:
 - **Operations Supported:** `upload`, `fetch`, `list`, `mkdir`, `trash`.
 - **Cryptographic Request Signing:** Every RPC call from Modal transmits an HMAC signature over `timestamp.operation.folderId.name.fileId`, validated against a shared secret in Script Properties. Requests older than 5 minutes are rejected.
-- **Physical Document Isolation:** Contest creative files reside in an automated root folder managed by the script. Scanned medical records and liability waivers reside in an entirely separate, restricted Google Drive folder inaccessible to the script or codebase.
+- **Physical Document Isolation (Paper Only):** Contest creative files, photo contest images, and restricted operational backup Sheets reside in Google Drive folders managed under convention authority. Signed medical records and liability waivers remain **strictly on paper**, mailed with the chapter's registration check to University High School c/o Mark Michalak (or brought at check-in for substitutions) — they are **not** scanned or uploaded to Google Drive and never enter the codebase or database.
 
 ---
 
 ## 7. Disaster Recovery & Emergency Resilience
 
-1. **Self-Contained Worker Scripts:** Every operational script in `backend/workers/` operates standalone. Given a local `.db` file, export and tabulation scripts execute cleanly in any environment, including Google Colab notebooks.
-2. **Dual-Layer Announcement Banner:**
+1. **Reliable Google Sheet Backup:** Per CAJCL leadership guidelines, critical registration data and the convention schedule are exported/synced to a restricted Google Sheet so convention can continue smoothly in the event of a platform outage.
+2. **Self-Contained Worker Scripts:** Every operational script in `backend/workers/` operates standalone. Given a local `.db` file, export and tabulation scripts execute cleanly in any environment, including Google Colab notebooks.
+3. **Dual-Layer Announcement Banner:**
    - Primary: Database-backed banner manageable via the administrative portal.
    - Secondary (Offline Fallback): Static file `frontend/public/announcement.json` editable via GitHub web UI; rendered client-side even during complete backend outages.
-3. **Offline Convention Operations:** In the event of venue network failure, the complete application executes locally via Python’s native `sqlite3` and `uvicorn`, requiring zero external internet connectivity.
+4. **Offline Convention Operations:** In the event of venue network failure, the complete application executes locally via Python’s native `sqlite3` and `uvicorn`, requiring zero external internet connectivity.

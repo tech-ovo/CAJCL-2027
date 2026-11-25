@@ -76,9 +76,9 @@ digraph cajcl_data_flow {
     sponsors [label=<
       <table border="0" cellborder="0" cellspacing="2" cellpadding="0">
         <tr><td align="left"><b>Chapter Sponsors &amp; Chaperones</b></td></tr>
-        <tr><td align="left"><font point-size="8.5" color="#475569">• Teachers &amp; adult volunteers (<font face="Courier">SPO-…</font> / <font face="Courier">VOL-…</font>)</font></td></tr>
+        <tr><td align="left"><font point-size="8.5" color="#475569">• Sponsors (<font face="Courier">SPO-…</font>) use one-time 2FA code every sign-in</font></td></tr>
         <tr><td align="left"><font point-size="8.5" color="#475569">• Strictly isolated to own school chapter</font></td></tr>
-        <tr><td align="left"><font point-size="8.5" color="#475569">• Approves student rosters &amp; prints login packets</font></td></tr>
+        <tr><td align="left"><font point-size="8.5" color="#475569">• Issue Join Codes ONLY after waiver &amp; medical received</font></td></tr>
       </table>
     >];
 
@@ -124,10 +124,10 @@ digraph cajcl_data_flow {
       color="#3b82f6",
       label=<
         <table border="0" cellborder="0" cellspacing="2" cellpadding="0">
-          <tr><td align="left"><b>GitHub Pages CDN &amp; GitHub Actions</b></td></tr>
-          <tr><td align="left"><font point-size="8" color="#1d4ed8"><b>SOC 2 Type II Compliant · ISO 27001</b></font></td></tr>
+          <tr><td align="left"><b>GitHub Pages CDN &amp; Private Repository</b></td></tr>
+          <tr><td align="left"><font point-size="8" color="#1d4ed8"><b>SOC 2 Type II Compliant · Private Source Code</b></font></td></tr>
           <tr><td align="left"><font point-size="8.5" color="#475569">• Serves static frontend (<font face="Courier">state.uhsjcl.org</font>) over HTTPS</font></td></tr>
-          <tr><td align="left"><font point-size="8.5" color="#475569">• Publishes pre-aggregated registration counts only</font></td></tr>
+          <tr><td align="left"><font point-size="8.5" color="#475569">• Publishes schedule, map &amp; aggregate stats only</font></td></tr>
           <tr><td align="left"><font point-size="8.5" color="#475569">• Stores zero attendee PII</font></td></tr>
         </table>
       >
@@ -265,11 +265,11 @@ digraph cajcl_data_flow {
       color="#d97706",
       label=<
         <table border="0" cellborder="0" cellspacing="2" cellpadding="0">
-          <tr><td align="left"><b>Google Drive — Contest &amp; Photo Storage</b></td></tr>
+          <tr><td align="left"><b>Google Drive — Contests, Photos &amp; Sheet Backups</b></td></tr>
           <tr><td align="left"><font point-size="8" color="#b45309"><b>SOC 2 Type II Compliant · Signed Webhook Gateway</b></font></td></tr>
-          <tr><td align="left"><font point-size="8.5" color="#475569">• Accessed via HMAC-signed Apps Script (5-minute TTL)</font></td></tr>
-          <tr><td align="left"><font point-size="8.5" color="#475569">• Stores contest entries &amp; EXIF-stripped convention photos</font></td></tr>
-          <tr><td align="left"><font point-size="8.5" color="#475569">• Purged completely on April 12, 2027</font></td></tr>
+          <tr><td align="left"><font point-size="8.5" color="#475569">• Contest entries &amp; EXIF-stripped photos (HMAC-signed)</font></td></tr>
+          <tr><td align="left"><font point-size="8.5" color="#475569">• Restricted Google Sheet backup (registration + schedule)</font></td></tr>
+          <tr><td align="left"><font point-size="8.5" color="#475569">• 10-day rolling backups · Purged completely Apr 12, 2027</font></td></tr>
         </table>
       >
     ];
@@ -280,10 +280,10 @@ digraph cajcl_data_flow {
       penwidth=1.5,
       label=<
         <table border="0" cellborder="0" cellspacing="2" cellpadding="0">
-          <tr><td align="left"><font color="#9f1239"><b>Google Drive — Restricted Medical &amp; Waiver Vault</b></font></td></tr>
-          <tr><td align="left"><font point-size="8" color="#be123c"><b>SOC 2 Type II Compliant · Zero-Application-Ingestion Boundary</b></font></td></tr>
-          <tr><td align="left"><font point-size="8.5" color="#881337">• Scanned PDF waivers &amp; medical forms uploaded directly</font></td></tr>
-          <tr><td align="left"><font point-size="8.5" color="#881337">• Strictly isolated to Convention Presidents · Purged Apr 12, 2027</font></td></tr>
+          <tr><td align="left"><font color="#9f1239"><b>Physical Mail — University High School (Paper Only)</b></font></td></tr>
+          <tr><td align="left"><font point-size="8" color="#be123c"><b>Zero Digital Ingestion · No Google Drive Scans</b></font></td></tr>
+          <tr><td align="left"><font point-size="8.5" color="#881337">• Ink-signed waivers &amp; medical forms mailed with check</font></td></tr>
+          <tr><td align="left"><font point-size="8.5" color="#881337">• Substitutions (thru Feb 26) mailed or brought to check-in</font></td></tr>
         </table>
       >
     ];
@@ -350,5 +350,5 @@ digraph cajcl_data_flow {
 
   // ⑦ Offline Medical & Waiver Paper Boundary (Bottom Lane)
   parents     -> paper_forms    [label="⑦ Signed paper\nwaivers & medical", color="#e11d48", fontcolor="#9f1239"];
-  paper_forms -> google_medical [label="⑦ Direct administrative scan upload (bypasses web app & database)", color="#e11d48", fontcolor="#9f1239"];
+  paper_forms -> google_medical [label="⑦ Mailed with check by Feb 13 (paper only — bypasses web app, DB & Drive)", color="#e11d48", fontcolor="#9f1239"];
 }
